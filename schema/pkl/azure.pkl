@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure
+
+import "@formae/formae.pkl"
+
+/// Azure subscription ID
+typealias SubscriptionId = String
+
+/// Azure region/location
+typealias Location = String
+
+/// Configuration for Azure target
+open class Config {
+  hidden fixed type: String = "Azure"
+  hidden subscriptionId: SubscriptionId
+
+  fixed Type: String = type
+  fixed SubscriptionId: SubscriptionId = subscriptionId
+}
+
+/// Resource hint for Azure resources
+class ResourceHint extends formae.ResourceHint {
+  hidden outputKeyTransformation: (String) -> String = (it) -> it
+  /// Azure Resource Manager API version
+  apiVersion: String
+}
+
+/// Sub-resource hint for Azure nested resources
+class SubResourceHint extends formae.SubResourceHint {
+  hidden outputKeyTransformation: (String) -> String = (it) -> it
+  /// Azure Resource Manager API version
+  apiVersion: String
+}
+
+/// Field hint for Azure resource properties
+class FieldHint extends formae.FieldHint {
+}
+
+/// Azure resource tag
+class Tag {
+  hidden key: String
+  hidden value: String
+
+  fixed Key: String = key
+  fixed Value: String = value
+}

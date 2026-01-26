@@ -1,0 +1,90 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/managedidentity/userassignedidentity.pkl" as identity
+import "@azure/authorization/roleassignment.pkl" as role
+
+import "./vars.pkl"
+
+description {
+    text = """
+        Managed identities and RBAC for CI/CD automation
+
+        After deployment, configure your CI/CD:
+          - GitHub Actions: OIDC federation with the deploy identity
+          - Azure DevOps: Service connection with managed identity
+          - Terraform: Use identity for azurerm provider auth
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+
+    identityRg
+    deployIdentity
+    monitorIdentity
+    deployContributorRole
+    monitorReaderRole
+}
+
+local subscriptionScope = "/subscriptions/\(vars.subscriptionId)"
+
+local identityRg = new rg.ResourceGroup {
+    label = "identity-rg"
+    name = "\(vars.projectName)-identity-rg"
+    location = vars.location
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "purpose"; value = "managed-identities" }
+    }
+}
+
+local deployIdentity = new identity.UserAssignedIdentity {
+    label = "deploy-identity"
+    name = "\(vars.projectName)-deploy-identity"
+    location = vars.location
+    resourceGroupName = identityRg.res.name
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "purpose"; value = "deployment" }
+    }
+}
+
+local monitorIdentity = new identity.UserAssignedIdentity {
+    label = "monitor-identity"
+    name = "\(vars.projectName)-monitor-identity"
+    location = vars.location
+    resourceGroupName = identityRg.res.name
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "purpose"; value = "monitoring" }
+    }
+}
+
+local deployContributorRole = new role.RoleAssignment {
+    label = "deploy-contributor"
+    scope = subscriptionScope
+    principalId = deployIdentity.res.principalId
+    roleDefinitionId = "\(subscriptionScope)/providers/Microsoft.Authorization/roleDefinitions/\(vars.contributorRoleId)"
+    principalType = "ServicePrincipal"
+    description = "CI/CD deployment identity - Contributor access"
+}
+
+local monitorReaderRole = new role.RoleAssignment {
+    label = "monitor-reader"
+    scope = subscriptionScope
+    principalId = monitorIdentity.res.principalId
+    roleDefinitionId = "\(subscriptionScope)/providers/Microsoft.Authorization/roleDefinitions/\(vars.readerRoleId)"
+    principalType = "ServicePrincipal"
+    description = "Monitoring identity - Reader access"
+}

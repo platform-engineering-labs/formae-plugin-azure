@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/dbforpostgresql/flexibleserver.pkl" as pg
+import "@azure/dbforpostgresql/firewallrule.pkl" as fw
+
+import "./vars.pkl"
+
+description {
+    text = """
+        PostgreSQL Flexible Server
+
+        Connect using:
+          psql "host=\(vars.projectName)-pg.postgres.database.azure.com port=5432 dbname=postgres user=\(vars.adminLogin) sslmode=require"
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+    
+    resourceGroup
+    database
+
+    myIpRule
+    azureServicesRule
+}
+
+local resourceGroup = new rg.ResourceGroup {
+    label = "db-rg"
+    name = "\(vars.projectName)-rg"
+    location = vars.location
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "managed-by"; value = "formae" }
+    }
+}
+
+local database = new pg.FlexibleServer {
+    label = "pg-server"
+    name = "\(vars.projectName)-pg"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    sku = new pg.SKU { name = vars.skuName; tier = vars.skuTier }
+    version = vars.postgresVersion
+    administratorLogin = vars.adminLogin
+    administratorLoginPassword = vars.adminPassword
+    storage = new pg.Storage { storageSizeGB = vars.storageSizeGB; autoGrow = "Enabled" }
+    backup = new pg.Backup { backupRetentionDays = vars.backupRetentionDays; geoRedundantBackup = "Disabled" }
+    highAvailability = new pg.HighAvailability { mode = "Disabled" }
+    authConfig = new pg.AuthConfig { passwordAuth = "Enabled"; activeDirectoryAuth = "Disabled" }
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "managed-by"; value = "formae" }
+    }
+}
+
+local myIpRule = new fw.FirewallRule {
+    label = "my-ip-rule"
+    name = "AllowMyIP"
+    resourceGroupName = resourceGroup.res.name
+    serverName = database.res.name
+    startIpAddress = vars.myIpAddress
+    endIpAddress = vars.myIpAddress
+}
+
+local azureServicesRule = new fw.FirewallRule {
+    label = "azure-services-rule"
+    name = "AllowAzureServices"
+    resourceGroupName = resourceGroup.res.name
+    serverName = database.res.name
+    startIpAddress = "0.0.0.0"
+    endIpAddress = "0.0.0.0"
+}

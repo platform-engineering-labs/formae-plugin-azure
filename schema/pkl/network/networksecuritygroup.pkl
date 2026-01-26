@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networksecuritygroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::NetworkSecurityGroup"
+const apiVersion = "2023-05-01"
+
+open class NetworkSecurityGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkSecurityGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkSecurityGroupResolvable = (this) {
+        property = "name"
+    }
+    hidden location: NetworkSecurityGroupResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// Security rule access type
+typealias SecurityRuleAccess = "Allow"|"Deny"
+
+/// Security rule direction
+typealias SecurityRuleDirection = "Inbound"|"Outbound"
+
+/// Security rule protocol
+typealias SecurityRuleProtocol = "Tcp"|"Udp"|"Icmp"|"Esp"|"Ah"|"*"
+
+/// Security rule configuration for a NetworkSecurityGroup
+class SecurityRule {
+    /// Name of the security rule
+    name: String(length >= 1 && length <= 80)
+
+    /// Description of the rule (max 140 chars)
+    description: String(length <= 140)?
+
+    /// Priority of the rule (100-4096, lower = higher priority)
+    priority: Int(this >= 100 && this <= 4096)
+
+    /// Direction of the rule
+    direction: SecurityRuleDirection
+
+    /// Whether traffic is allowed or denied
+    access: SecurityRuleAccess
+
+    /// Network protocol
+    protocol: SecurityRuleProtocol
+
+    /// Source port or range (e.g., "80", "1024-65535", "*")
+    sourcePortRange: String?
+
+    /// Source port ranges (array)
+    sourcePortRanges: Listing<String>?
+
+    /// Destination port or range (e.g., "80", "1024-65535", "*")
+    destinationPortRange: String?
+
+    /// Destination port ranges (array)
+    destinationPortRanges: Listing<String>?
+
+    /// Source CIDR, IP range, or service tag (e.g., "10.0.0.0/8", "*", "VirtualNetwork")
+    sourceAddressPrefix: String?
+
+    /// Source address prefixes (array)
+    sourceAddressPrefixes: Listing<String>?
+
+    /// Destination CIDR, IP range, or service tag
+    destinationAddressPrefix: String?
+
+    /// Destination address prefixes (array)
+    destinationAddressPrefixes: Listing<String>?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class NetworkSecurityGroup extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    // Optional properties
+    @azure.FieldHint {}
+    securityRules: Listing<SecurityRule>?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NetworkSecurityGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

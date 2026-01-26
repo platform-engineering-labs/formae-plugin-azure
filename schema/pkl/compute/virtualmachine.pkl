@@ -1,0 +1,185 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.virtualmachine
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Compute::VirtualMachine"
+const apiVersion = "2023-07-01"
+
+open class VirtualMachineResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualMachineResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualMachineResolvable = (this) {
+        property = "name"
+    }
+    hidden privateIPAddress: VirtualMachineResolvable = (this) {
+        property = "privateIPAddress"
+    }
+}
+
+/// OS disk create option
+typealias OSDiskCreateOption = "FromImage"|"Empty"|"Attach"|"Copy"|"Restore"
+
+/// Storage account type for managed disk
+typealias StorageAccountType = "Standard_LRS"|"Premium_LRS"|"StandardSSD_LRS"|"UltraSSD_LRS"|"Premium_ZRS"|"StandardSSD_ZRS"
+
+/// Caching type for disk
+typealias CachingType = "None"|"ReadOnly"|"ReadWrite"
+
+/// Image reference for VM
+class ImageReference {
+    /// Publisher (e.g., "Canonical")
+    publisher: String
+
+    /// Offer (e.g., "0001-com-ubuntu-server-jammy")
+    offer: String
+
+    /// SKU (e.g., "22_04-lts-gen2")
+    sku: String
+
+    /// Version (e.g., "latest")
+    version: String
+}
+
+/// Managed disk parameters
+class ManagedDiskParameters {
+    /// Storage account type
+    storageAccountType: StorageAccountType
+}
+
+/// OS disk configuration
+class OSDisk {
+    /// Name of the OS disk (optional, Azure will generate one if not provided)
+    name: String?
+
+    /// How to create the disk
+    createOption: OSDiskCreateOption
+
+    /// Managed disk parameters
+    managedDisk: ManagedDiskParameters?
+
+    /// Disk size in GB
+    diskSizeGB: Int?
+
+    /// Caching type
+    caching: CachingType?
+
+    /// Delete option (Delete or Detach)
+    deleteOption: String?
+}
+
+/// SSH public key
+class SSHPublicKey {
+    /// Path to store the key (e.g., "/home/azureuser/.ssh/authorized_keys")
+    path: String
+
+    /// Public key data
+    keyData: String
+}
+
+/// SSH configuration
+class SSHConfiguration {
+    /// List of SSH public keys
+    publicKeys: Listing<SSHPublicKey>
+}
+
+/// Linux configuration
+class LinuxConfiguration {
+    /// Disable password authentication (recommended for SSH key auth)
+    disablePasswordAuthentication: Boolean?
+
+    /// SSH configuration
+    ssh: SSHConfiguration?
+
+    /// Provision VM agent
+    provisionVMAgent: Boolean?
+}
+
+/// Windows configuration
+class WindowsConfiguration {
+    /// Provision VM agent
+    provisionVMAgent: Boolean?
+
+    /// Enable automatic updates
+    enableAutomaticUpdates: Boolean?
+
+    /// Time zone
+    timeZone: String?
+}
+
+/// Network interface reference
+class NetworkInterfaceReference {
+    /// Network interface resource ID
+    id: String|formae.Resolvable
+
+    /// Whether this is the primary NIC
+    primary: Boolean?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualMachine extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    vmSize: String
+
+    @azure.FieldHint { required = true }
+    networkInterfaces: Listing<NetworkInterfaceReference>
+
+    @azure.FieldHint { required = true; createOnly = true }
+    imageReference: ImageReference
+
+    @azure.FieldHint { required = true; createOnly = true }
+    osDisk: OSDisk
+
+    @azure.FieldHint { required = true; createOnly = true }
+    adminUsername: String
+
+    // Optional properties - authentication
+    @azure.FieldHint {}
+    adminPassword: String?
+
+    @azure.FieldHint {}
+    linuxConfiguration: LinuxConfiguration?
+
+    @azure.FieldHint {}
+    windowsConfiguration: WindowsConfiguration?
+
+    // Optional properties - other
+    @azure.FieldHint {}
+    computerName: String?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualMachineResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

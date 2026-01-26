@@ -1,0 +1,57 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dbforpostgresql.firewallrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::DBforPostgreSQL::FirewallRule"
+const apiVersion = "2024-08-01"
+
+open class FirewallRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FirewallRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FirewallRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::DBforPostgreSQL::FlexibleServer"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+}
+open class FirewallRule extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[a-zA-Z0-9][-_a-zA-Z0-9]*[a-zA-Z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    startIpAddress: String(matches(Regex("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")))
+
+    @azure.FieldHint { required = true }
+    endIpAddress: String(matches(Regex("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")))
+
+    hidden parent = this
+
+    hidden res: FirewallRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

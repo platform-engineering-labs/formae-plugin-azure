@@ -1,0 +1,220 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerservice.managedcluster
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::ContainerService::ManagedCluster"
+const apiVersion = "2024-03-02-preview"
+
+open class ManagedClusterResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagedClusterResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ManagedClusterResolvable = (this) {
+        property = "name"
+    }
+    hidden fqdn: ManagedClusterResolvable = (this) {
+        property = "fqdn"
+    }
+    hidden kubeConfig: ManagedClusterResolvable = (this) {
+        property = "kubeConfig"
+    }
+}
+
+/// SKU name for the managed cluster
+typealias SkuName = "Base"|"Automatic"
+
+/// SKU tier for the managed cluster
+typealias SkuTier = "Free"|"Standard"|"Premium"
+
+/// Identity type for the managed cluster
+typealias IdentityType = "SystemAssigned"|"UserAssigned"|"None"
+
+/// Agent pool mode
+typealias AgentPoolMode = "System"|"User"
+
+/// OS type for agent pool
+typealias OSType = "Linux"|"Windows"
+
+/// SKU configuration for the managed cluster
+class ManagedClusterSKU {
+    /// SKU name (Base for standard, Automatic for AKS Automatic)
+    name: SkuName
+
+    /// SKU tier
+    tier: SkuTier?
+}
+
+/// Identity configuration for the managed cluster
+class ManagedClusterIdentity {
+    /// Identity type
+    type: IdentityType
+}
+
+/// Agent pool profile configuration
+class AgentPoolProfile {
+    /// Name of the agent pool (max 12 characters for Linux, 6 for Windows)
+    name: String(length >= 1 && length <= 12)
+
+    /// Number of nodes in the pool
+    count: Int(this >= 1)?
+
+    /// VM size for the nodes
+    vmSize: String?
+
+    /// OS disk size in GB
+    osDiskSizeGB: Int?
+
+    /// OS type (Linux or Windows)
+    osType: OSType?
+
+    /// Pool mode (System or User)
+    mode: AgentPoolMode
+
+    /// Enable auto-scaling
+    enableAutoScaling: Boolean?
+
+    /// Minimum node count for auto-scaling
+    minCount: Int?
+
+    /// Maximum node count for auto-scaling
+    maxCount: Int?
+
+    /// Availability zones
+    availabilityZones: Listing<String>?
+}
+
+/// SSH public key configuration
+class SSHPublicKey {
+    /// Public key data
+    keyData: String
+}
+
+/// SSH configuration
+class SSHConfiguration {
+    /// List of SSH public keys
+    publicKeys: Listing<SSHPublicKey>
+}
+
+/// Linux profile configuration
+class LinuxProfile {
+    /// Admin username
+    adminUsername: String
+
+    /// SSH configuration
+    ssh: SSHConfiguration
+}
+
+/// Network profile configuration
+class NetworkProfile {
+    /// Network plugin (azure, kubenet, none)
+    networkPlugin: String?
+
+    /// Network plugin mode
+    networkPluginMode: String?
+
+    /// Network policy (azure, calico, cilium)
+    networkPolicy: String?
+
+    /// Service CIDR
+    serviceCidr: String?
+
+    /// DNS service IP
+    dnsServiceIP: String?
+
+    /// Pod CIDR (for kubenet)
+    podCidr: String?
+
+    /// Load balancer SKU
+    loadBalancerSku: String?
+}
+
+/// Azure Active Directory profile
+class AADProfile {
+    /// Enable managed AAD
+    managed: Boolean?
+
+    /// Enable Azure RBAC for Kubernetes authorization
+    enableAzureRBAC: Boolean?
+
+    /// AAD tenant ID
+    tenantID: String?
+
+    /// Admin group object IDs
+    adminGroupObjectIDs: Listing<String>?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ManagedCluster extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    // SKU configuration (use "Automatic" for AKS Automatic)
+    @azure.FieldHint { required = true }
+    sku: ManagedClusterSKU
+
+    // Identity configuration
+    @azure.FieldHint { required = true }
+    identity: ManagedClusterIdentity
+
+    // DNS prefix for the cluster
+    @azure.FieldHint {}
+    dnsPrefix: String?
+
+    // Agent pool profiles
+    @azure.FieldHint { required = true }
+    agentPoolProfiles: Listing<AgentPoolProfile>
+
+    // Linux profile (optional for AKS Automatic)
+    @azure.FieldHint {}
+    linuxProfile: LinuxProfile?
+
+    // Network profile
+    @azure.FieldHint {}
+    networkProfile: NetworkProfile?
+
+    // AAD profile
+    @azure.FieldHint {}
+    aadProfile: AADProfile?
+
+    // Kubernetes version (optional, Azure will use default if not specified)
+    @azure.FieldHint {}
+    kubernetesVersion: String?
+
+    // Enable RBAC
+    @azure.FieldHint {}
+    enableRBAC: Boolean?
+
+    // Tags
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ManagedClusterResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

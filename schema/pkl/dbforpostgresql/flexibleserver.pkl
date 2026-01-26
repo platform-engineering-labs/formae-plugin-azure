@@ -1,0 +1,199 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dbforpostgresql.flexibleserver
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::DBforPostgreSQL::FlexibleServer"
+const apiVersion = "2024-08-01"
+
+open class FlexibleServerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FlexibleServerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FlexibleServerResolvable = (this) {
+        property = "name"
+    }
+    hidden fullyQualifiedDomainName: FlexibleServerResolvable = (this) {
+        property = "fullyQualifiedDomainName"
+    }
+}
+
+/// PostgreSQL version
+typealias ServerVersion = "11"|"12"|"13"|"14"|"15"|"16"
+
+/// SKU tier for PostgreSQL Flexible Server
+typealias SKUTier = "Burstable"|"GeneralPurpose"|"MemoryOptimized"
+
+/// High availability mode
+typealias HighAvailabilityMode = "Disabled"|"SameZone"|"ZoneRedundant"
+
+/// Geo-redundant backup setting
+typealias GeoRedundantBackup = "Enabled"|"Disabled"
+
+/// Storage auto-grow setting
+typealias StorageAutoGrow = "Enabled"|"Disabled"
+
+/// Public network access setting
+typealias PublicNetworkAccess = "Enabled"|"Disabled"
+
+/// Active Directory authentication setting
+typealias ActiveDirectoryAuth = "Enabled"|"Disabled"
+
+/// Password authentication setting
+typealias PasswordAuth = "Enabled"|"Disabled"
+
+/// SKU configuration for PostgreSQL Flexible Server
+class SKU {
+    /// SKU name (e.g., "Standard_B1ms", "Standard_D2s_v3")
+    name: String
+
+    /// SKU tier
+    tier: SKUTier
+}
+
+/// Storage configuration
+class Storage {
+    /// Storage size in GB (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768)
+    storageSizeGB: Int(this >= 32)?
+
+    /// Enable storage auto-grow
+    autoGrow: StorageAutoGrow?
+
+    /// Storage tier (P1-P80 for Premium storage)
+    tier: String?
+
+    /// Provisioned IOPS (for PremiumV2_LRS storage type)
+    iops: Int?
+
+    /// Provisioned throughput in MB/s (for PremiumV2_LRS storage type)
+    throughput: Int?
+}
+
+/// Backup configuration
+class Backup {
+    /// Backup retention period in days (7-35)
+    backupRetentionDays: Int(this >= 7 && this <= 35)?
+
+    /// Enable geo-redundant backup
+    geoRedundantBackup: GeoRedundantBackup?
+}
+
+/// High availability configuration
+class HighAvailability {
+    /// High availability mode
+    mode: HighAvailabilityMode?
+
+    /// Availability zone for standby server
+    standbyAvailabilityZone: String?
+}
+
+/// Network configuration
+class Network {
+    /// Resource ID of the delegated subnet for VNet integration
+    delegatedSubnetResourceId: String|formae.Resolvable?
+
+    /// Resource ID of the private DNS zone for VNet integration
+    privateDnsZoneArmResourceId: String|formae.Resolvable?
+
+    /// Enable public network access
+    publicNetworkAccess: PublicNetworkAccess?
+}
+
+/// Maintenance window configuration
+class MaintenanceWindow {
+    /// Custom maintenance window (Enabled/Disabled)
+    customWindow: String?
+
+    /// Day of week (0=Sunday, 6=Saturday)
+    dayOfWeek: Int(this >= 0 && this <= 6)?
+
+    /// Start hour (0-23)
+    startHour: Int(this >= 0 && this <= 23)?
+
+    /// Start minute (0-59)
+    startMinute: Int(this >= 0 && this <= 59)?
+}
+
+/// Authentication configuration
+class AuthConfig {
+    /// Enable Active Directory authentication
+    activeDirectoryAuth: ActiveDirectoryAuth?
+
+    /// Enable password authentication
+    passwordAuth: PasswordAuth?
+
+    /// Tenant ID for Active Directory authentication
+    tenantId: String?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class FlexibleServer extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[a-z0-9]+(-[a-z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    @azure.FieldHint { required = true; createOnly = true }
+    version: ServerVersion
+
+    @azure.FieldHint { required = true; createOnly = true }
+    administratorLogin: String(length >= 1)
+
+    @azure.FieldHint { requiredOnCreate = true; createOnly = true }
+    administratorLoginPassword: String(length >= 8)
+
+    // Optional properties
+    @azure.FieldHint { createOnly = true }
+    availabilityZone: String?
+
+    @azure.FieldHint {}
+    storage: Storage?
+
+    @azure.FieldHint {}
+    backup: Backup?
+
+    @azure.FieldHint {}
+    highAvailability: HighAvailability?
+
+    @azure.FieldHint { createOnly = true }
+    network: Network?
+
+    @azure.FieldHint {}
+    maintenanceWindow: MaintenanceWindow?
+
+    @azure.FieldHint {}
+    authConfig: AuthConfig?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: FlexibleServerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

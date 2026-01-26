@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.resources.subnet
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::Subnet"
+const apiVersion = "2023-05-01"
+
+open class SubnetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SubnetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SubnetResolvable = (this) {
+        property = "name"
+    }
+    hidden addressPrefix: SubnetResolvable = (this) {
+        property = "addressPrefix"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Network::VirtualNetwork"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "virtualNetworkName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Subnet extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    addressPrefix: String
+
+    // Note: Azure Subnets do not support tags or location (inherited from VNet)
+
+    hidden parent = this
+
+    hidden res: SubnetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

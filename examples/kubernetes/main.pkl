@@ -1,0 +1,130 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/resources/virtualnetwork.pkl" as vnet
+import "@azure/resources/subnet.pkl" as snet
+import "@azure/containerservice/managedcluster.pkl" as aks
+import "@azure/containerregistry/registry.pkl" as acr
+
+import "./vars.pkl"
+
+description {
+    text = """
+        AKS cluster with container registry
+
+        After deployment:
+          az aks get-credentials --resource-group \(vars.projectName)-rg --name \(vars.projectName)-aks
+          az aks update -n \(vars.projectName)-aks -g \(vars.projectName)-rg --attach-acr \(vars.projectName.replaceAll("-", ""))acr
+          kubectl get nodes
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+
+    resourceGroup
+    virtualNetwork
+    aksSubnet
+    containerRegistry
+    aksCluster
+}
+
+local resourceGroup = new rg.ResourceGroup {
+    label = "aks-rg"
+    name = "\(vars.projectName)-rg"
+    location = vars.location
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "environment"; value = "demo" }
+    }
+}
+
+local virtualNetwork = new vnet.VirtualNetwork {
+    label = "aks-vnet"
+    name = "\(vars.projectName)-vnet"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    addressSpace = new vnet.AddressSpace {
+        addressPrefixes {
+            vars.vnetCidr
+        }
+    }
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local aksSubnet = new snet.Subnet {
+    label = "aks-subnet"
+    name = "\(vars.projectName)-aks-subnet"
+    resourceGroupName = resourceGroup.res.name
+    virtualNetworkName = virtualNetwork.res.name
+    addressPrefix = vars.aksSubnetCidr
+}
+
+local acrName = vars.projectName.replaceAll("-", "") + "acr"
+
+local containerRegistry = new acr.Registry {
+    label = "acr"
+    name = acrName
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    sku = new acr.RegistrySKU {
+        name = "Basic"
+    }
+    adminUserEnabled = false
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local aksCluster = new aks.ManagedCluster {
+    label = "aks-cluster"
+    name = "\(vars.projectName)-aks"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+
+    sku = new aks.ManagedClusterSKU {
+        name = "Base"
+        tier = "Free"
+    }
+
+    identity = new aks.ManagedClusterIdentity {
+        type = "SystemAssigned"
+    }
+
+    dnsPrefix = vars.dnsPrefix
+
+    agentPoolProfiles {
+        new aks.AgentPoolProfile {
+            name = "systempool"
+            count = 1
+            vmSize = "Standard_D2s_v3"
+            mode = "System"
+            osType = "Linux"
+            enableAutoScaling = false
+        }
+    }
+
+    networkProfile = new aks.NetworkProfile {
+        networkPlugin = "azure"
+        loadBalancerSku = "standard"
+    }
+
+    enableRBAC = true
+
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "environment"; value = "demo" }
+    }
+}

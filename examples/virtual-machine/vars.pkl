@@ -1,0 +1,38 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+projectName = "azure-vm"
+
+stackName = "azure-vm-eastus"
+
+location = "eastus"
+
+subscriptionId = read?("env:AZURE_SUBSCRIPTION_ID") ?? "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+
+vnetCidr = "10.0.0.0/16"
+
+subnetCidr = "10.0.1.0/24"
+
+myIP = read?("env:MY_IP") ?? "*"
+
+vmSize = "Standard_D2s_v3"
+
+adminUsername = "azureuser"
+
+stack: formae.Stack = new {
+    label = stackName
+    description = "Ubuntu VM with SSH access"
+}
+
+target: formae.Target = new formae.Target {
+    label = "vm-target-azure"
+    config = new azure.Config {
+        subscriptionId = module.subscriptionId
+    }
+}

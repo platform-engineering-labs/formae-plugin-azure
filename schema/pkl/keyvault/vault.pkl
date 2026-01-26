@@ -1,0 +1,178 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.keyvault.vault
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::KeyVault::Vault"
+const apiVersion = "2023-07-01"
+
+open class VaultResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VaultResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VaultResolvable = (this) {
+        property = "name"
+    }
+    hidden vaultUri: VaultResolvable = (this) {
+        property = "vaultUri"
+    }
+}
+
+/// SKU name for Key Vault
+typealias VaultSKUName = "standard"|"premium"
+
+/// SKU family for Key Vault (always "A")
+typealias VaultSKUFamily = "A"
+
+/// Network rule action
+typealias NetworkRuleAction = "Allow"|"Deny"
+
+/// Network rule bypass options
+typealias NetworkRuleBypass = "AzureServices"|"None"
+
+/// Key permissions for access policy
+typealias KeyPermission = "all"|"encrypt"|"decrypt"|"wrapKey"|"unwrapKey"|"sign"|"verify"|"get"|"list"|"create"|"update"|"import"|"delete"|"backup"|"restore"|"recover"|"purge"|"release"|"rotate"|"getrotationpolicy"|"setrotationpolicy"
+
+/// Secret permissions for access policy
+typealias SecretPermission = "all"|"get"|"list"|"set"|"delete"|"backup"|"restore"|"recover"|"purge"
+
+/// Certificate permissions for access policy
+typealias CertificatePermission = "all"|"get"|"list"|"delete"|"create"|"import"|"update"|"managecontacts"|"getissuers"|"listissuers"|"setissuers"|"deleteissuers"|"manageissuers"|"recover"|"purge"|"backup"|"restore"
+
+/// Storage permissions for access policy
+typealias StoragePermission = "all"|"get"|"list"|"delete"|"set"|"update"|"regeneratekey"|"getsas"|"listsas"|"deletesas"|"setsas"|"recover"|"backup"|"restore"|"purge"
+
+/// SKU configuration for a Vault
+class VaultSKU {
+    /// SKU family (always "A")
+    family: VaultSKUFamily = "A"
+
+    /// SKU name (standard or premium)
+    name: VaultSKUName
+}
+
+/// Permissions for access policy
+class AccessPolicyPermissions {
+    /// Key permissions
+    keys: Listing<KeyPermission>?
+
+    /// Secret permissions
+    secrets: Listing<SecretPermission>?
+
+    /// Certificate permissions
+    certificates: Listing<CertificatePermission>?
+
+    /// Storage permissions
+    storage: Listing<StoragePermission>?
+}
+
+/// Access policy entry
+class AccessPolicyEntry {
+    /// Tenant ID for the access policy
+    tenantId: String
+
+    /// Object ID of the user, service principal, or security group
+    objectId: String
+
+    /// Permissions granted to the identity
+    permissions: AccessPolicyPermissions
+}
+
+/// IP rule for network ACLs
+class IPRule {
+    /// IPv4 address or CIDR range
+    value: String
+}
+
+/// Virtual network rule for network ACLs
+class VirtualNetworkRule {
+    /// Resource ID of a subnet
+    id: String|formae.Resolvable
+}
+
+/// Network ACLs for the vault
+class NetworkRuleSet {
+    /// Default action when no rule matches
+    defaultAction: NetworkRuleAction?
+
+    /// Allow trusted Microsoft services to bypass network rules
+    bypass: NetworkRuleBypass?
+
+    /// IP rules
+    ipRules: Listing<IPRule>?
+
+    /// Virtual network rules
+    virtualNetworkRules: Listing<VirtualNetworkRule>?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Vault extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 24 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    tenantId: String
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: VaultSKU
+
+    // Optional properties
+    @azure.FieldHint {}
+    accessPolicies: Listing<AccessPolicyEntry>?
+
+    @azure.FieldHint {}
+    enabledForDeployment: Boolean?
+
+    @azure.FieldHint {}
+    enabledForDiskEncryption: Boolean?
+
+    @azure.FieldHint {}
+    enabledForTemplateDeployment: Boolean?
+
+    @azure.FieldHint {}
+    enableSoftDelete: Boolean?
+
+    @azure.FieldHint {}
+    softDeleteRetentionInDays: Int(this >= 7 && this <= 90)?
+
+    @azure.FieldHint {}
+    enablePurgeProtection: Boolean?
+
+    @azure.FieldHint {}
+    enableRbacAuthorization: Boolean?
+
+    @azure.FieldHint {}
+    networkAcls: NetworkRuleSet?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VaultResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

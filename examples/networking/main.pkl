@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/resources/virtualnetwork.pkl" as vnet
+import "@azure/resources/subnet.pkl" as snet
+
+import "./vars.pkl"
+
+description {
+    text = """
+        Basic Azure networking: Resource Group, Virtual Network, and Subnet.
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+
+    resourceGroup
+    virtualNetwork
+    subnet
+}
+
+local resourceGroup = new rg.ResourceGroup {
+    label = "rg"
+    name = "\(vars.projectName)-rg"
+    location = vars.location
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local virtualNetwork = new vnet.VirtualNetwork {
+    label = "vnet"
+    name = "\(vars.projectName)-vnet"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    addressSpace = new vnet.AddressSpace {
+        addressPrefixes {
+            vars.vnetCidr
+        }
+    }
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local subnet = new snet.Subnet {
+    label = "subnet"
+    name = "\(vars.projectName)-subnet"
+    resourceGroupName = resourceGroup.res.name
+    virtualNetworkName = virtualNetwork.res.name
+    addressPrefix = vars.subnetCidr
+}
