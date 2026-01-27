@@ -329,7 +329,7 @@ Consider adding these for completeness.
 
 ### TODO
 
-- [ ] Add `.github/dependabot.yml`
-- [ ] Add `.github/workflows/ci.yml`
-- [ ] Add `LICENSE`
-- [ ] Add `README.md`
+- [x] Add `.github/dependabot.yml`
+- [x] Add `.github/workflows/ci.yml`
+- [x] Add `LICENSE`
+- [x] Add `README.md`
