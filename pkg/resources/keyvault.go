@@ -12,11 +12,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
-	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
 const ResourceTypeKeyVault = "Azure::KeyVault::Vault"
@@ -97,7 +97,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 		}
 
 		// Serialize access policies
-		if result.Properties.AccessPolicies != nil && len(result.Properties.AccessPolicies) > 0 {
+		if len(result.Properties.AccessPolicies) > 0 {
 			accessPolicies := make([]map[string]interface{}, 0, len(result.Properties.AccessPolicies))
 			for _, ap := range result.Properties.AccessPolicies {
 				policy := make(map[string]interface{})
@@ -161,7 +161,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 			if result.Properties.NetworkACLs.Bypass != nil {
 				networkAcls["bypass"] = string(*result.Properties.NetworkACLs.Bypass)
 			}
-			if result.Properties.NetworkACLs.IPRules != nil && len(result.Properties.NetworkACLs.IPRules) > 0 {
+			if len(result.Properties.NetworkACLs.IPRules) > 0 {
 				ipRules := make([]map[string]interface{}, 0, len(result.Properties.NetworkACLs.IPRules))
 				for _, rule := range result.Properties.NetworkACLs.IPRules {
 					if rule.Value != nil {
@@ -170,7 +170,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 				}
 				networkAcls["ipRules"] = ipRules
 			}
-			if result.Properties.NetworkACLs.VirtualNetworkRules != nil && len(result.Properties.NetworkACLs.VirtualNetworkRules) > 0 {
+			if len(result.Properties.NetworkACLs.VirtualNetworkRules) > 0 {
 				vnetRules := make([]map[string]interface{}, 0, len(result.Properties.NetworkACLs.VirtualNetworkRules))
 				for _, rule := range result.Properties.NetworkACLs.VirtualNetworkRules {
 					if rule.ID != nil {

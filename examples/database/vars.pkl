@@ -13,7 +13,7 @@ stackName = "azure-database-westus"
 
 location = "westus"
 
-subscriptionId = read?("env:AZURE_SUBSCRIPTION_ID") ?? "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+subscriptionId = read?("env:AZURE_SUBSCRIPTION_ID") ?? "your-subscription-id"
 
 postgresVersion = "16"
 

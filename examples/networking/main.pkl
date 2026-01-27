@@ -35,7 +35,7 @@ local resourceGroup = new rg.ResourceGroup {
     name = "\(vars.projectName)-rg"
     location = vars.location
     tags {
-        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "project"; value = vars.projectName+"1" }
     }
 }
 

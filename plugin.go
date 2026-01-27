@@ -8,11 +8,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/platform-engineering-labs/formae/pkg/plugin"
-	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 
 	// Import resources to trigger init() registration
 	_ "github.com/platform-engineering-labs/formae-plugin-azure/pkg/resources"

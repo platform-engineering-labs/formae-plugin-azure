@@ -27,13 +27,13 @@ subnetCidr = "10.0.1.0/24"
 ## Deploy
 
 ```bash
-formae apply main.pkl
+formae apply --mode reconcile main.pkl
 ```
 
 ## Tear Down
 
 ```bash
-formae destroy --query 'stack:azure-networking-eastus' --yes
+formae destroy --query 'stack:azure-networking-eastus'
 ```
 
 ## Architecture

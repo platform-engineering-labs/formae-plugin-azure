@@ -11,11 +11,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
-	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
 const ResourceTypeStorageAccount = "Azure::Storage::StorageAccount"

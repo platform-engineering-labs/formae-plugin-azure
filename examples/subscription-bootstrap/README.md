@@ -26,7 +26,7 @@ subscriptionId = "your-subscription-id-here"
 ## Deploy
 
 ```bash
-formae apply main.pkl
+formae apply --mode reconcile main.pkl
 formae status command --watch --output-layout detailed
 ```
 
@@ -53,7 +53,7 @@ provider "azurerm" {
 ## Tear Down
 
 ```bash
-formae destroy --query 'stack:subscription-bootstrap' --yes
+formae destroy --query 'stack:subscription-bootstrap'
 ```
 
 ## Architecture

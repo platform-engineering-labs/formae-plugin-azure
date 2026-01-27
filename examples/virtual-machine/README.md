@@ -33,7 +33,7 @@ vmSize = "Standard_D2s_v3"
 ## Deploy
 
 ```bash
-formae apply main.pkl
+formae apply --mode reconcile main.pkl
 formae status command --watch --output-layout detailed
 ```
 
@@ -46,7 +46,7 @@ ssh azureuser@<PUBLIC_IP>
 ## Tear Down
 
 ```bash
-formae destroy --query 'stack:azure-vm-eastus' --yes
+formae destroy --query 'stack:azure-vm-eastus'
 ```
 
 ## Architecture

@@ -28,7 +28,7 @@ dnsPrefix = "aks"
 ## Deploy
 
 ```bash
-formae apply main.pkl
+formae apply --mode reconcile main.pkl
 formae status command --watch --output-layout detailed
 ```
 
@@ -52,7 +52,7 @@ az aks update -n azure-kubernetes-aks -g azure-kubernetes-rg --attach-acr azurek
 ## Tear Down
 
 ```bash
-formae destroy --query 'stack:azure-kubernetes-eastus' --yes
+formae destroy --query 'stack:azure-kubernetes-eastus'
 ```
 
 ## Architecture

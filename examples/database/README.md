@@ -27,7 +27,7 @@ adminPassword = read?("env:POSTGRES_PASSWORD") ?? "ChangeMe123!"
 ## Deploy
 
 ```bash
-formae apply main.pkl
+formae apply --mode reconcile main.pkl
 formae status command --watch --output-layout detailed
 ```
 
@@ -43,7 +43,7 @@ PGPASSWORD="ChangeMe123!" psql \
 ## Tear Down
 
 ```bash
-formae destroy --query 'stack:azure-database-eastus' --yes
+formae destroy --query 'stack:azure-database-eastus'
 ```
 
 ## Architecture
