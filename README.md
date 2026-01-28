@@ -73,7 +73,7 @@ Run against real Azure resources:
 
 ```bash
 make setup-credentials                           # Verify Azure login
-make conformance-test VERSION=0.77.16-internal   # Run full suite
+make conformance-test   # Run full suite
 ```
 
 ## License

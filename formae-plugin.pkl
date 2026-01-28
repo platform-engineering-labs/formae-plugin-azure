@@ -1,27 +1,15 @@
 /*
- * Formae Plugin Manifest - Azure
+ * © 2025 Platform Engineering Labs Inc.
  *
- * This file defines metadata for the Azure plugin.
+ * SPDX-License-Identifier: FSL-1.1-ALv2
  */
 
-// Plugin name (lowercase, letters/numbers/hyphens)
 name = "azure"
-
-// Plugin version (semver)
 version = "0.1.0"
-
-// Resource type namespace prefix (uppercase)
-// This appears in resource types: AZURE::ResourceGroup::ResourceGroup
-namespace = "Azure"
-
-// Description of what this plugin does
+namespace = "AZURE"
 description = "Azure Resource Manager (ARM) plugin for Formae"
-
-// License (SPDX identifier)
 license = "FSL-1.1-ALv2"
-
-// Minimum formae version required
-minFormaeVersion = "0.77.0"
+minFormaeVersion = "0.80.0"
 
 output {
   renderer = new JsonRenderer {}

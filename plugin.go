@@ -137,16 +137,34 @@ func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*
 
 // List returns all resource identifiers of a given type for discovery.
 func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	log := plugin.LoggerFromContext(ctx)
+	log.Debug("List called",
+		"resourceType", request.ResourceType,
+		"additionalProperties", request.AdditionalProperties,
+	)
+
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
+		log.Error("Failed to create Azure client", "error", err)
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
 	}
 
 	if !registry.HasProvisioner(request.ResourceType) {
+		log.Error("Unsupported resource type", "resourceType", request.ResourceType)
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
 	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return provisioner.List(ctx, request)
+	result, err := provisioner.List(ctx, request)
+	if err != nil {
+		log.Error("List failed", "resourceType", request.ResourceType, "error", err)
+		return result, err
+	}
+
+	log.Debug("List completed",
+		"resourceType", request.ResourceType,
+		"nativeIDCount", len(result.NativeIDs),
+	)
+	return result, nil
 }

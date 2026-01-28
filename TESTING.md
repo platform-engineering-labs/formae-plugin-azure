@@ -18,7 +18,7 @@ make install
 make setup-credentials
 
 # Run tests (don't forget the version!)
-make conformance-test VERSION=0.77.16-internal
+make conformance-test
 ```
 
 ## If Tests Fail With "resource is taken"
@@ -35,13 +35,13 @@ Then retry.
 
 ```bash
 # Just CRUD tests
-make conformance-test-crud VERSION=0.77.16-internal
+make conformance-test-crud
 
 # Just discovery tests
-make conformance-test-discovery VERSION=0.77.16-internal
+make conformance-test-discovery
 
 # Single resource (e.g., just resourcegroup)
-make conformance-test-crud VERSION=0.77.16-internal TEST=resourcegroup
+make conformance-test-crud TEST=resourcegroup
 ```
 
 ## What Gets Tested
@@ -66,7 +66,7 @@ This deletes any resource groups prefixed with `formae-plugin-sdk-test-`.
 ## TL;DR
 
 ```bash
-make install && make conformance-test VERSION=0.77.16-internal
+make install && make conformance-test
 ```
 
 ☕ Grab coffee. Tests hit real Azure APIs.

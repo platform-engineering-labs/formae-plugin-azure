@@ -2,7 +2,7 @@ amends "pkl:Project"
 
 dependencies {
   ["formae"] {
-    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.77.16-internal"
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.80.0"
   }
   ["azure"] = import("../schema/pkl/PklProject")
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
@@ -442,15 +443,24 @@ func (rg *ResourceGroup) Read(ctx context.Context, request *resource.ReadRequest
 }
 
 func (rg *ResourceGroup) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
+	log := plugin.LoggerFromContext(ctx)
+	log.Debug("ResourceGroup.List starting")
+
 	pager := rg.Client.ResourceGroupsClient.NewListPager(nil)
 
 	var nativeIDs []string
+	pageNum := 0
 
 	for pager.More() {
+		pageNum++
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			log.Error("ResourceGroup.List failed", "page", pageNum, "error", err)
 			return nil, fmt.Errorf("failed to list resource groups: %w", err)
 		}
+
+		pageCount := len(page.Value)
+		log.Debug("ResourceGroup.List page received", "page", pageNum, "itemsInPage", pageCount)
 
 		for _, rg := range page.Value {
 			if rg.ID == nil {
@@ -459,6 +469,8 @@ func (rg *ResourceGroup) List(ctx context.Context, request *resource.ListRequest
 			nativeIDs = append(nativeIDs, *rg.ID)
 		}
 	}
+
+	log.Debug("ResourceGroup.List completed", "totalPages", pageNum, "totalItems", len(nativeIDs))
 
 	return &resource.ListResult{
 		NativeIDs: nativeIDs,
