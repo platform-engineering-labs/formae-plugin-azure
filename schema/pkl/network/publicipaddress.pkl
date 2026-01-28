@@ -1,0 +1,105 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.publicipaddress
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::PublicIPAddress"
+const apiVersion = "2023-05-01"
+
+open class PublicIPAddressResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PublicIPAddressResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PublicIPAddressResolvable = (this) {
+        property = "name"
+    }
+    hidden ipAddress: PublicIPAddressResolvable = (this) {
+        property = "ipAddress"
+    }
+}
+
+/// SKU name for Public IP Address
+typealias PublicIPAddressSKUName = "Basic"|"Standard"
+
+/// SKU tier for Public IP Address
+typealias PublicIPAddressSKUTier = "Regional"|"Global"
+
+/// IP allocation method
+typealias IPAllocationMethod = "Static"|"Dynamic"
+
+/// IP version
+typealias IPVersion = "IPv4"|"IPv6"
+
+/// SKU configuration for a PublicIPAddress
+class PublicIPAddressSKU {
+    /// SKU name (Basic or Standard)
+    name: PublicIPAddressSKUName
+
+    /// SKU tier (Regional or Global)
+    tier: PublicIPAddressSKUTier?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class PublicIPAddress extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    // SKU configuration
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: PublicIPAddressSKU
+
+    // Allocation method
+    @azure.FieldHint { required = true }
+    publicIPAllocationMethod: IPAllocationMethod
+
+    // Optional properties
+    @azure.FieldHint {}
+    publicIPAddressVersion: IPVersion?
+
+    @azure.FieldHint {}
+    idleTimeoutInMinutes: Int(this >= 4 && this <= 30)?
+
+    @azure.FieldHint {}
+    dnsSettings: DnsSettings?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PublicIPAddressResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
+
+/// DNS settings for a Public IP Address
+class DnsSettings {
+    /// Domain name label (creates <label>.<region>.cloudapp.azure.com)
+    domainNameLabel: String?
+
+    /// Reverse FQDN
+    reverseFqdn: String?
+}

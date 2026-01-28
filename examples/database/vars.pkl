@@ -1,0 +1,44 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+projectName = "azure-database"
+
+stackName = "azure-database-westus"
+
+location = "westus"
+
+subscriptionId = read?("env:AZURE_SUBSCRIPTION_ID") ?? "your-subscription-id"
+
+postgresVersion = "16"
+
+adminLogin = "pgadmin"
+
+adminPassword = read?("env:POSTGRES_PASSWORD") ?? "ChangeMe123!"
+
+skuName = "Standard_B1ms"
+
+skuTier = "Burstable"
+
+storageSizeGB = 32
+
+backupRetentionDays = 7
+
+myIpAddress = read?("env:MY_IP") ?? "0.0.0.0"
+
+stack: formae.Stack = new {
+    label = stackName
+    description = "PostgreSQL Flexible Server"
+}
+
+target: formae.Target = new formae.Target {
+    label = "database-target-azure-2"
+    config = new azure.Config {
+        subscriptionId = module.subscriptionId
+    }
+}

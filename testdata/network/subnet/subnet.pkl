@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+
+local stackName = "plugin-sdk-test-subnet-stack"
+// Read the test run ID from environment variable set by the test harness
+// This ensures consistent naming within a test run but unique names between runs
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "subnet-test-rg"
+  name = "formae-plugin-sdk-test-subnet-rg-\(testRunID)"
+  location = "eastus"
+}
+
+// Define addressSpace as local to avoid SDK test patch logic targeting it
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing {
+    "10.0.0.0/16"
+  }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "subnet-test-vnet"
+  name = "formae-plugin-sdk-test-subnet-vnet-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure Subnet"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "b161e970-a04d-48a4-ac91-18d06e8d8047"
+    }
+  }
+
+  // Resource Group required for VNet
+  rg
+
+  // VirtualNetwork required for Subnet
+  vnet
+
+  // Subnet under test - uses resolvable references for dependencies
+  new subnet.Subnet {
+    label = "plugin-sdk-test-subnet"
+    name = "formae-plugin-sdk-test-subnet-\(testRunID)"
+    resourceGroupName = rg.res.name
+    virtualNetworkName = vnet.res.name
+    addressPrefix = "10.0.1.0/24"
+  }
+}

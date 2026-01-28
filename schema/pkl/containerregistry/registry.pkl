@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerregistry.registry
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::ContainerRegistry::Registry"
+const apiVersion = "2023-01-01-preview"
+
+open class RegistryResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RegistryResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RegistryResolvable = (this) {
+        property = "name"
+    }
+    hidden loginServer: RegistryResolvable = (this) {
+        property = "loginServer"
+    }
+}
+
+/// SKU name for Container Registry
+typealias RegistrySKUName = "Basic"|"Standard"|"Premium"
+
+/// SKU configuration for Container Registry
+class RegistrySKU {
+    /// SKU name (Basic, Standard, Premium)
+    name: RegistrySKUName
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Registry extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 5 && length <= 50 && matches(Regex("^[a-zA-Z0-9]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: RegistrySKU
+
+    // Optional properties
+    @azure.FieldHint {}
+    adminUserEnabled: Boolean?
+
+    @azure.FieldHint {}
+    publicNetworkAccess: String?
+
+    @azure.FieldHint {}
+    zoneRedundancy: String?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: RegistryResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

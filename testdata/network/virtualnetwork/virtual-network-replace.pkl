@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+
+local stackName = "plugin-sdk-test-vnet-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vnet-test-rg"
+  name = "formae-plugin-sdk-test-vnet-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing {
+    "10.0.0.0/16"
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure VirtualNetwork"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "b161e970-a04d-48a4-ac91-18d06e8d8047"
+    }
+  }
+
+  rg
+
+  new virtualnetwork.VirtualNetwork {
+    label = "plugin-sdk-test-vnet"
+    // Replace: Change name (createOnly field triggers delete+create)
+    name = "formae-plugin-sdk-test-vnet-replaced-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    addressSpace = vnetAddressSpace
+  }
+}

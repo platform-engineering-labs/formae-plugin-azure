@@ -1,0 +1,94 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkinterface
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::NetworkInterface"
+const apiVersion = "2023-05-01"
+
+open class NetworkInterfaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkInterfaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkInterfaceResolvable = (this) {
+        property = "name"
+    }
+    hidden privateIPAddress: NetworkInterfaceResolvable = (this) {
+        property = "privateIPAddress"
+    }
+}
+
+/// Private IP allocation method
+typealias PrivateIPAllocationMethod = "Dynamic"|"Static"
+
+/// IP configuration for a NetworkInterface
+class IPConfiguration {
+    /// Name of the IP configuration
+    name: String(length >= 1 && length <= 80)
+
+    /// Subnet resource ID
+    subnet: String|formae.Resolvable
+
+    /// Public IP address resource ID (optional)
+    publicIPAddress: (String|formae.Resolvable)?
+
+    /// Private IP allocation method
+    privateIPAllocationMethod: PrivateIPAllocationMethod
+
+    /// Static private IP address (required if allocation method is Static)
+    privateIPAddress: String?
+
+    /// Whether this is the primary IP configuration
+    primary: Boolean?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class NetworkInterface extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    ipConfigurations: Listing<IPConfiguration>
+
+    // Optional properties
+    @azure.FieldHint {}
+    networkSecurityGroup: (String|formae.Resolvable)?
+
+    @azure.FieldHint {}
+    enableAcceleratedNetworking: Boolean?
+
+    @azure.FieldHint {}
+    enableIPForwarding: Boolean?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NetworkInterfaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.roleassignment
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Authorization::RoleAssignment"
+const apiVersion = "2022-04-01"
+
+open class RoleAssignmentResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RoleAssignmentResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RoleAssignmentResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Principal type for role assignment
+typealias PrincipalType = "User"|"Group"|"ServicePrincipal"|"ForeignGroup"|"Device"
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    // RoleAssignments are scoped resources - they can be at subscription, resource group, or resource level
+    // The scope is provided explicitly rather than through parent hierarchy
+}
+open class RoleAssignment extends formae.Resource {
+
+    /// Role assignment name (must be a UUID). If omitted, one is generated automatically.
+    @azure.FieldHint { createOnly = true }
+    name: String(length >= 1)?
+
+    /// The scope at which the role assignment is created.
+    /// Can be subscription (/subscriptions/{id}), resource group, or specific resource.
+    @azure.FieldHint { required = true; createOnly = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// The principal (user, group, service principal, or managed identity) to assign the role to.
+    @azure.FieldHint { required = true; createOnly = true }
+    principalId: String(length >= 1)|formae.Resolvable
+
+    /// The role definition ID. Use built-in role definition IDs like:
+    /// /subscriptions/{sub}/providers/Microsoft.Authorization/roleDefinitions/{roleId}
+    /// Common built-in role IDs:
+    /// - Owner: 8e3af657-a8ff-443c-a75c-2fe8c4bcb635
+    /// - Contributor: b24988ac-6180-42a0-ab88-20f7382dd24c
+    /// - Reader: acdd72a7-3385-48ef-bd42-f606fba81ae7
+    @azure.FieldHint { required = true; createOnly = true }
+    roleDefinitionId: String(length >= 1)|formae.Resolvable
+
+    // Optional properties
+    /// The type of principal (User, Group, ServicePrincipal, etc.)
+    @azure.FieldHint { createOnly = true }
+    principalType: PrincipalType?
+
+    /// Description of the role assignment
+    @azure.FieldHint {}
+    description: String?
+
+    /// The conditions on the role assignment for ABAC
+    @azure.FieldHint {}
+    condition: String?
+
+    /// Version of the condition syntax
+    @azure.FieldHint {}
+    conditionVersion: String?
+
+    hidden parent = this
+
+    hidden res: RoleAssignmentResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,67 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.resources.virtualnetwork
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::VirtualNetwork"
+const apiVersion = "2023-05-01"
+
+open class VirtualNetworkResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkResolvable = (this) {
+        property = "name"
+    }
+    hidden location: VirtualNetworkResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// Address space configuration for a VirtualNetwork
+class AddressSpace {
+    /// List of CIDR blocks (e.g., ["10.0.0.0/16"])
+    addressPrefixes: Listing<String>
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualNetwork extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    addressSpace: AddressSpace
+
+    // Optional properties
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

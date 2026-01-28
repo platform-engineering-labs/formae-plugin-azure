@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.managedidentity.userassignedidentity
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::ManagedIdentity::UserAssignedIdentity"
+const apiVersion = "2023-01-31"
+
+open class UserAssignedIdentityResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: UserAssignedIdentityResolvable = (this) {
+        property = "id"
+    }
+    hidden name: UserAssignedIdentityResolvable = (this) {
+        property = "name"
+    }
+    hidden principalId: UserAssignedIdentityResolvable = (this) {
+        property = "principalId"
+    }
+    hidden clientId: UserAssignedIdentityResolvable = (this) {
+        property = "clientId"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class UserAssignedIdentity extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 128 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_]*[a-zA-Z0-9]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    // Optional properties
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: UserAssignedIdentityResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

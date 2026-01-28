@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storageaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Storage::StorageAccount"
+const apiVersion = "2023-01-01"
+
+open class StorageAccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: StorageAccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: StorageAccountResolvable = (this) {
+        property = "name"
+    }
+    hidden primaryEndpoints: StorageAccountResolvable = (this) {
+        property = "primaryEndpoints"
+    }
+}
+
+/// SKU name for Storage Account
+typealias StorageAccountSKUName = "Standard_LRS"|"Standard_GRS"|"Standard_RAGRS"|"Standard_ZRS"|"Premium_LRS"|"Premium_ZRS"|"Standard_GZRS"|"Standard_RAGZRS"
+
+/// Storage account kind
+typealias StorageAccountKind = "Storage"|"StorageV2"|"BlobStorage"|"BlockBlobStorage"|"FileStorage"
+
+/// Access tier for storage account
+typealias AccessTier = "Hot"|"Cool"|"Premium"
+
+/// SKU configuration for a StorageAccount
+class StorageAccountSKU {
+    /// SKU name (defines performance tier and replication)
+    name: StorageAccountSKUName
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class StorageAccount extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 24 && matches(Regex("[a-z0-9]+")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: StorageAccountSKU
+
+    @azure.FieldHint { required = true; createOnly = true }
+    kind: StorageAccountKind
+
+    // Optional properties
+    @azure.FieldHint {}
+    accessTier: AccessTier?
+
+    @azure.FieldHint {}
+    enableHttpsTrafficOnly: Boolean?
+
+    @azure.FieldHint {}
+    minimumTlsVersion: String?
+
+    @azure.FieldHint {}
+    allowBlobPublicAccess: Boolean?
+
+    @azure.FieldHint { outputField = "Tags" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: StorageAccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,187 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/resources/virtualnetwork.pkl" as vnet
+import "@azure/resources/subnet.pkl" as snet
+import "@azure/network/networksecuritygroup.pkl" as nsg
+import "@azure/network/publicipaddress.pkl" as pip
+import "@azure/network/networkinterface.pkl" as nic
+import "@azure/compute/virtualmachine.pkl" as vm
+
+import "./vars.pkl"
+
+description {
+    text = """
+        Ubuntu VM with SSH access
+
+        Before applying:
+          export SSH_PUBLIC_KEY=$(cat ~/.ssh/id_rsa.pub)
+
+        After deployment:
+          ssh \(vars.adminUsername)@<PUBLIC_IP>
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+
+    resourceGroup
+    virtualNetwork
+    vmSubnet
+    securityGroup
+    publicIp
+    networkInterface
+    virtualMachine
+}
+
+local resourceGroup = new rg.ResourceGroup {
+    label = "vm-rg"
+    name = "\(vars.projectName)-rg"
+    location = vars.location
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "environment"; value = "demo" }
+    }
+}
+
+local virtualNetwork = new vnet.VirtualNetwork {
+    label = "vm-vnet"
+    name = "\(vars.projectName)-vnet"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    addressSpace = new vnet.AddressSpace {
+        addressPrefixes {
+            vars.vnetCidr
+        }
+    }
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local vmSubnet = new snet.Subnet {
+    label = "vm-subnet"
+    name = "\(vars.projectName)-subnet"
+    resourceGroupName = resourceGroup.res.name
+    virtualNetworkName = virtualNetwork.res.name
+    addressPrefix = vars.subnetCidr
+}
+
+local securityGroup = new nsg.NetworkSecurityGroup {
+    label = "vm-nsg"
+    name = "\(vars.projectName)-nsg"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    securityRules {
+        new nsg.SecurityRule {
+            name = "AllowSSH"
+            priority = 100
+            direction = "Inbound"
+            access = "Allow"
+            protocol = "Tcp"
+            sourceAddressPrefix = vars.myIP
+            sourcePortRange = "*"
+            destinationAddressPrefix = "*"
+            destinationPortRange = "22"
+        }
+    }
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local publicIp = new pip.PublicIPAddress {
+    label = "vm-pip"
+    name = "\(vars.projectName)-pip"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    sku = new pip.PublicIPAddressSKU {
+        name = "Standard"
+        tier = "Regional"
+    }
+    publicIPAllocationMethod = "Static"
+    publicIPAddressVersion = "IPv4"
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local networkInterface = new nic.NetworkInterface {
+    label = "vm-nic"
+    name = "\(vars.projectName)-nic"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    ipConfigurations {
+        new nic.IPConfiguration {
+            name = "ipconfig1"
+            subnet = vmSubnet.res.id
+            publicIPAddress = publicIp.res.id
+            privateIPAllocationMethod = "Dynamic"
+            primary = true
+        }
+    }
+    networkSecurityGroup = securityGroup.res.id
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
+
+local virtualMachine = new vm.VirtualMachine {
+    label = "my-vm"
+    name = "\(vars.projectName)-vm"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    vmSize = vars.vmSize
+
+    networkInterfaces {
+        new vm.NetworkInterfaceReference {
+            id = networkInterface.res.id
+            primary = true
+        }
+    }
+
+    imageReference = new vm.ImageReference {
+        publisher = "Canonical"
+        offer = "0001-com-ubuntu-server-jammy"
+        sku = "22_04-lts-gen2"
+        version = "latest"
+    }
+
+    osDisk = new vm.OSDisk {
+        createOption = "FromImage"
+        managedDisk = new vm.ManagedDiskParameters {
+            storageAccountType = "Premium_LRS"
+        }
+        caching = "ReadWrite"
+        deleteOption = "Delete"
+    }
+
+    adminUsername = vars.adminUsername
+
+    linuxConfiguration = new vm.LinuxConfiguration {
+        disablePasswordAuthentication = true
+        provisionVMAgent = true
+        ssh = new vm.SSHConfiguration {
+            publicKeys {
+                new vm.SSHPublicKey {
+                    path = "/home/\(vars.adminUsername)/.ssh/authorized_keys"
+                    keyData = read?("env:SSH_PUBLIC_KEY") ?? "ssh-rsa REPLACE_WITH_YOUR_PUBLIC_KEY"
+                }
+            }
+        }
+    }
+
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+    }
+}
