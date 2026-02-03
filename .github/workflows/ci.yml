@@ -109,7 +109,7 @@ jobs:
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, lint, pkl-validate, conformance-tests]
+    needs: [build, lint, pkl-validate]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     steps:
@@ -171,7 +171,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, lint, pkl-validate, conformance-tests]
+    needs: [build, lint, pkl-validate]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:
