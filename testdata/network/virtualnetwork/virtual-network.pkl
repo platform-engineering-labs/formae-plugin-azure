@@ -40,7 +40,7 @@ forma {
   new formae.Target {
     label = "azure-target"
     config = new azure.Config {
-      subscriptionId = "b161e970-a04d-48a4-ac91-18d06e8d8047"
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
     }
   }
 
