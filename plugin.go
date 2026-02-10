@@ -10,6 +10,7 @@ import (
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/nativeid"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
@@ -67,12 +68,18 @@ func (p *Plugin) Create(ctx context.Context, request *resource.CreateRequest) (*
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return provisioner.Create(ctx, request)
+	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := prov.Create(ctx, request)
+	if result != nil && result.ProgressResult != nil {
+		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+	}
+	return result, err
 }
 
 // Read retrieves the current state of an Azure resource.
 func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
+	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
+
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
@@ -83,12 +90,14 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return provisioner.Read(ctx, request)
+	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
+	return prov.Read(ctx, request)
 }
 
 // Update modifies an existing Azure resource.
 func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
+
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
@@ -99,12 +108,18 @@ func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return provisioner.Update(ctx, request)
+	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := prov.Update(ctx, request)
+	if result != nil && result.ProgressResult != nil {
+		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+	}
+	return result, err
 }
 
 // Delete removes an Azure resource.
 func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
+
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
@@ -115,8 +130,12 @@ func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return provisioner.Delete(ctx, request)
+	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := prov.Delete(ctx, request)
+	if result != nil && result.ProgressResult != nil {
+		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+	}
+	return result, err
 }
 
 // Status checks the progress of an async operation.
@@ -131,8 +150,12 @@ func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return provisioner.Status(ctx, request)
+	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := prov.Status(ctx, request)
+	if result != nil && result.ProgressResult != nil {
+		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+	}
+	return result, err
 }
 
 // List returns all resource identifiers of a given type for discovery.
@@ -155,8 +178,8 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := provisioner.List(ctx, request)
+	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := prov.List(ctx, request)
 	if err != nil {
 		log.Error("List failed", "resourceType", request.ResourceType, "error", err)
 		return result, err

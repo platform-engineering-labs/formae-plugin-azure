@@ -19,6 +19,7 @@ require (
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.4
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.11
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.18
+	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
 )
 
