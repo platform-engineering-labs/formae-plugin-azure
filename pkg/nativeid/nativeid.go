@@ -33,6 +33,22 @@ func Encode(armID string) NativeID {
 	return NativeID(fmt.Sprintf("azure:v1:%s:%s", ksuid.New().String(), armID))
 }
 
+// ReEncode replaces the ARM ID portion of an existing encoded NativeID,
+// preserving the original KSUID. Use this for Update/Delete/Status where the
+// resource identity must remain stable. Falls back to Encode if the original
+// is not in the expected format.
+func ReEncode(original string, armID string) NativeID {
+	if armID == "" {
+		return ""
+	}
+	if strings.HasPrefix(original, "azure:v1:") {
+		if parts := strings.SplitN(original, ":", 4); len(parts) == 4 {
+			return NativeID(fmt.Sprintf("azure:v1:%s:%s", parts[2], armID))
+		}
+	}
+	return Encode(armID)
+}
+
 // ArmID extracts the raw Azure ARM ID.
 // Returns the original string if not encoded (backwards compat).
 func (n NativeID) ArmID() string {

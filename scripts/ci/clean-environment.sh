@@ -67,5 +67,27 @@ else
     echo "Note: Resource group deletion happens asynchronously in Azure."
 fi
 
+# Purge soft-deleted Key Vaults with test prefix
+# Key Vaults are soft-deleted (not permanently removed) when their RG is deleted.
+# They must be purged separately to free the name for reuse.
+echo "Finding soft-deleted Key Vaults with prefix 'fpsdt-kv-'..."
+DELETED_VAULTS=$(az keyvault list-deleted --query "[?starts_with(name, 'fpsdt-kv-')].name" -o tsv 2>/dev/null || true)
+
+if [[ -z "${DELETED_VAULTS}" ]]; then
+    echo "No soft-deleted Key Vaults found."
+else
+    echo "Found soft-deleted Key Vaults to purge:"
+    echo "${DELETED_VAULTS}"
+    echo ""
+
+    for VAULT in ${DELETED_VAULTS}; do
+        echo "Purging Key Vault: ${VAULT}..."
+        az keyvault purge --name "${VAULT}" --no-wait || true
+    done
+
+    echo ""
+    echo "Purge initiated for all matching Key Vaults."
+fi
+
 echo ""
 echo "clean-environment.sh: Cleanup complete"

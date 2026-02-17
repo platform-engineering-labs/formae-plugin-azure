@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/managedidentity/userassignedidentity.pkl"
+import "@azure/authorization/roleassignment.pkl"
+
+local stackName = "plugin-sdk-test-ra-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+local azureSubscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ra-test-rg"
+  name = "formae-plugin-sdk-test-ra-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local uai = new userassignedidentity.UserAssignedIdentity {
+  label = "ra-test-uai"
+  name = "formae-plugin-sdk-test-ra-uai-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Reader built-in role: acdd72a7-3385-48ef-bd42-f606fba81ae7
+local readerRoleId = "/subscriptions/\(azureSubscriptionId)/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure RoleAssignment"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = azureSubscriptionId
+    }
+  }
+
+  rg
+  uai
+
+  // Update: Add description (non-createOnly field)
+  // Note: RoleAssignment provisioner currently rejects all updates (immutable).
+  // This will fail at Step 11 until the provisioner supports description updates.
+  new roleassignment.RoleAssignment {
+    label = "plugin-sdk-test-ra"
+    scope = rg.res.id
+    principalId = uai.res.principalId
+    roleDefinitionId = readerRoleId
+    principalType = "ServicePrincipal"
+    description = "Updated role assignment for conformance test"
+  }
+}

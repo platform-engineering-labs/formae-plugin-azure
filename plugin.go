@@ -96,6 +96,7 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 
 // Update modifies an existing Azure resource.
 func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	originalNativeID := request.NativeID
 	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
 
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
@@ -111,13 +112,14 @@ func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
 	result, err := prov.Update(ctx, request)
 	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+		result.ProgressResult.NativeID = nativeid.ReEncode(originalNativeID, result.ProgressResult.NativeID).String()
 	}
 	return result, err
 }
 
 // Delete removes an Azure resource.
 func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	originalNativeID := request.NativeID
 	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
 
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
@@ -133,13 +135,16 @@ func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
 	result, err := prov.Delete(ctx, request)
 	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+		result.ProgressResult.NativeID = nativeid.ReEncode(originalNativeID, result.ProgressResult.NativeID).String()
 	}
 	return result, err
 }
 
 // Status checks the progress of an async operation.
 func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	originalNativeID := request.NativeID
+	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
+
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
@@ -153,7 +158,7 @@ func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
 	result, err := prov.Status(ctx, request)
 	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
+		result.ProgressResult.NativeID = nativeid.ReEncode(originalNativeID, result.ProgressResult.NativeID).String()
 	}
 	return result, err
 }

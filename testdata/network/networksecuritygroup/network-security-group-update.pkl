@@ -1,0 +1,49 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networksecuritygroup.pkl"
+
+local stackName = "plugin-sdk-test-nsg-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nsg-test-rg"
+  name = "formae-plugin-sdk-test-nsg-rg-\(testRunID)"
+  location = "eastus"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure NetworkSecurityGroup"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  new networksecuritygroup.NetworkSecurityGroup {
+    label = "plugin-sdk-test-nsg"
+    name = "formae-plugin-sdk-test-nsg-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    // Update: Add tags (non-createOnly field)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
