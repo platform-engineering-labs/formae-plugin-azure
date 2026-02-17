@@ -279,7 +279,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 		params.Properties.EnableRbacAuthorization = to.Ptr(enableRbacAuthorization)
 	}
 
-	// Parse access policies
+	// Parse access policies (Azure requires this field, even if empty)
 	if accessPoliciesRaw, ok := props["accessPolicies"].([]interface{}); ok {
 		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
 		for _, apRaw := range accessPoliciesRaw {
@@ -340,6 +340,9 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 			accessPolicies = append(accessPolicies, entry)
 		}
 		params.Properties.AccessPolicies = accessPolicies
+	} else {
+		// Azure API requires accessPolicies to be present, default to empty
+		params.Properties.AccessPolicies = []*armkeyvault.AccessPolicyEntry{}
 	}
 
 	// Parse network ACLs
@@ -579,7 +582,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 		params.Properties.EnableRbacAuthorization = to.Ptr(enableRbacAuthorization)
 	}
 
-	// Parse access policies (same as Create)
+	// Parse access policies (Azure requires this field, even if empty)
 	if accessPoliciesRaw, ok := props["accessPolicies"].([]interface{}); ok {
 		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
 		for _, apRaw := range accessPoliciesRaw {
@@ -640,6 +643,9 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 			accessPolicies = append(accessPolicies, entry)
 		}
 		params.Properties.AccessPolicies = accessPolicies
+	} else {
+		// Azure API requires accessPolicies to be present, default to empty
+		params.Properties.AccessPolicies = []*armkeyvault.AccessPolicyEntry{}
 	}
 
 	// Parse network ACLs (same as Create)
@@ -880,7 +886,12 @@ func (kv *KeyVault) statusCreateOrUpdate(ctx context.Context, request *resource.
 		}, nil
 	}
 
-	// Still in progress - the next status check will determine if Done()
+	// Check if the operation completed after polling
+	if poller.Done() {
+		return kv.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
+	}
+
+	// Still in progress
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       operation,

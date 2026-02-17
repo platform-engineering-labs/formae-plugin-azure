@@ -132,7 +132,11 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 		}
 
 		// Network
-		if server.Properties.Network != nil {
+		// Only include network block if delegatedSubnetResourceId or privateDnsZoneArmResourceId
+		// are set. Azure always returns publicNetworkAccess as a default, but including network
+		// with only that field causes PKL extract rendering errors for the undefined optional fields.
+		if server.Properties.Network != nil &&
+			(server.Properties.Network.DelegatedSubnetResourceID != nil || server.Properties.Network.PrivateDNSZoneArmResourceID != nil) {
 			network := make(map[string]interface{})
 			if server.Properties.Network.DelegatedSubnetResourceID != nil {
 				network["delegatedSubnetResourceId"] = *server.Properties.Network.DelegatedSubnetResourceID

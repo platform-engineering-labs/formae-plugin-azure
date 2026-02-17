@@ -1,0 +1,54 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerregistry/registry.pkl"
+
+local stackName = "plugin-sdk-test-acr-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "acr-test-rg"
+  name = "formae-plugin-sdk-test-acr-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local registrySku = new registry.RegistrySKU {
+  name = "Basic"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure ContainerRegistry"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  new registry.Registry {
+    label = "plugin-sdk-test-acr"
+    name = "fpsdtacr\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = registrySku
+    // Update: Add tags (non-createOnly field)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/keyvault/vault.pkl"
+
+local stackName = "plugin-sdk-test-kv-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+local azureTenantId = "35412a0c-6726-4fc9-98ef-6e91adcb8d0e"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "kv-test-rg"
+  name = "formae-plugin-sdk-test-kv-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local vaultSku = new vault.VaultSKU {
+  family = "A"
+  name = "standard"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure KeyVault"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  // Replace: Change name (createOnly field triggers delete+create)
+  // Note: Old vault will be soft-deleted; clean-environment.sh handles purging
+  new vault.Vault {
+    label = "plugin-sdk-test-kv"
+    name = "fpsdt-kv-rpl-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    tenantId = azureTenantId
+    sku = vaultSku
+    enableSoftDelete = true
+    softDeleteRetentionInDays = 7
+  }
+}

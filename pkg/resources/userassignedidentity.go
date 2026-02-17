@@ -187,12 +187,18 @@ func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.Upd
 		}, fmt.Errorf("failed to update UserAssignedIdentity: %w", err)
 	}
 
-	// Return success without ResourceProperties per Lesson 1
+	// Read back full properties after sync update so framework sees the changes
+	propsJSON, err := serializeUserAssignedIdentityProperties(result.Identity, rgName, identityName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize UserAssignedIdentity properties after update: %w", err)
+	}
+
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationUpdate,
-			OperationStatus: resource.OperationStatusSuccess,
-			NativeID:        *result.ID,
+			Operation:          resource.OperationUpdate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			NativeID:           *result.ID,
+			ResourceProperties: propsJSON,
 		},
 	}, nil
 }

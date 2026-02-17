@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerservice/managedcluster.pkl"
+
+local stackName = "plugin-sdk-test-aks-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aks-test-rg"
+  name = "formae-plugin-sdk-test-aks-rg-\(testRunID)"
+  location = "westus2"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure ManagedCluster"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  // Replace: Change name (createOnly field triggers delete+create)
+  new managedcluster.ManagedCluster {
+    label = "plugin-sdk-test-aks"
+    name = "fpsdt-aks-rpl-\(testRunID)"
+    location = "westus2"
+    resourceGroupName = rg.res.name
+    sku = new managedcluster.ManagedClusterSKU {
+      name = "Base"
+      tier = "Free"
+    }
+    identity = new managedcluster.ManagedClusterIdentity {
+      type = "SystemAssigned"
+    }
+    dnsPrefix = "fpsdt-aks-rpl-\(testRunID)"
+    agentPoolProfiles = new Listing {
+      new managedcluster.AgentPoolProfile {
+        name = "nodepool1"
+        count = 1
+        vmSize = "Standard_B2s_v2"
+        mode = "System"
+        osType = "Linux"
+      }
+    }
+  }
+}
