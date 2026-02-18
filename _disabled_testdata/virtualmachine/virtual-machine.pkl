@@ -1,0 +1,130 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/networkinterface.pkl"
+import "@azure/compute/virtualmachine.pkl"
+
+local stackName = "plugin-sdk-test-vm-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vm-test-rg"
+  name = "formae-plugin-sdk-test-vm-rg-\(testRunID)"
+  location = "westus2"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing {
+    "10.0.0.0/16"
+  }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vm-test-vnet"
+  name = "formae-plugin-sdk-test-vm-vnet-\(testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+local sn = new subnet.Subnet {
+  label = "vm-test-subnet"
+  name = "formae-plugin-sdk-test-vm-subnet-\(testRunID)"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+local nic = new networkinterface.NetworkInterface {
+  label = "vm-test-nic"
+  name = "formae-plugin-sdk-test-vm-nic-\(testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  ipConfigurations = new Listing {
+    new networkinterface.IPConfiguration {
+      name = "primary"
+      subnet = sn.res.id
+      privateIPAllocationMethod = "Dynamic"
+      primary = true
+    }
+  }
+}
+
+local ubuntuImage = new virtualmachine.ImageReference {
+  publisher = "Canonical"
+  offer = "0001-com-ubuntu-server-jammy"
+  sku = "22_04-lts-gen2"
+  version = "latest"
+}
+
+local osDiskConfig = new virtualmachine.OSDisk {
+  createOption = "FromImage"
+  managedDisk = new virtualmachine.ManagedDiskParameters {
+    storageAccountType = "Standard_LRS"
+  }
+  caching = "ReadWrite"
+  deleteOption = "Delete"
+}
+
+// Test SSH public key (RSA 2048 - test-only, not a real key)
+local testSshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7vbqajmATMEDnG1sMCeArY7YoHT0dBRFgOiLUG8x0MfMDE7sSGF55CvOEwE6HiUFHBixvbL8emDTZ5CO2FNCY3r7gKfpPJIJniPbHmk9gQvoxP+FYFIx5mANOHCKXJThKc9gi5r90rCkfG+6DFwQCRXeOPEKflJN2DIr3JTJF/RM5mh6PrcPxDH2K3MAHfoNy/xdViMbkZDMqSz2YaC37FfTqw0N9Rp1UM/K0OVkHPLPDJ0LZML1gFVdv4VHZFgStHbSJ7I5j0GP3DXV+wfYxDOaVAqZNdC9anW6jxHqWM2aQOs7+LZcXpBzH0z0FqxjkyqPrTM3p+mEJEr2X4IHAV0c+qWx0pvyBF3k1yeWJ1ypFZnreYgkAi+kNCXRKg9iu+9JMdUYQCXfkMPDjWIMl4rdILXq+P31X4sskEukfR6KtHVNyNsmg+s5qF+3B0GtWPwRIjKhjqELbXc+R3ZJHNFhNFLjk7XSEvVpC4R4ZISFL3k5NjYcNS8CPVM= test@formae"
+
+local linuxConfig = new virtualmachine.LinuxConfiguration {
+  disablePasswordAuthentication = true
+  ssh = new virtualmachine.SSHConfiguration {
+    publicKeys = new Listing {
+      new virtualmachine.SSHPublicKey {
+        path = "/home/azureuser/.ssh/authorized_keys"
+        keyData = testSshKey
+      }
+    }
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure VirtualMachine"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  vnet
+  sn
+  nic
+
+  new virtualmachine.VirtualMachine {
+    label = "plugin-sdk-test-vm"
+    name = "fpsdt-vm-\(testRunID)"
+    location = "westus2"
+    resourceGroupName = rg.res.name
+    vmSize = "Standard_B2als_v2"
+    networkInterfaces = new Listing {
+      new virtualmachine.NetworkInterfaceReference {
+        id = nic.res.id
+        primary = true
+      }
+    }
+    imageReference = ubuntuImage
+    osDisk = osDiskConfig
+    adminUsername = "azureuser"
+    linuxConfiguration = linuxConfig
+  }
+}
