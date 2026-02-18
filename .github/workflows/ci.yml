@@ -73,6 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.run_conformance == 'true' }}
     timeout-minutes: 60
+    environment: production
 
     permissions:
       id-token: write

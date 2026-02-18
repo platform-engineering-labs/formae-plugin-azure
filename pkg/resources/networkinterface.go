@@ -67,7 +67,12 @@ func serializeNetworkInterfaceProperties(result armnetwork.Interface, rgName, ni
 					if ipConfig.Properties.PrivateIPAllocationMethod != nil {
 						config["privateIPAllocationMethod"] = string(*ipConfig.Properties.PrivateIPAllocationMethod)
 					}
-					if ipConfig.Properties.PrivateIPAddress != nil {
+					// Only include privateIPAddress when statically assigned.
+					// For Dynamic allocation, Azure assigns this at runtime and
+					// it shouldn't round-trip as a managed property.
+					if ipConfig.Properties.PrivateIPAddress != nil &&
+						ipConfig.Properties.PrivateIPAllocationMethod != nil &&
+						*ipConfig.Properties.PrivateIPAllocationMethod == armnetwork.IPAllocationMethodStatic {
 						config["privateIPAddress"] = *ipConfig.Properties.PrivateIPAddress
 					}
 					if ipConfig.Properties.Primary != nil {
