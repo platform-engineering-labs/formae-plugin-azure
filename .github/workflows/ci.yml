@@ -68,8 +68,27 @@ jobs:
           pkl eval formae-plugin.pkl --format json > /dev/null
           echo "Manifest validated successfully"
 
+  verify-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Verify schema
+        run: make verify-schema
+
   conformance-tests:
-    needs: [build, lint, pkl-validate]
+    needs: [build, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.run_conformance == 'true' }}
     timeout-minutes: 60
