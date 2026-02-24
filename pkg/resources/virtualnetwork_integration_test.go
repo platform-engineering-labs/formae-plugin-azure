@@ -18,7 +18,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
-	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,7 +74,7 @@ func TestVirtualNetwork_Create(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newVNetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	timestamp := time.Now().Unix()
 	rgName := fmt.Sprintf("formae-test-vnet-rg-%d", timestamp)
@@ -104,13 +103,10 @@ func TestVirtualNetwork_Create(t *testing.T) {
 	}`, rgName, location))
 
 	req := &resource.CreateRequest{
-		Resource: &model.Resource{
-			Type:       ResourceTypeVirtualNetwork,
-			Label:      vnetName,
-			Stack:      "test-stack",
-			Properties: properties,
-		},
-		Target: target,
+		ResourceType: ResourceTypeVirtualNetwork,
+		Label:        vnetName,
+		Properties:   properties,
+		TargetConfig: targetConfig,
 	}
 
 	// Execute
@@ -124,7 +120,6 @@ func TestVirtualNetwork_Create(t *testing.T) {
 	// VNet creation is async (LRO), always returns InProgress
 	assert.Equal(t, resource.OperationStatusInProgress, result.ProgressResult.OperationStatus)
 	assert.NotEmpty(t, result.ProgressResult.NativeID)
-	assert.Equal(t, ResourceTypeVirtualNetwork, result.ProgressResult.ResourceType)
 	t.Logf("Create started with RequestID: %s", result.ProgressResult.RequestID)
 
 	// Poll Status until operation completes
@@ -134,9 +129,8 @@ func TestVirtualNetwork_Create(t *testing.T) {
 
 	for i := 0; i < maxPolls; i++ {
 		statusReq := &resource.StatusRequest{
-			RequestID: result.ProgressResult.RequestID,
-
-			Target: target,
+			RequestID:    result.ProgressResult.RequestID,
+			TargetConfig: targetConfig,
 		}
 
 		statusResult, err := provisioner.Status(ctx, statusReq)
@@ -174,7 +168,7 @@ func TestVirtualNetwork_Read(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newVNetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	timestamp := time.Now().Unix()
 	rgName := fmt.Sprintf("formae-test-vnet-read-rg-%d", timestamp)
@@ -216,9 +210,8 @@ func TestVirtualNetwork_Read(t *testing.T) {
 
 	// Execute Read
 	readReq := &resource.ReadRequest{
-		NativeID: *createdVNet.ID,
-
-		Target: target,
+		NativeID:     *createdVNet.ID,
+		TargetConfig: targetConfig,
 	}
 
 	result, err := provisioner.Read(ctx, readReq)
@@ -245,11 +238,11 @@ func TestVirtualNetwork_Read(t *testing.T) {
 	assert.Contains(t, prefixes, "10.1.0.0/16")
 
 	// Verify tags
-	tags := model.GetTagsFromProperties([]byte(result.Properties))
+	tags := getTagsFromProperties([]byte(result.Properties))
 	assert.Len(t, tags, 2)
 	tagMap := make(map[string]string)
-	for _, tag := range tags {
-		tagMap[tag.Key] = tag.Value
+	for _, tg := range tags {
+		tagMap[tg.Key] = tg.Value
 	}
 	assert.Equal(t, "formae-read-test", tagMap["test"])
 	assert.Equal(t, "read-verification", tagMap["purpose"])
@@ -260,7 +253,7 @@ func TestVirtualNetwork_Update(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newVNetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	timestamp := time.Now().Unix()
 	rgName := fmt.Sprintf("formae-test-vnet-update-rg-%d", timestamp)
@@ -316,14 +309,11 @@ func TestVirtualNetwork_Update(t *testing.T) {
 	}`, rgName, location))
 
 	updateReq := &resource.UpdateRequest{
-		Resource: &model.Resource{
-			Type:       ResourceTypeVirtualNetwork,
-			Label:      vnetName,
-			Stack:      "test-stack",
-			Properties: updatedProperties,
-		},
-		Target:   target,
-		NativeID: &nativeID,
+		NativeID:          nativeID,
+		ResourceType:      ResourceTypeVirtualNetwork,
+		Label:             vnetName,
+		DesiredProperties: updatedProperties,
+		TargetConfig:      targetConfig,
 	}
 
 	// Execute Update
@@ -351,9 +341,8 @@ func TestVirtualNetwork_Update(t *testing.T) {
 
 		for i := 0; i < maxPolls; i++ {
 			statusReq := &resource.StatusRequest{
-				RequestID: result.ProgressResult.RequestID,
-
-				Target: target,
+				RequestID:    result.ProgressResult.RequestID,
+				TargetConfig: targetConfig,
 			}
 
 			statusResult, err := provisioner.Status(ctx, statusReq)
@@ -388,7 +377,7 @@ func TestVirtualNetwork_Delete(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newVNetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	timestamp := time.Now().Unix()
 	rgName := fmt.Sprintf("formae-test-vnet-delete-rg-%d", timestamp)
@@ -428,9 +417,8 @@ func TestVirtualNetwork_Delete(t *testing.T) {
 
 	// Execute Delete
 	deleteReq := &resource.DeleteRequest{
-		NativeID: &nativeID,
-
-		Target: target,
+		NativeID:     nativeID,
+		TargetConfig: targetConfig,
 	}
 
 	deleteResult, err := provisioner.Delete(ctx, deleteReq)
@@ -452,9 +440,8 @@ func TestVirtualNetwork_Delete(t *testing.T) {
 
 	for i := 0; i < maxPolls; i++ {
 		statusReq := &resource.StatusRequest{
-			RequestID: deleteResult.ProgressResult.RequestID,
-
-			Target: target,
+			RequestID:    deleteResult.ProgressResult.RequestID,
+			TargetConfig: targetConfig,
 		}
 
 		statusResult, err = provisioner.Status(ctx, statusReq)
@@ -484,7 +471,7 @@ func TestVirtualNetwork_List(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newVNetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	timestamp := time.Now().Unix()
 	rgName := fmt.Sprintf("formae-test-vnet-list-rg-%d", timestamp)
@@ -545,8 +532,7 @@ func TestVirtualNetwork_List(t *testing.T) {
 
 	// Execute List with resourceGroupName in AdditionalProperties
 	listReq := &resource.ListRequest{
-
-		Target: target,
+		TargetConfig: targetConfig,
 		AdditionalProperties: map[string]string{
 			"resourceGroupName": rgName,
 		},
@@ -557,23 +543,16 @@ func TestVirtualNetwork_List(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, ResourceTypeVirtualNetwork, result.ResourceType)
-	assert.GreaterOrEqual(t, len(result.Resources), 2, "Should list at least 2 VNets")
+	assert.GreaterOrEqual(t, len(result.NativeIDs), 2, "Should list at least 2 VNets")
 
 	// Verify both VNets are in the result
 	foundVNet1 := false
 	foundVNet2 := false
-	for _, res := range result.Resources {
-		if res.NativeID == *createdVNet1.ID {
+	for _, nativeID := range result.NativeIDs {
+		if nativeID == *createdVNet1.ID {
 			foundVNet1 = true
-			// Verify properties
-			var props map[string]interface{}
-			err := json.Unmarshal([]byte(res.Properties), &props)
-			require.NoError(t, err)
-			assert.Equal(t, location, props["location"])
-			assert.Equal(t, vnetName1, props["name"])
 		}
-		if res.NativeID == *createdVNet2.ID {
+		if nativeID == *createdVNet2.ID {
 			foundVNet2 = true
 		}
 	}
