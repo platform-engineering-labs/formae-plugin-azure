@@ -19,7 +19,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
-	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -132,7 +131,7 @@ func TestSubnet_Create(t *testing.T) {
 	t.Cleanup(cleanupVNet)
 
 	provisioner := newSubnetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	subnetName := fmt.Sprintf("formae-test-subnet-%d", time.Now().Unix())
 
@@ -145,13 +144,10 @@ func TestSubnet_Create(t *testing.T) {
 	}`, subnetName, rgName, vnetName))
 
 	req := &resource.CreateRequest{
-		Resource: &model.Resource{
-			Type:       ResourceTypeSubnet,
-			Label:      subnetName,
-			Stack:      "test-stack",
-			Properties: properties,
-		},
-		Target: target,
+		ResourceType: ResourceTypeSubnet,
+		Label:        subnetName,
+		Properties:   properties,
+		TargetConfig: targetConfig,
 	}
 
 	// Execute
@@ -171,9 +167,8 @@ func TestSubnet_Create(t *testing.T) {
 
 		for i := 0; i < maxPolls; i++ {
 			statusReq := &resource.StatusRequest{
-				RequestID: result.ProgressResult.RequestID,
-
-				Target: target,
+				RequestID:    result.ProgressResult.RequestID,
+				TargetConfig: targetConfig,
 			}
 
 			statusResult, err := provisioner.Status(ctx, statusReq)
@@ -194,7 +189,6 @@ func TestSubnet_Create(t *testing.T) {
 
 	assert.Equal(t, resource.OperationStatusSuccess, result.ProgressResult.OperationStatus)
 	assert.NotEmpty(t, result.ProgressResult.NativeID)
-	assert.Equal(t, ResourceTypeSubnet, result.ProgressResult.ResourceType)
 	t.Logf("Created subnet with ID: %s", result.ProgressResult.NativeID)
 
 	// Cleanup: Delete the subnet
@@ -257,13 +251,12 @@ func TestSubnet_Read(t *testing.T) {
 	t.Logf("Created subnet via Azure SDK: %s", *createdSubnet.ID)
 
 	provisioner := newSubnetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	// Execute Read
 	readReq := &resource.ReadRequest{
-		NativeID: *createdSubnet.ID,
-
-		Target: target,
+		NativeID:     *createdSubnet.ID,
+		TargetConfig: targetConfig,
 	}
 
 	result, err := provisioner.Read(ctx, readReq)
@@ -317,7 +310,7 @@ func TestSubnet_Update(t *testing.T) {
 	t.Logf("Created subnet: %s", nativeID)
 
 	provisioner := newSubnetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	// Prepare updated properties (change addressPrefix)
 	updatedAddressPrefix := "10.0.4.0/24"
@@ -329,14 +322,11 @@ func TestSubnet_Update(t *testing.T) {
 	}`, subnetName, rgName, vnetName, updatedAddressPrefix))
 
 	updateReq := &resource.UpdateRequest{
-		Resource: &model.Resource{
-			Type:       ResourceTypeSubnet,
-			Label:      subnetName,
-			Stack:      "test-stack",
-			Properties: updatedProperties,
-		},
-		Target:   target,
-		NativeID: &nativeID,
+		NativeID:          nativeID,
+		ResourceType:      ResourceTypeSubnet,
+		Label:             subnetName,
+		DesiredProperties: updatedProperties,
+		TargetConfig:      targetConfig,
 	}
 
 	// Execute Update
@@ -356,9 +346,8 @@ func TestSubnet_Update(t *testing.T) {
 
 		for i := 0; i < maxPolls; i++ {
 			statusReq := &resource.StatusRequest{
-				RequestID: result.ProgressResult.RequestID,
-
-				Target: target,
+				RequestID:    result.ProgressResult.RequestID,
+				TargetConfig: targetConfig,
 			}
 
 			statusResult, err := provisioner.Status(ctx, statusReq)
@@ -419,13 +408,12 @@ func TestSubnet_Delete(t *testing.T) {
 	t.Logf("Created subnet: %s", nativeID)
 
 	provisioner := newSubnetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	// Execute Delete
 	deleteReq := &resource.DeleteRequest{
-		NativeID: &nativeID,
-
-		Target: target,
+		NativeID:     nativeID,
+		TargetConfig: targetConfig,
 	}
 
 	deleteResult, err := provisioner.Delete(ctx, deleteReq)
@@ -447,9 +435,8 @@ func TestSubnet_Delete(t *testing.T) {
 
 	for i := 0; i < maxPolls; i++ {
 		statusReq := &resource.StatusRequest{
-			RequestID: deleteResult.ProgressResult.RequestID,
-
-			Target: target,
+			RequestID:    deleteResult.ProgressResult.RequestID,
+			TargetConfig: targetConfig,
 		}
 
 		statusResult, err = provisioner.Status(ctx, statusReq)
@@ -519,12 +506,11 @@ func TestSubnet_List(t *testing.T) {
 	}
 
 	provisioner := newSubnetTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	// Execute List (requires resourceGroupName and virtualNetworkName in AdditionalProperties)
 	listReq := &resource.ListRequest{
-
-		Target: target,
+		TargetConfig: targetConfig,
 		AdditionalProperties: map[string]string{
 			"resourceGroupName":  rgName,
 			"virtualNetworkName": vnetName,
@@ -536,14 +522,14 @@ func TestSubnet_List(t *testing.T) {
 	require.NotNil(t, result, "List result should not be nil")
 
 	// Assert
-	assert.NotEmpty(t, result.Resources, "List should return resources")
-	t.Logf("List returned %d subnets", len(result.Resources))
+	assert.NotEmpty(t, result.NativeIDs, "List should return resources")
+	t.Logf("List returned %d subnets", len(result.NativeIDs))
 
 	// Verify all 3 created subnets are in the results
 	foundCount := 0
 	for _, subnetName := range createdSubnetNames {
-		for _, res := range result.Resources {
-			if strings.Contains(res.NativeID, "/subnets/"+subnetName) {
+		for _, nativeID := range result.NativeIDs {
+			if strings.Contains(nativeID, "/subnets/"+subnetName) {
 				foundCount++
 				t.Logf("Found created subnet in results: %s", subnetName)
 				break

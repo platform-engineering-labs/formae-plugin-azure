@@ -20,7 +20,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
-	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,13 +48,9 @@ func newTestProvisioner(t *testing.T, subscriptionID string) *ResourceGroup {
 	}
 }
 
-// newTestTarget creates a Target for testing
-func newTestTarget(subscriptionID string) *model.Target {
-	targetConfig := fmt.Appendf(nil, `{"SubscriptionId":"%s"}`, subscriptionID)
-	return &model.Target{
-		Namespace: "Azure",
-		Config:    targetConfig,
-	}
+// newTestTargetConfig creates a target config JSON for testing
+func newTestTargetConfig(subscriptionID string) json.RawMessage {
+	return fmt.Appendf(nil, `{"SubscriptionId":"%s"}`, subscriptionID)
 }
 
 // deleteResourceGroup deletes a resource group using Azure SDK directly
@@ -80,7 +75,7 @@ func TestResourceGroup_Create(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	rgName := fmt.Sprintf("formae-test-create-%d", time.Now().Unix())
 
@@ -94,13 +89,10 @@ func TestResourceGroup_Create(t *testing.T) {
 	}`)
 
 	req := &resource.CreateRequest{
-		Resource: &model.Resource{
-			Type:       ResourceTypeResourceGroup,
-			Label:      rgName,
-			Stack:      "test-stack",
-			Properties: properties,
-		},
-		Target: target,
+		ResourceType: ResourceTypeResourceGroup,
+		Label:        rgName,
+		Properties:   properties,
+		TargetConfig: targetConfig,
 	}
 
 	// Execute
@@ -113,7 +105,6 @@ func TestResourceGroup_Create(t *testing.T) {
 	assert.Equal(t, resource.OperationCreate, result.ProgressResult.Operation)
 	assert.Equal(t, resource.OperationStatusSuccess, result.ProgressResult.OperationStatus)
 	assert.NotEmpty(t, result.ProgressResult.NativeID)
-	assert.Equal(t, ResourceTypeResourceGroup, result.ProgressResult.ResourceType)
 	t.Logf("Created resource group with ID: %s", result.ProgressResult.NativeID)
 
 	// Cleanup
@@ -141,7 +132,7 @@ func TestResourceGroup_Read(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	rgName := fmt.Sprintf("formae-test-read-%d", time.Now().Unix())
 
@@ -170,9 +161,8 @@ func TestResourceGroup_Read(t *testing.T) {
 
 	// Execute Read
 	readReq := &resource.ReadRequest{
-		NativeID: *createdRg.ID,
-
-		Target: target,
+		NativeID:     *createdRg.ID,
+		TargetConfig: targetConfig,
 	}
 
 	result, err := provisioner.Read(ctx, readReq)
@@ -189,11 +179,11 @@ func TestResourceGroup_Read(t *testing.T) {
 	assert.Equal(t, location, props["location"])
 
 	// Verify tags
-	tags := model.GetTagsFromProperties([]byte(result.Properties))
+	tags := getTagsFromProperties([]byte(result.Properties))
 	assert.Len(t, tags, 2)
 	tagMap := make(map[string]string)
-	for _, tag := range tags {
-		tagMap[tag.Key] = tag.Value
+	for _, tg := range tags {
+		tagMap[tg.Key] = tg.Value
 	}
 	assert.Equal(t, "formae-read-test", tagMap["test"])
 	assert.Equal(t, "read-verification", tagMap["purpose"])
@@ -204,7 +194,7 @@ func TestResourceGroup_Update(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	rgName := fmt.Sprintf("formae-test-update-%d", time.Now().Unix())
 
@@ -243,14 +233,11 @@ func TestResourceGroup_Update(t *testing.T) {
 	}`)
 
 	updateReq := &resource.UpdateRequest{
-		Resource: &model.Resource{
-			Type:       ResourceTypeResourceGroup,
-			Label:      rgName,
-			Stack:      "test-stack",
-			Properties: updatedProperties,
-		},
-		Target:   target,
-		NativeID: &nativeID,
+		NativeID:          nativeID,
+		ResourceType:      ResourceTypeResourceGroup,
+		Label:             rgName,
+		DesiredProperties: updatedProperties,
+		TargetConfig:      targetConfig,
 	}
 
 	// Execute Update
@@ -276,7 +263,7 @@ func TestResourceGroup_Delete(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	rgName := fmt.Sprintf("formae-test-delete-%d", time.Now().Unix())
 
@@ -306,9 +293,8 @@ func TestResourceGroup_Delete(t *testing.T) {
 
 	// Execute Delete
 	deleteReq := &resource.DeleteRequest{
-		NativeID: &nativeID,
-
-		Target: target,
+		NativeID:     nativeID,
+		TargetConfig: targetConfig,
 	}
 
 	deleteResult, err := provisioner.Delete(ctx, deleteReq)
@@ -330,9 +316,8 @@ func TestResourceGroup_Delete(t *testing.T) {
 
 	for i := 0; i < maxPolls; i++ {
 		statusReq := &resource.StatusRequest{
-			RequestID: deleteResult.ProgressResult.RequestID,
-
-			Target: target,
+			RequestID:    deleteResult.ProgressResult.RequestID,
+			TargetConfig: targetConfig,
 		}
 
 		statusResult, err = provisioner.Status(ctx, statusReq)
@@ -362,7 +347,7 @@ func TestResourceGroup_List(t *testing.T) {
 	subscriptionID := getTestSubscriptionID(t)
 
 	provisioner := newTestProvisioner(t, subscriptionID)
-	target := newTestTarget(subscriptionID)
+	targetConfig := newTestTargetConfig(subscriptionID)
 
 	// Create Azure client for direct resource creation
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
@@ -400,8 +385,7 @@ func TestResourceGroup_List(t *testing.T) {
 
 	// Execute List
 	listReq := &resource.ListRequest{
-
-		Target: target,
+		TargetConfig: targetConfig,
 	}
 
 	result, err := provisioner.List(ctx, listReq)
@@ -409,14 +393,14 @@ func TestResourceGroup_List(t *testing.T) {
 	require.NotNil(t, result, "List result should not be nil")
 
 	// Assert
-	assert.NotEmpty(t, result.Resources, "List should return resources")
-	t.Logf("List returned %d resource groups", len(result.Resources))
+	assert.NotEmpty(t, result.NativeIDs, "List should return resources")
+	t.Logf("List returned %d resource groups", len(result.NativeIDs))
 
 	// Verify all 3 created resource groups are in the results
 	foundCount := 0
 	for _, rgName := range createdRGNames {
-		for _, res := range result.Resources {
-			if strings.HasSuffix(res.NativeID, "/resourceGroups/"+rgName) {
+		for _, nativeID := range result.NativeIDs {
+			if strings.HasSuffix(nativeID, "/resourceGroups/"+rgName) {
 				foundCount++
 				t.Logf("Found created resource group in results: %s", rgName)
 				break

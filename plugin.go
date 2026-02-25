@@ -47,9 +47,11 @@ func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
-// from discovered resources.
+// from discovered resources. All Azure resources serialize a "name" property.
 func (p *Plugin) LabelConfig() plugin.LabelConfig {
-	return plugin.LabelConfig{}
+	return plugin.LabelConfig{
+		DefaultQuery: "$.name",
+	}
 }
 
 // =============================================================================

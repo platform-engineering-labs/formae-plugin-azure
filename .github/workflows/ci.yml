@@ -14,7 +14,7 @@ on:
         type: boolean
 
 jobs:
-  build:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,43 +33,32 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Test
-        run: make test-unit
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-
-      - name: golangci-lint
+      - name: Lint
         uses: golangci/golangci-lint-action@v9.2.0
         with:
           version: latest
 
-  pkl-validate:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Unit tests
+        run: make test-unit
 
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
-        with:
-          pkl-version: 0.30.0
-
-      - name: Validate Pkl schemas
+      - name: Validate Pkl manifest
         run: |
           pkl eval formae-plugin.pkl --format json > /dev/null
           echo "Manifest validated successfully"
 
-  verify-schema:
+      - name: Verify schema
+        run: make verify-schema
+
+  # Integration tests run against real Azure resources.
+  # These are self-contained: each test creates and cleans up its own resources.
+  test-integration:
+    needs: [checks]
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -79,16 +68,18 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Set up Pkl
-        uses: pkl-community/setup-pkl@v0
+      - name: Configure Azure Credentials
+        uses: azure/login@v2
         with:
-          pkl-version: 0.30.0
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Verify schema
-        run: make verify-schema
+      - name: Run integration tests
+        run: make test-integration
 
   conformance-tests:
-    needs: [build, lint, pkl-validate, verify-schema]
+    needs: [checks, test-integration]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.run_conformance == 'true' }}
     timeout-minutes: 60
@@ -128,7 +119,7 @@ jobs:
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:
-    needs: [build, lint, pkl-validate]
+    needs: [checks]
     runs-on: ubuntu-latest
     if: success() && github.event_name == 'push'
     steps:
@@ -190,7 +181,7 @@ jobs:
 
   # Notify on failure
   notify-failure:
-    needs: [build, lint, pkl-validate]
+    needs: [checks]
     runs-on: ubuntu-latest
     if: failure() && github.event_name == 'push'
     steps:

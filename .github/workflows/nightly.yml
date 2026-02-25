@@ -9,7 +9,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Integration tests run against real Azure resources.
+  # These are self-contained: each test creates and cleans up its own resources.
+  test-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run integration tests
+        run: make test-integration
+
   conformance-tests-main:
+    needs: [test-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -55,9 +83,70 @@ jobs:
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}
         run: make conformance-test
 
+  # Notify when nightly is fixed (was red, now green)
+  notify-fixed:
+    needs: [test-integration, conformance-tests-main]
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Check if previous run failed
+        id: check_previous
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'nightly.yml',
+              per_page: 2,
+              status: 'completed'
+            });
+
+            // Get previous run (skip current which isn't completed yet)
+            const previousRun = runs.data.workflow_runs.find(run => run.id !== context.runId);
+
+            if (previousRun && previousRun.conclusion === 'failure') {
+              return 'true';
+            }
+            return 'false';
+          result-encoding: string
+
+      - name: Notify Slack (Fixed)
+        if: steps.check_previous.outputs.result == 'true'
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": ":white_check_mark: Nightly fixed on ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":white_check_mark: *Nightly fixed* on `${{ github.repository }}`\n\nPlugin conformance tests now passing against formae main branch."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Run"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+
   # Notify on failure
   notify-failure:
-    needs: [conformance-tests-main]
+    needs: [test-integration, conformance-tests-main]
     runs-on: ubuntu-latest
     if: failure()
     steps:

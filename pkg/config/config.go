@@ -10,21 +10,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/platform-engineering-labs/formae/pkg/model"
 )
 
 // Config holds Azure-specific configuration extracted from a Target.
 type Config struct {
 	SubscriptionId string
-}
-
-// FromTarget extracts Azure configuration from a Formae Target.
-func FromTarget(target *model.Target) *Config {
-	if target == nil || target.Config == nil {
-		return &Config{}
-	}
-
-	return FromTargetConfig(target.Config)
 }
 
 // FromTargetConfig extracts Azure configuration from target config JSON.
