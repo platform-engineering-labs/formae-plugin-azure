@@ -40,7 +40,7 @@ open class ResourceGroup extends formae.Resource {
     // Optional properties
     // Note: outputField = "Tags" is required because Azure's ResourceHint doesn't have
     // automatic field capitalization like AWS. The Go code expects uppercase "Tags".
-    @azure.FieldHint { outputField = "Tags" }
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
     @azure.FieldHint

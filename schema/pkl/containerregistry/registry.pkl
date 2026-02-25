@@ -67,7 +67,7 @@ open class Registry extends formae.Resource {
     @azure.FieldHint {}
     zoneRedundancy: String?
 
-    @azure.FieldHint { outputField = "Tags" }
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
     hidden parent = this
