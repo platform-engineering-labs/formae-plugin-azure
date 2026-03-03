@@ -103,7 +103,7 @@ open class NetworkSecurityGroup extends formae.Resource {
     @azure.FieldHint {}
     securityRules: Listing<SecurityRule>?
 
-    @azure.FieldHint { outputField = "Tags" }
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
     hidden parent = this

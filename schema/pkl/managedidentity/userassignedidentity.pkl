@@ -49,7 +49,7 @@ open class UserAssignedIdentity extends formae.Resource {
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
     // Optional properties
-    @azure.FieldHint { outputField = "Tags" }
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
     hidden parent = this

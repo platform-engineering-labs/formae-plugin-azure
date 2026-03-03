@@ -82,7 +82,7 @@ open class NetworkInterface extends formae.Resource {
     @azure.FieldHint {}
     enableIPForwarding: Boolean?
 
-    @azure.FieldHint { outputField = "Tags" }
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
     hidden parent = this
