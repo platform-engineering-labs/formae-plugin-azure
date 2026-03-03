@@ -71,11 +71,7 @@ func (p *Plugin) Create(ctx context.Context, request *resource.CreateRequest) (*
 	}
 
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.Create(ctx, request)
-	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
-	}
-	return result, err
+	return prov.Create(ctx, request)
 }
 
 // Read retrieves the current state of an Azure resource.
@@ -111,11 +107,7 @@ func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*
 	}
 
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.Update(ctx, request)
-	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
-	}
-	return result, err
+	return prov.Update(ctx, request)
 }
 
 // Delete removes an Azure resource.
@@ -133,11 +125,7 @@ func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 	}
 
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.Delete(ctx, request)
-	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
-	}
-	return result, err
+	return prov.Delete(ctx, request)
 }
 
 // Status checks the progress of an async operation.
@@ -153,11 +141,7 @@ func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*
 	}
 
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.Status(ctx, request)
-	if result != nil && result.ProgressResult != nil {
-		result.ProgressResult.NativeID = nativeid.Encode(result.ProgressResult.NativeID).String()
-	}
-	return result, err
+	return prov.Status(ctx, request)
 }
 
 // List returns all resource identifiers of a given type for discovery.

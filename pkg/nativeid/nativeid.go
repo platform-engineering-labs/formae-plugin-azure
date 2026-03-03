@@ -14,17 +14,18 @@ import (
 // NativeID is an encoded Azure resource identifier.
 // Format: azure:v1:{ksuid}:{armID}
 //
-// Azure ARM IDs are stable and can be reused after a resource is destroyed and
-// recreated. Formae needs each resource instance to be unique across its
-// lifetime, so we wrap the ARM ID with a KSUID to guarantee uniqueness even
-// when the same ARM ID appears again after a destroy/recreate cycle.
+// New resources no longer use KSUID encoding — the plugin returns raw ARM IDs
+// directly. Formae's datastore handles resource reincarnations through its
+// versioning system, and raw ARM IDs are required for discovery deduplication
+// (List returns raw ARM IDs that must match NativeIDs in the datastore).
 //
-// This package is the single source of truth for encoding and decoding;
-// plugin.go encodes outbound results and decodes inbound requests at the
-// boundary so that provisioners only ever see raw ARM IDs.
+// This type and ArmID() are retained for backwards compatibility: existing
+// datastores may contain KSUID-wrapped NativeIDs from before this change.
+// ArmID() safely extracts the raw ARM ID from both wrapped and unwrapped forms.
 type NativeID string
 
 // Encode wraps a raw ARM ID with a unique KSUID.
+// No longer used in plugin.go but retained for tests.
 // Returns empty NativeID for empty input.
 func Encode(armID string) NativeID {
 	if armID == "" {
