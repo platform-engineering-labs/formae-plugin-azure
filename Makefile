@@ -134,12 +134,16 @@ conformance-test-crud: install setup-credentials
 
 ## conformance-test-discovery: Run only discovery tests
 ## Usage: make conformance-test-discovery [VERSION=0.80.0] [TEST=resourcegroup]
+## NOTE: flexibleserver and firewallrule are excluded by default due to a formae core
+## discovery persistence bug (discovered resources not appearing in inventory).
+## See: https://github.com/platform-engineering-labs/formae/issues/XXX
+DISCOVERY_DEFAULT_FILTER := resourcegroup,virtualnetwork,subnet,networksecuritygroup,publicipaddress,storageaccount,vault,registry,userassignedidentity,roleassignment
 conformance-test-discovery: install setup-credentials
 	@echo "Pre-test cleanup..."
 	@./scripts/ci/clean-environment.sh || true
 	@echo ""
 	@echo "Running discovery conformance tests..."
-	@FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery ./scripts/run-conformance-tests.sh $(VERSION); \
+	@FORMAE_TEST_FILTER="$(if $(TEST),$(TEST),$(DISCOVERY_DEFAULT_FILTER))" FORMAE_TEST_TYPE=discovery ./scripts/run-conformance-tests.sh $(VERSION); \
 	TEST_EXIT=$$?; \
 	echo ""; \
 	echo "Post-test cleanup..."; \

@@ -974,33 +974,39 @@ func (kv *KeyVault) statusDelete(ctx context.Context, request *resource.StatusRe
 }
 
 func (kv *KeyVault) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName from AdditionalProperties
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing Key Vaults")
-	}
-
-	pager := kv.Client.VaultsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list Key Vaults in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, vault := range page.Value {
-			if vault.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := kv.Client.VaultsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Key Vaults: %w", err)
 			}
-
-			nativeIDs = append(nativeIDs, *vault.ID)
+			for _, vault := range page.Value {
+				if vault.ID != nil {
+					nativeIDs = append(nativeIDs, *vault.ID)
+				}
+			}
+		}
+	} else {
+		pager := kv.Client.VaultsClient.NewListBySubscriptionPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Key Vaults: %w", err)
+			}
+			for _, vault := range page.Value {
+				if vault.ID != nil {
+					nativeIDs = append(nativeIDs, *vault.ID)
+				}
+			}
 		}
 	}
 
 	return &resource.ListResult{
-
 		NativeIDs: nativeIDs,
 	}, nil
 }

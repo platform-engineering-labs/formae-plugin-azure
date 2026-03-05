@@ -113,13 +113,17 @@ func (u *UserAssignedIdentity) Create(ctx context.Context, request *resource.Cre
 		}, fmt.Errorf("failed to create UserAssignedIdentity: %w", err)
 	}
 
-	// Return success without ResourceProperties per Lesson 1
-	// Properties will be populated by framework via Status→Read flow
+	propsJSON, err := serializeUserAssignedIdentityProperties(result.Identity, rgName, identityName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize UserAssignedIdentity properties: %w", err)
+	}
+
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusSuccess,
-			NativeID:        *result.ID,
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			NativeID:           *result.ID,
+			ResourceProperties: propsJSON,
 		},
 	}, nil
 }
@@ -293,27 +297,35 @@ func (u *UserAssignedIdentity) Status(ctx context.Context, request *resource.Sta
 }
 
 func (u *UserAssignedIdentity) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing UserAssignedIdentities")
-	}
-
-	pager := u.Client.UserAssignedIdentitiesClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list user assigned identities in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, identity := range page.Value {
-			if identity.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := u.Client.UserAssignedIdentitiesClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list user assigned identities: %w", err)
 			}
-
-			nativeIDs = append(nativeIDs, *identity.ID)
+			for _, identity := range page.Value {
+				if identity.ID != nil {
+					nativeIDs = append(nativeIDs, *identity.ID)
+				}
+			}
+		}
+	} else {
+		pager := u.Client.UserAssignedIdentitiesClient.NewListBySubscriptionPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list user assigned identities: %w", err)
+			}
+			for _, identity := range page.Value {
+				if identity.ID != nil {
+					nativeIDs = append(nativeIDs, *identity.ID)
+				}
+			}
 		}
 	}
 

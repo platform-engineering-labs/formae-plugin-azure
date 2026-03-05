@@ -1096,27 +1096,35 @@ func (f *FlexibleServer) statusDelete(ctx context.Context, request *resource.Sta
 }
 
 func (f *FlexibleServer) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName from AdditionalProperties
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing FlexibleServers")
-	}
-
-	pager := f.Client.FlexibleServersClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list flexible servers in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, server := range page.Value {
-			if server.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := f.Client.FlexibleServersClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list flexible servers: %w", err)
 			}
-			nativeIDs = append(nativeIDs, *server.ID)
+			for _, server := range page.Value {
+				if server.ID != nil {
+					nativeIDs = append(nativeIDs, *server.ID)
+				}
+			}
+		}
+	} else {
+		pager := f.Client.FlexibleServersClient.NewListPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list flexible servers: %w", err)
+			}
+			for _, server := range page.Value {
+				if server.ID != nil {
+					nativeIDs = append(nativeIDs, *server.ID)
+				}
+			}
 		}
 	}
 

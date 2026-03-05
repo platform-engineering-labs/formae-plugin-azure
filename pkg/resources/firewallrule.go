@@ -647,17 +647,50 @@ func (f *FirewallRule) statusDelete(ctx context.Context, request *resource.Statu
 }
 
 func (f *FirewallRule) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName and serverName from AdditionalProperties
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing FirewallRules")
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
+	serverName := request.AdditionalProperties["serverName"]
+
+	var nativeIDs []string
+
+	if resourceGroupName != "" && serverName != "" {
+		ids, err := f.listByServer(ctx, resourceGroupName, serverName)
+		if err != nil {
+			return nil, err
+		}
+		nativeIDs = ids
+	} else {
+		// Discovery path: enumerate all flexible servers across the subscription
+		serverPager := f.Client.FlexibleServersClient.NewListPager(nil)
+		for serverPager.More() {
+			page, err := serverPager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list flexible servers for firewall rule discovery: %w", err)
+			}
+			for _, server := range page.Value {
+				if server.ID == nil {
+					continue
+				}
+				parts := splitResourceID(*server.ID)
+				rgName := parts["resourcegroups"]
+				srvName := parts["flexibleservers"]
+				if rgName == "" || srvName == "" {
+					continue
+				}
+				ids, err := f.listByServer(ctx, rgName, srvName)
+				if err != nil {
+					return nil, err
+				}
+				nativeIDs = append(nativeIDs, ids...)
+			}
+		}
 	}
 
-	serverName, ok := request.AdditionalProperties["serverName"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("serverName is required in AdditionalProperties for listing FirewallRules")
-	}
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}
 
+func (f *FirewallRule) listByServer(ctx context.Context, resourceGroupName, serverName string) ([]string, error) {
 	pager := f.Client.FirewallRulesClient.NewListByServerPager(resourceGroupName, serverName, nil)
 
 	var nativeIDs []string
@@ -667,16 +700,12 @@ func (f *FirewallRule) List(ctx context.Context, request *resource.ListRequest) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to list firewall rules for server %s: %w", serverName, err)
 		}
-
 		for _, rule := range page.Value {
-			if rule.ID == nil {
-				continue
+			if rule.ID != nil {
+				nativeIDs = append(nativeIDs, *rule.ID)
 			}
-			nativeIDs = append(nativeIDs, *rule.ID)
 		}
 	}
 
-	return &resource.ListResult{
-		NativeIDs: nativeIDs,
-	}, nil
+	return nativeIDs, nil
 }

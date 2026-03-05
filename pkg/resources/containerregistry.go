@@ -786,27 +786,35 @@ func (cr *ContainerRegistry) statusDelete(ctx context.Context, request *resource
 }
 
 func (cr *ContainerRegistry) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName from AdditionalProperties
-	rgName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing Container Registries")
-	}
-
-	pager := cr.Client.RegistriesClient.NewListByResourceGroupPager(rgName, nil)
+	rgName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list Container Registries: %w", err)
-		}
-
-		for _, registry := range page.Value {
-			if registry.ID == nil {
-				continue
+	if rgName != "" {
+		pager := cr.Client.RegistriesClient.NewListByResourceGroupPager(rgName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Container Registries: %w", err)
 			}
-			nativeIDs = append(nativeIDs, *registry.ID)
+			for _, registry := range page.Value {
+				if registry.ID != nil {
+					nativeIDs = append(nativeIDs, *registry.ID)
+				}
+			}
+		}
+	} else {
+		pager := cr.Client.RegistriesClient.NewListPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Container Registries: %w", err)
+			}
+			for _, registry := range page.Value {
+				if registry.ID != nil {
+					nativeIDs = append(nativeIDs, *registry.ID)
+				}
+			}
 		}
 	}
 
