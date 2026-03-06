@@ -85,8 +85,26 @@ jobs:
     needs: [checks, test-integration]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.run_conformance == 'true' }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     environment: production
+
+    strategy:
+      fail-fast: false
+      matrix:
+        resource:
+          - resource-group
+          - virtual-network
+          - subnet
+          - network-security-group
+          - public-ip-address
+          - storage-account
+          - registry
+          - vault
+          # flexible-server and firewall-rule excluded due to formae core
+          # discovery persistence bug (discovered resources not appearing in inventory).
+          # CRUD tests still run via test-integration.
+          - role-assignment
+          - user-assigned-identity
 
     permissions:
       id-token: write
@@ -116,11 +134,35 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests
+      - name: Run conformance tests (${{ matrix.resource }})
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
         run: make conformance-test
+
+  # Clean up Azure resources after all matrix jobs complete
+  conformance-cleanup:
+    needs: [conformance-tests]
+    runs-on: ubuntu-latest
+    if: always() && github.event.inputs.run_conformance == 'true'
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clean up test resources
+        run: ./scripts/ci/clean-environment.sh
 
   # Notify when build is fixed (was red, now green)
   notify-fixed:

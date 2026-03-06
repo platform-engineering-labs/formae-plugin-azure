@@ -42,8 +42,26 @@ jobs:
   conformance-tests-main:
     needs: [test-integration]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     environment: production
+
+    strategy:
+      fail-fast: false
+      matrix:
+        resource:
+          - resource-group
+          - virtual-network
+          - subnet
+          - network-security-group
+          - public-ip-address
+          - storage-account
+          - registry
+          - vault
+          # flexible-server and firewall-rule excluded from nightly due to formae core
+          # discovery persistence bug (discovered resources not appearing in inventory).
+          # CRUD tests still run via test-integration.
+          - role-assignment
+          - user-assigned-identity
 
     permissions:
       id-token: write
@@ -67,8 +85,8 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
           cd /tmp/formae
-          # Fetch tags so `git describe` works (needed for version embedding)
-          git fetch --tags --depth=1
+          # Fetch tags with enough depth for `git describe` to resolve version
+          git fetch --tags --unshallow
           make build
           echo "FORMAE_BINARY=/tmp/formae/formae" >> $GITHUB_ENV
 
@@ -82,11 +100,35 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests against main
+      - name: Run conformance tests against main (${{ matrix.resource }})
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}
+          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ matrix.resource }}
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
         run: make conformance-test
+
+  # Clean up Azure resources after all matrix jobs complete
+  cleanup:
+    needs: [conformance-tests-main]
+    runs-on: ubuntu-latest
+    if: always()
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v6
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clean up test resources
+        run: ./scripts/ci/clean-environment.sh
 
   # Notify when nightly is fixed (was red, now green)
   notify-fixed:
