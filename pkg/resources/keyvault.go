@@ -494,8 +494,8 @@ func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*r
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeKeyVault,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

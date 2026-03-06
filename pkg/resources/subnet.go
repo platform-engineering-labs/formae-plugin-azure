@@ -256,8 +256,8 @@ func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeSubnet,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

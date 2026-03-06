@@ -271,8 +271,8 @@ func (p *PublicIPAddress) Read(ctx context.Context, request *resource.ReadReques
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypePublicIPAddress,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

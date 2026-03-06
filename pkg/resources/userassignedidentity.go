@@ -154,7 +154,8 @@ func (u *UserAssignedIdentity) Read(ctx context.Context, request *resource.ReadR
 	}
 
 	return &resource.ReadResult{
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeUserAssignedIdentity,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

@@ -218,7 +218,8 @@ func (f *FirewallRule) Read(ctx context.Context, request *resource.ReadRequest) 
 	}
 
 	return &resource.ReadResult{
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeFirewallRule,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

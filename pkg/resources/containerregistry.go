@@ -236,7 +236,8 @@ func (cr *ContainerRegistry) Read(ctx context.Context, request *resource.ReadReq
 	}
 
 	return &resource.ReadResult{
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeContainerRegistry,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

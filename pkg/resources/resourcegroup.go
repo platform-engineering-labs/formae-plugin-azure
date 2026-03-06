@@ -437,8 +437,8 @@ func (rg *ResourceGroup) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeResourceGroup,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

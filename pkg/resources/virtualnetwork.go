@@ -310,8 +310,8 @@ func (v *VirtualNetwork) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeVirtualNetwork,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

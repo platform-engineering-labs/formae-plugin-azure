@@ -286,8 +286,8 @@ func (s *StorageAccount) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeStorageAccount,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

@@ -287,8 +287,8 @@ func (n *NetworkSecurityGroup) Read(ctx context.Context, request *resource.ReadR
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeNetworkSecurityGroup,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

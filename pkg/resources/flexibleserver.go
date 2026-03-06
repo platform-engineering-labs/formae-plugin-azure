@@ -496,7 +496,8 @@ func (f *FlexibleServer) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeFlexibleServer,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
