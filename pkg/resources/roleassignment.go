@@ -165,7 +165,8 @@ func (r *RoleAssignment) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeRoleAssignment,
+		Properties:   string(propsJSON),
 	}, nil
 }
 

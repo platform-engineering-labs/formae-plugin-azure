@@ -130,6 +130,8 @@ func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 
 // Status checks the progress of an async operation.
 func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
+	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
+
 	targetConfig := config.FromTargetConfig(request.TargetConfig)
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {

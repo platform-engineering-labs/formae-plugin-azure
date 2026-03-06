@@ -271,8 +271,8 @@ func (p *PublicIPAddress) Read(ctx context.Context, request *resource.ReadReques
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypePublicIPAddress,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
@@ -715,32 +715,39 @@ func (p *PublicIPAddress) statusDelete(ctx context.Context, request *resource.St
 }
 
 func (p *PublicIPAddress) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing PublicIPAddresses")
-	}
-
-	pager := p.Client.PublicIPAddressesClient.NewListPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list public IP addresses in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, pip := range page.Value {
-			if pip.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := p.Client.PublicIPAddressesClient.NewListPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list public IP addresses: %w", err)
 			}
-
-			nativeIDs = append(nativeIDs, *pip.ID)
+			for _, pip := range page.Value {
+				if pip.ID != nil {
+					nativeIDs = append(nativeIDs, *pip.ID)
+				}
+			}
+		}
+	} else {
+		pager := p.Client.PublicIPAddressesClient.NewListAllPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list public IP addresses: %w", err)
+			}
+			for _, pip := range page.Value {
+				if pip.ID != nil {
+					nativeIDs = append(nativeIDs, *pip.ID)
+				}
+			}
 		}
 	}
 
 	return &resource.ListResult{
-
 		NativeIDs: nativeIDs,
 	}, nil
 }

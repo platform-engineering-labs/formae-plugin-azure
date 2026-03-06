@@ -98,10 +98,10 @@ class HighAvailability {
 /// Network configuration
 class Network {
     /// Resource ID of the delegated subnet for VNet integration
-    delegatedSubnetResourceId: String|formae.Resolvable?
+    delegatedSubnetResourceId: (String|formae.Resolvable)?
 
     /// Resource ID of the private DNS zone for VNet integration
-    privateDnsZoneArmResourceId: String|formae.Resolvable?
+    privateDnsZoneArmResourceId: (String|formae.Resolvable)?
 
     /// Enable public network access
     publicNetworkAccess: PublicNetworkAccess?

@@ -279,7 +279,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 		params.Properties.EnableRbacAuthorization = to.Ptr(enableRbacAuthorization)
 	}
 
-	// Parse access policies
+	// Parse access policies (Azure requires this field, even if empty)
 	if accessPoliciesRaw, ok := props["accessPolicies"].([]interface{}); ok {
 		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
 		for _, apRaw := range accessPoliciesRaw {
@@ -340,6 +340,9 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 			accessPolicies = append(accessPolicies, entry)
 		}
 		params.Properties.AccessPolicies = accessPolicies
+	} else {
+		// Azure API requires accessPolicies to be present, default to empty
+		params.Properties.AccessPolicies = []*armkeyvault.AccessPolicyEntry{}
 	}
 
 	// Parse network ACLs
@@ -491,8 +494,8 @@ func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*r
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeKeyVault,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
@@ -579,7 +582,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 		params.Properties.EnableRbacAuthorization = to.Ptr(enableRbacAuthorization)
 	}
 
-	// Parse access policies (same as Create)
+	// Parse access policies (Azure requires this field, even if empty)
 	if accessPoliciesRaw, ok := props["accessPolicies"].([]interface{}); ok {
 		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
 		for _, apRaw := range accessPoliciesRaw {
@@ -640,6 +643,9 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 			accessPolicies = append(accessPolicies, entry)
 		}
 		params.Properties.AccessPolicies = accessPolicies
+	} else {
+		// Azure API requires accessPolicies to be present, default to empty
+		params.Properties.AccessPolicies = []*armkeyvault.AccessPolicyEntry{}
 	}
 
 	// Parse network ACLs (same as Create)
@@ -880,7 +886,12 @@ func (kv *KeyVault) statusCreateOrUpdate(ctx context.Context, request *resource.
 		}, nil
 	}
 
-	// Still in progress - the next status check will determine if Done()
+	// Check if the operation completed after polling
+	if poller.Done() {
+		return kv.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
+	}
+
+	// Still in progress
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       operation,
@@ -963,33 +974,39 @@ func (kv *KeyVault) statusDelete(ctx context.Context, request *resource.StatusRe
 }
 
 func (kv *KeyVault) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName from AdditionalProperties
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing Key Vaults")
-	}
-
-	pager := kv.Client.VaultsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list Key Vaults in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, vault := range page.Value {
-			if vault.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := kv.Client.VaultsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Key Vaults: %w", err)
 			}
-
-			nativeIDs = append(nativeIDs, *vault.ID)
+			for _, vault := range page.Value {
+				if vault.ID != nil {
+					nativeIDs = append(nativeIDs, *vault.ID)
+				}
+			}
+		}
+	} else {
+		pager := kv.Client.VaultsClient.NewListBySubscriptionPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Key Vaults: %w", err)
+			}
+			for _, vault := range page.Value {
+				if vault.ID != nil {
+					nativeIDs = append(nativeIDs, *vault.ID)
+				}
+			}
 		}
 	}
 
 	return &resource.ListResult{
-
 		NativeIDs: nativeIDs,
 	}, nil
 }

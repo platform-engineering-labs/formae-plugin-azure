@@ -56,6 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
+    environment: production
     permissions:
       id-token: write
       contents: read
@@ -76,6 +77,8 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run integration tests
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: make test-integration
 
   conformance-tests:
@@ -83,6 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.run_conformance == 'true' }}
     timeout-minutes: 60
+    environment: production
 
     permissions:
       id-token: write
@@ -114,6 +118,7 @@ jobs:
 
       - name: Run conformance tests
         env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: make conformance-test
 

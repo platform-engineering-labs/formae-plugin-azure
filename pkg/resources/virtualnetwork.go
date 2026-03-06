@@ -310,8 +310,8 @@ func (v *VirtualNetwork) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeVirtualNetwork,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
@@ -783,55 +783,35 @@ func (v *VirtualNetwork) statusDelete(ctx context.Context, request *resource.Sta
 }
 
 func (v *VirtualNetwork) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName from AdditionalProperties (populated by discovery actor via listParam)
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing VirtualNetworks")
-	}
-
-	pager := v.Client.VirtualNetworksClient.NewListPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list virtual networks in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, vnet := range page.Value {
-			if vnet.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := v.Client.VirtualNetworksClient.NewListPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list virtual networks: %w", err)
 			}
-
-			// Build properties map (same structure as Read)
-			props := make(map[string]interface{})
-
-			// Use vnet.Name from Azure response for consistency with Read and Status
-			if vnet.Name != nil {
-				props["name"] = *vnet.Name
-			}
-
-			if vnet.Location != nil {
-				props["location"] = *vnet.Location
-			}
-
-			props["resourceGroupName"] = resourceGroupName
-
-			// Address space
-			if vnet.Properties != nil && vnet.Properties.AddressSpace != nil {
-				addressSpace := make(map[string]interface{})
-				var prefixes []string
-				for _, prefix := range vnet.Properties.AddressSpace.AddressPrefixes {
-					if prefix != nil {
-						prefixes = append(prefixes, *prefix)
-					}
+			for _, vnet := range page.Value {
+				if vnet.ID != nil {
+					nativeIDs = append(nativeIDs, *vnet.ID)
 				}
-				addressSpace["addressPrefixes"] = prefixes
-				props["addressSpace"] = addressSpace
 			}
-
-			nativeIDs = append(nativeIDs, *vnet.ID)
+		}
+	} else {
+		pager := v.Client.VirtualNetworksClient.NewListAllPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list virtual networks: %w", err)
+			}
+			for _, vnet := range page.Value {
+				if vnet.ID != nil {
+					nativeIDs = append(nativeIDs, *vnet.ID)
+				}
+			}
 		}
 	}
 

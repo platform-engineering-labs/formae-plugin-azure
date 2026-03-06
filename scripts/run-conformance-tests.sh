@@ -170,5 +170,11 @@ echo "PKL dependencies resolved successfully"
 # =============================================================================
 echo ""
 echo "Running conformance tests..."
+
+# Azure resources like PostgreSQL Flexible Server can take 6-8 minutes to provision.
+# The default per-command timeout in the conformance harness is 5 minutes, which is
+# too short. Set to 10 minutes to provide sufficient headroom.
+export FORMAE_TEST_TIMEOUT="${FORMAE_TEST_TIMEOUT:-10}"
+
 cd "${PROJECT_ROOT}"
-go test -tags=conformance -v -timeout 30m ./...
+go test -tags=conformance -v -timeout 60m ./...

@@ -14,6 +14,7 @@ jobs:
   test-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     permissions:
       id-token: write
       contents: read
@@ -34,12 +35,15 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run integration tests
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: make test-integration
 
   conformance-tests-main:
     needs: [test-integration]
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    environment: production
 
     permissions:
       id-token: write
@@ -80,6 +84,7 @@ jobs:
 
       - name: Run conformance tests against main
         env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}
         run: make conformance-test
 

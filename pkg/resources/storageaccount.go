@@ -286,8 +286,8 @@ func (s *StorageAccount) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeStorageAccount,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
@@ -520,32 +520,39 @@ func (s *StorageAccount) handleCreateComplete(ctx context.Context, request *reso
 }
 
 func (s *StorageAccount) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing StorageAccounts")
-	}
-
-	pager := s.Client.StorageAccountsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list storage accounts in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, account := range page.Value {
-			if account.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := s.Client.StorageAccountsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list storage accounts: %w", err)
 			}
-
-			nativeIDs = append(nativeIDs, *account.ID)
+			for _, account := range page.Value {
+				if account.ID != nil {
+					nativeIDs = append(nativeIDs, *account.ID)
+				}
+			}
+		}
+	} else {
+		pager := s.Client.StorageAccountsClient.NewListPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list storage accounts: %w", err)
+			}
+			for _, account := range page.Value {
+				if account.ID != nil {
+					nativeIDs = append(nativeIDs, *account.ID)
+				}
+			}
 		}
 	}
 
 	return &resource.ListResult{
-
 		NativeIDs: nativeIDs,
 	}, nil
 }

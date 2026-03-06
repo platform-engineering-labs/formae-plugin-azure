@@ -287,8 +287,8 @@ func (n *NetworkSecurityGroup) Read(ctx context.Context, request *resource.ReadR
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeNetworkSecurityGroup,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
@@ -741,32 +741,39 @@ func (n *NetworkSecurityGroup) statusDelete(ctx context.Context, request *resour
 }
 
 func (n *NetworkSecurityGroup) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing NetworkSecurityGroups")
-	}
-
-	pager := n.Client.SecurityGroupsClient.NewListPager(resourceGroupName, nil)
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
 
 	var nativeIDs []string
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list network security groups in resource group %s: %w", resourceGroupName, err)
-		}
-
-		for _, nsg := range page.Value {
-			if nsg.ID == nil {
-				continue
+	if resourceGroupName != "" {
+		pager := n.Client.SecurityGroupsClient.NewListPager(resourceGroupName, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list network security groups: %w", err)
 			}
-
-			nativeIDs = append(nativeIDs, *nsg.ID)
+			for _, nsg := range page.Value {
+				if nsg.ID != nil {
+					nativeIDs = append(nativeIDs, *nsg.ID)
+				}
+			}
+		}
+	} else {
+		pager := n.Client.SecurityGroupsClient.NewListAllPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list network security groups: %w", err)
+			}
+			for _, nsg := range page.Value {
+				if nsg.ID != nil {
+					nativeIDs = append(nativeIDs, *nsg.ID)
+				}
+			}
 		}
 	}
 
 	return &resource.ListResult{
-
 		NativeIDs: nativeIDs,
 	}, nil
 }

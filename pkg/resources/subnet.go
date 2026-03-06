@@ -256,8 +256,8 @@ func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 	}
 
 	return &resource.ReadResult{
-
-		Properties: string(propsJSON),
+		ResourceType: ResourceTypeSubnet,
+		Properties:   string(propsJSON),
 	}, nil
 }
 
@@ -699,18 +699,50 @@ func (s *Subnet) statusDelete(ctx context.Context, request *resource.StatusReque
 }
 
 func (s *Subnet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
-	// Get resourceGroupName and virtualNetworkName from AdditionalProperties
-	// (populated by discovery actor via listParam from parent VirtualNetwork)
-	resourceGroupName, ok := request.AdditionalProperties["resourceGroupName"]
-	if !ok || resourceGroupName == "" {
-		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing Subnets")
+	resourceGroupName := request.AdditionalProperties["resourceGroupName"]
+	virtualNetworkName := request.AdditionalProperties["virtualNetworkName"]
+
+	var nativeIDs []string
+
+	if resourceGroupName != "" && virtualNetworkName != "" {
+		ids, err := s.listByVNet(ctx, resourceGroupName, virtualNetworkName)
+		if err != nil {
+			return nil, err
+		}
+		nativeIDs = ids
+	} else {
+		// Discovery path: enumerate all VNets across the subscription
+		vnetPager := s.Client.VirtualNetworksClient.NewListAllPager(nil)
+		for vnetPager.More() {
+			page, err := vnetPager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list virtual networks for subnet discovery: %w", err)
+			}
+			for _, vnet := range page.Value {
+				if vnet.ID == nil {
+					continue
+				}
+				parts := splitResourceID(*vnet.ID)
+				rgName := parts["resourcegroups"]
+				vnetName := parts["virtualnetworks"]
+				if rgName == "" || vnetName == "" {
+					continue
+				}
+				ids, err := s.listByVNet(ctx, rgName, vnetName)
+				if err != nil {
+					return nil, err
+				}
+				nativeIDs = append(nativeIDs, ids...)
+			}
+		}
 	}
 
-	virtualNetworkName, ok := request.AdditionalProperties["virtualNetworkName"]
-	if !ok || virtualNetworkName == "" {
-		return nil, fmt.Errorf("virtualNetworkName is required in AdditionalProperties for listing Subnets")
-	}
+	return &resource.ListResult{
+		NativeIDs: nativeIDs,
+	}, nil
+}
 
+func (s *Subnet) listByVNet(ctx context.Context, resourceGroupName, virtualNetworkName string) ([]string, error) {
 	pager := s.Client.SubnetsClient.NewListPager(resourceGroupName, virtualNetworkName, nil)
 
 	var nativeIDs []string
@@ -720,28 +752,12 @@ func (s *Subnet) List(ctx context.Context, request *resource.ListRequest) (*reso
 		if err != nil {
 			return nil, fmt.Errorf("failed to list subnets in vnet %s/%s: %w", resourceGroupName, virtualNetworkName, err)
 		}
-
 		for _, subnet := range page.Value {
-			if subnet.ID == nil {
-				continue
+			if subnet.ID != nil {
+				nativeIDs = append(nativeIDs, *subnet.ID)
 			}
-
-			// Build properties map (same structure as Read)
-			props := make(map[string]interface{})
-
-			if subnet.Name != nil {
-				props["name"] = *subnet.Name
-			}
-
-			props["resourceGroupName"] = resourceGroupName
-			props["virtualNetworkName"] = virtualNetworkName
-
-			nativeIDs = append(nativeIDs, *subnet.ID)
 		}
 	}
 
-	return &resource.ListResult{
-
-		NativeIDs: nativeIDs,
-	}, nil
+	return nativeIDs, nil
 }
