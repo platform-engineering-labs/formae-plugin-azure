@@ -90,8 +90,8 @@ github.com/platform-engineering-labs/formae/pkg/model v0.1.5 h1:MNOLv5gXT3hCcVXg
 github.com/platform-engineering-labs/formae/pkg/model v0.1.5/go.mod h1:XmGJA7jNPX9cEGc8TxTiEDitBuEVJOddNakdTZ/bH4U=
 github.com/platform-engineering-labs/formae/pkg/plugin v0.1.14 h1:pzTjKuNtFZ/3I+f8F6U7tJtV7jMo64YdAY6v589ZPOA=
 github.com/platform-engineering-labs/formae/pkg/plugin v0.1.14/go.mod h1:heydN5suh9RwjdCmZhttA9Yni0pRJswSx/tHfzwBERk=
-github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.21 h1:H117sydtz0RG1eIMLTb+1QW6IpwxdJSK/lic/fiXKS4=
-github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.21/go.mod h1:GbypGizmbHw2Tl6TvLPuu3v7CqOmKZxIMx+NMgUvUkw=
+github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.22 h1:bMKk5G5tCCLGaPfZglxHRsKBaY0gkC2uNsoYjDlxqs8=
+github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.22/go.mod h1:GbypGizmbHw2Tl6TvLPuu3v7CqOmKZxIMx+NMgUvUkw=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=
