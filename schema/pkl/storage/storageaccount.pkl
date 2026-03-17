@@ -47,6 +47,7 @@ class StorageAccountSKU {
     apiVersion = module.apiVersion
     parent = "Azure::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+    portable = true
 }
 open class StorageAccount extends formae.Resource {
 

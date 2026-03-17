@@ -27,6 +27,7 @@ open class ResourceGroupResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
+    portable = true
 }
 open class ResourceGroup extends formae.Resource {
 

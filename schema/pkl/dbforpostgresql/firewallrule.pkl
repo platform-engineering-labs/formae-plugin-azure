@@ -29,6 +29,7 @@ open class FirewallRuleResolvable extends formae.Resolvable {
     apiVersion = module.apiVersion
     parent = "Azure::DBforPostgreSQL::FlexibleServer"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+    portable = true
 }
 open class FirewallRule extends formae.Resource {
 

@@ -86,6 +86,7 @@ class SecurityRule {
     apiVersion = module.apiVersion
     parent = "Azure::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+    portable = true
 }
 open class NetworkSecurityGroup extends formae.Resource {
 

@@ -32,6 +32,7 @@ typealias PrincipalType = "User"|"Group"|"ServicePrincipal"|"ForeignGroup"|"Devi
     apiVersion = module.apiVersion
     // RoleAssignments are scoped resources - they can be at subscription, resource group, or resource level
     // The scope is provided explicitly rather than through parent hierarchy
+    portable = true
 }
 open class RoleAssignment extends formae.Resource {
 
