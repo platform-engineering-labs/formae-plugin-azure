@@ -120,7 +120,7 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 				OperationStatus: resource.OperationStatusFailure,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start FirewallRule creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID
@@ -137,7 +137,7 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 					OperationStatus: resource.OperationStatusFailure,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get FirewallRule create result: %w", err)
+			}, nil
 		}
 
 		responseProps := f.buildPropertiesFromResult(&result.FirewallRule, rgName, serverName)
@@ -208,7 +208,7 @@ func (f *FirewallRule) Read(ctx context.Context, request *resource.ReadRequest) 
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read FirewallRule: %w", err)
+		}, nil
 	}
 
 	responseProps := f.buildPropertiesFromResult(&result.FirewallRule, rgName, serverName)
@@ -283,7 +283,7 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 				NativeID:        request.NativeID,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start FirewallRule update: %w", err)
+		}, nil
 	}
 
 	// Check if the operation completed synchronously
@@ -297,7 +297,7 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 					NativeID:        request.NativeID,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get FirewallRule update result: %w", err)
+			}, nil
 		}
 
 		responseProps := f.buildPropertiesFromResult(&result.FirewallRule, rgName, serverName)

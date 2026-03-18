@@ -117,7 +117,7 @@ func (rg *ResourceGroup) Create(ctx context.Context, request *resource.CreateReq
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to create resource group: %w", err)
+		}, nil
 	}
 
 	// Serialize properties using shared serialization logic
@@ -188,7 +188,7 @@ func (rg *ResourceGroup) Update(ctx context.Context, request *resource.UpdateReq
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to update resource group: %w", err)
+		}, nil
 	}
 
 	// Serialize properties using shared serialization logic
@@ -427,7 +427,7 @@ func (rg *ResourceGroup) Read(ctx context.Context, request *resource.ReadRequest
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read resource group: %w", err)
+		}, nil
 	}
 
 	// Serialize properties using shared serialization logic

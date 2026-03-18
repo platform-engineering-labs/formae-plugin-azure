@@ -137,7 +137,7 @@ func (r *RoleAssignment) Create(ctx context.Context, request *resource.CreateReq
 				OperationStatus: resource.OperationStatusFailure,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to create RoleAssignment: %w", err)
+		}, nil
 	}
 
 	// Return success without ResourceProperties per Lesson 1
@@ -156,7 +156,7 @@ func (r *RoleAssignment) Read(ctx context.Context, request *resource.ReadRequest
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read RoleAssignment: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeRoleAssignmentProperties(result.RoleAssignment)

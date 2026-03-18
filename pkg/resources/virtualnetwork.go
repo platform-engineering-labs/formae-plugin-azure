@@ -211,7 +211,7 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start VNet creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID (we know the format)
@@ -230,7 +230,7 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get VNet create result: %w", err)
+			}, nil
 		}
 
 		// Serialize properties using shared serialization logic
@@ -300,7 +300,7 @@ func (v *VirtualNetwork) Read(ctx context.Context, request *resource.ReadRequest
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read VNet: %w", err)
+		}, nil
 	}
 
 	// Serialize properties using shared serialization logic
@@ -340,7 +340,7 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 				NativeID:        request.NativeID,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to read existing VNet before update: %w", err)
+		}, nil
 	}
 
 	// Parse properties JSON
@@ -412,7 +412,7 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start VNet update: %w", err)
+		}, nil
 	}
 
 	// Check if the operation completed synchronously (already Done)
@@ -428,7 +428,7 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get VNet update result: %w", err)
+			}, nil
 		}
 
 		// Serialize properties using shared serialization logic

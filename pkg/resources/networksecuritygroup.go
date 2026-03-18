@@ -200,7 +200,7 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start NSG creation: %w", err)
+		}, nil
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkSecurityGroups/%s",
@@ -216,7 +216,7 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get NSG create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeNSGProperties(result.SecurityGroup, rgName, nsgName)
@@ -278,7 +278,7 @@ func (n *NetworkSecurityGroup) Read(ctx context.Context, request *resource.ReadR
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read NSG: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeNSGProperties(result.SecurityGroup, rgName, nsgName)
@@ -388,7 +388,7 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start NSG update: %w", err)
+		}, nil
 	}
 
 	if poller.Done() {
@@ -402,7 +402,7 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get NSG update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeNSGProperties(result.SecurityGroup, rgName, nsgName)

@@ -184,7 +184,7 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start PublicIP creation: %w", err)
+		}, nil
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/publicIPAddresses/%s",
@@ -200,7 +200,7 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get PublicIP create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializePublicIPProperties(result.PublicIPAddress, rgName, pipName)
@@ -262,7 +262,7 @@ func (p *PublicIPAddress) Read(ctx context.Context, request *resource.ReadReques
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read PublicIP: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializePublicIPProperties(result.PublicIPAddress, rgName, pipName)
@@ -362,7 +362,7 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start PublicIP update: %w", err)
+		}, nil
 	}
 
 	if poller.Done() {
@@ -376,7 +376,7 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get PublicIP update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializePublicIPProperties(result.PublicIPAddress, rgName, pipName)
