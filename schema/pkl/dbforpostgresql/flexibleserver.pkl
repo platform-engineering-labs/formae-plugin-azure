@@ -140,7 +140,6 @@ class AuthConfig {
     apiVersion = module.apiVersion
     parent = "Azure::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
-    portable = true
 }
 open class FlexibleServer extends formae.Resource {
 

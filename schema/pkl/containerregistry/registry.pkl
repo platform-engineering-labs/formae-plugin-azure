@@ -41,7 +41,6 @@ class RegistrySKU {
     apiVersion = module.apiVersion
     parent = "Azure::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
-    portable = true
 }
 open class Registry extends formae.Resource {
 
