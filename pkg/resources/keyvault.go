@@ -401,7 +401,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start Key Vault creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID
@@ -419,7 +419,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get Key Vault create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeKeyVaultProperties(result.Vault, rgName, vaultName)
@@ -485,7 +485,7 @@ func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read Key Vault: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeKeyVaultProperties(result.Vault, rgName, vaultName)
@@ -705,7 +705,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start Key Vault update: %w", err)
+		}, nil
 	}
 
 	// Check if completed synchronously
@@ -720,7 +720,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get Key Vault update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeKeyVaultProperties(result.Vault, rgName, vaultName)

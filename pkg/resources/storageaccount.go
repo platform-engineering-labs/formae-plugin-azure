@@ -199,7 +199,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start StorageAccount creation: %w", err)
+		}, nil
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s",
@@ -215,7 +215,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get StorageAccount create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeStorageAccountProperties(result.Account, rgName, accountName)
@@ -277,7 +277,7 @@ func (s *StorageAccount) Read(ctx context.Context, request *resource.ReadRequest
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read StorageAccount: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeStorageAccountProperties(result.Account, rgName, accountName)
@@ -350,7 +350,7 @@ func (s *StorageAccount) Update(ctx context.Context, request *resource.UpdateReq
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to update StorageAccount: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeStorageAccountProperties(result.Account, rgName, accountName)

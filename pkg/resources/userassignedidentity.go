@@ -110,7 +110,7 @@ func (u *UserAssignedIdentity) Create(ctx context.Context, request *resource.Cre
 				OperationStatus: resource.OperationStatusFailure,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to create UserAssignedIdentity: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeUserAssignedIdentityProperties(result.Identity, rgName, identityName)
@@ -145,7 +145,7 @@ func (u *UserAssignedIdentity) Read(ctx context.Context, request *resource.ReadR
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read UserAssignedIdentity: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeUserAssignedIdentityProperties(result.Identity, rgName, identityName)
@@ -189,7 +189,7 @@ func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.Upd
 				NativeID:        request.NativeID,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to update UserAssignedIdentity: %w", err)
+		}, nil
 	}
 
 	// Read back full properties after sync update so framework sees the changes

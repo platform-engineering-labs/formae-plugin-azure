@@ -152,7 +152,7 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 				OperationStatus: resource.OperationStatusFailure,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start Container Registry creation: %w", err)
+		}, nil
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerRegistry/registries/%s",
@@ -167,7 +167,7 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 					OperationStatus: resource.OperationStatusFailure,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get Container Registry create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
@@ -227,7 +227,7 @@ func (cr *ContainerRegistry) Read(ctx context.Context, request *resource.ReadReq
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read Container Registry: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
@@ -296,7 +296,7 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 				NativeID:        request.NativeID,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start Container Registry update: %w", err)
+		}, nil
 	}
 
 	if poller.Done() {
@@ -309,7 +309,7 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 					NativeID:        request.NativeID,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get Container Registry update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)

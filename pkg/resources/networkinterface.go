@@ -235,7 +235,7 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start NetworkInterface creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID
@@ -253,7 +253,7 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get NetworkInterface create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeNetworkInterfaceProperties(result.Interface, rgName, nicName)
@@ -319,7 +319,7 @@ func (nic *NetworkInterface) Read(ctx context.Context, request *resource.ReadReq
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read NetworkInterface: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeNetworkInterfaceProperties(result.Interface, rgName, nicName)
@@ -454,7 +454,7 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start NetworkInterface update: %w", err)
+		}, nil
 	}
 
 	// Check if completed synchronously
@@ -469,7 +469,7 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get NetworkInterface update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeNetworkInterfaceProperties(result.Interface, rgName, nicName)

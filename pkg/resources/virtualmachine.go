@@ -392,7 +392,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start VirtualMachine creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID
@@ -410,7 +410,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get VirtualMachine create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, vmName)
@@ -476,7 +476,7 @@ func (vm *VirtualMachine) Read(ctx context.Context, request *resource.ReadReques
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read VirtualMachine: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, vmName)
@@ -545,7 +545,7 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start VirtualMachine update: %w", err)
+		}, nil
 	}
 
 	// Check if completed synchronously
@@ -560,7 +560,7 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get VirtualMachine update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, vmName)

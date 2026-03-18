@@ -153,7 +153,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start Subnet creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID (we know the format)
@@ -171,7 +171,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get Subnet create result: %w", err)
+			}, nil
 		}
 
 		// Serialize properties using shared serialization logic
@@ -246,7 +246,7 @@ func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return &resource.ReadResult{
 
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read Subnet: %w", err)
+		}, nil
 	}
 
 	// Serialize properties using shared serialization logic
@@ -317,7 +317,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 
 				ErrorCode: mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start Subnet update: %w", err)
+		}, nil
 	}
 
 	// Check if the operation completed synchronously (already Done)
@@ -332,7 +332,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 
 					ErrorCode: mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get Subnet update result: %w", err)
+			}, nil
 		}
 
 		// Serialize properties using shared serialization logic

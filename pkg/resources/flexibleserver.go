@@ -403,7 +403,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 				OperationStatus: resource.OperationStatusFailure,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start FlexibleServer creation: %w", err)
+		}, nil
 	}
 
 	// Build expected NativeID
@@ -420,7 +420,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 					OperationStatus: resource.OperationStatusFailure,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get FlexibleServer create result: %w", err)
+			}, nil
 		}
 
 		responseProps := f.buildPropertiesFromResult(&result.Server)
@@ -486,7 +486,7 @@ func (f *FlexibleServer) Read(ctx context.Context, request *resource.ReadRequest
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read FlexibleServer: %w", err)
+		}, nil
 	}
 
 	responseProps := f.buildPropertiesFromResult(&result.Server)
@@ -655,7 +655,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 				NativeID:        request.NativeID,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start FlexibleServer update: %w", err)
+		}, nil
 	}
 
 	// Check if the operation completed synchronously
@@ -669,7 +669,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 					NativeID:        request.NativeID,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get FlexibleServer update result: %w", err)
+			}, nil
 		}
 
 		responseProps := f.buildPropertiesFromResult(&result.Server)

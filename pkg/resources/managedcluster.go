@@ -393,7 +393,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 				OperationStatus: resource.OperationStatusFailure,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start AKS cluster creation: %w", err)
+		}, nil
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
@@ -408,7 +408,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 					OperationStatus: resource.OperationStatusFailure,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get AKS cluster create result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
@@ -468,7 +468,7 @@ func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadReques
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
-		}, fmt.Errorf("failed to read AKS cluster: %w", err)
+		}, nil
 	}
 
 	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
@@ -547,7 +547,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 				NativeID:        request.NativeID,
 				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
-		}, fmt.Errorf("failed to start AKS cluster update: %w", err)
+		}, nil
 	}
 
 	if poller.Done() {
@@ -560,7 +560,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 					NativeID:        request.NativeID,
 					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 				},
-			}, fmt.Errorf("failed to get AKS cluster update result: %w", err)
+			}, nil
 		}
 
 		propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
