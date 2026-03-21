@@ -36,7 +36,7 @@ typealias PrincipalType = "User"|"Group"|"ServicePrincipal"|"ForeignGroup"|"Devi
 open class RoleAssignment extends formae.Resource {
 
     /// Role assignment name (must be a UUID). If omitted, one is generated automatically.
-    @azure.FieldHint { createOnly = true }
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
     name: String(length >= 1)?
 
     /// The scope at which the role assignment is created.

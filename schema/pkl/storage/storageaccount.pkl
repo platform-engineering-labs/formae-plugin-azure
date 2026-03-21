@@ -67,16 +67,16 @@ open class StorageAccount extends formae.Resource {
     kind: StorageAccountKind
 
     // Optional properties
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     accessTier: AccessTier?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     enableHttpsTrafficOnly: Boolean?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     minimumTlsVersion: String?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     allowBlobPublicAccess: Boolean?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }

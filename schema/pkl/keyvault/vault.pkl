@@ -142,13 +142,13 @@ open class Vault extends formae.Resource {
     @azure.FieldHint {}
     accessPolicies: Listing<AccessPolicyEntry>?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     enabledForDeployment: Boolean?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     enabledForDiskEncryption: Boolean?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     enabledForTemplateDeployment: Boolean?
 
     @azure.FieldHint {}
@@ -160,7 +160,7 @@ open class Vault extends formae.Resource {
     @azure.FieldHint {}
     enablePurgeProtection: Boolean?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     enableRbacAuthorization: Boolean?
 
     @azure.FieldHint {}
