@@ -75,10 +75,10 @@ open class PublicIPAddress extends formae.Resource {
     publicIPAllocationMethod: IPAllocationMethod
 
     // Optional properties
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     publicIPAddressVersion: IPVersion?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     idleTimeoutInMinutes: Int(this >= 4 && this <= 30)?
 
     @azure.FieldHint {}

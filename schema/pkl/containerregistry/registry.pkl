@@ -58,13 +58,13 @@ open class Registry extends formae.Resource {
     sku: RegistrySKU
 
     // Optional properties
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     adminUserEnabled: Boolean?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     publicNetworkAccess: String?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     zoneRedundancy: String?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
