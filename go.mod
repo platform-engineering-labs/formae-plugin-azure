@@ -16,8 +16,8 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.8.1
 	github.com/google/uuid v1.6.0
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.20
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.38
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.21
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.39
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
 )
