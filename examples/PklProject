@@ -5,6 +5,6 @@ dependencies {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.83.0"
   }
   ["azure"] {
-    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.0"
+    uri = "package://hub.platform.engineering/plugins/azure/schema/pkl/azure/azure@0.1.1"
   }
 }
