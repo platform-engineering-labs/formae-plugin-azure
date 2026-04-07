@@ -22,6 +22,8 @@ Formae plugin for managing Azure resources.
 | `Azure::ContainerRegistry::Registry` | Container registries |
 | `Azure::DBforPostgreSQL::FlexibleServer` | PostgreSQL flexible servers |
 | `Azure::DBforPostgreSQL::FirewallRule` | PostgreSQL firewall rules |
+| `Azure::DBforPostgreSQL::Database` | PostgreSQL databases |
+| `Azure::DBforPostgreSQL::Configuration` | PostgreSQL server parameters |
 | `Azure::ManagedIdentity::UserAssignedIdentity` | Managed identities |
 | `Azure::Authorization::RoleAssignment` | Role assignments |
 
