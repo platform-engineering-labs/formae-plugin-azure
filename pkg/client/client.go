@@ -56,6 +56,8 @@ type Client struct {
 	RoleAssignmentsClient        *armauthorization.RoleAssignmentsClient
 	FlexibleServersClient        *armpostgresqlflexibleservers.ServersClient
 	FirewallRulesClient          *armpostgresqlflexibleservers.FirewallRulesClient
+	DatabasesClient              *armpostgresqlflexibleservers.DatabasesClient
+	ConfigurationsClient         *armpostgresqlflexibleservers.ConfigurationsClient
 	credential                   azcore.TokenCredential
 	clientOptions                *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
@@ -147,6 +149,16 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	databasesClient, err := armpostgresqlflexibleservers.NewDatabasesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	configurationsClient, err := armpostgresqlflexibleservers.NewConfigurationsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -170,6 +182,8 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		RoleAssignmentsClient:        roleAssignmentsClient,
 		FlexibleServersClient:        flexibleServersClient,
 		FirewallRulesClient:          firewallRulesClient,
+		DatabasesClient:              databasesClient,
+		ConfigurationsClient:         configurationsClient,
 		credential:                   cred,
 		clientOptions:                clientOptions,
 		armClient:                    armClient,
@@ -415,6 +429,42 @@ func (c *Client) ResumeCreateFirewallRulePoller(token string) (*runtime.Poller[a
 // ResumeDeleteFirewallRulePoller reconstructs a delete FirewallRule poller from a resume token.
 func (c *Client) ResumeDeleteFirewallRulePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error) {
 	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse](
+		token,
+		c.armClient.Pipeline(),
+		nil,
+	)
+}
+
+// ResumeCreateDatabasePoller reconstructs a create Database poller from a resume token.
+func (c *Client) ResumeCreateDatabasePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.DatabasesClientCreateResponse](
+		token,
+		c.armClient.Pipeline(),
+		nil,
+	)
+}
+
+// ResumeDeleteDatabasePoller reconstructs a delete Database poller from a resume token.
+func (c *Client) ResumeDeleteDatabasePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.DatabasesClientDeleteResponse](
+		token,
+		c.armClient.Pipeline(),
+		nil,
+	)
+}
+
+// ResumeUpdateConfigurationPoller reconstructs an update Configuration poller from a resume token.
+func (c *Client) ResumeUpdateConfigurationPoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse](
+		token,
+		c.armClient.Pipeline(),
+		nil,
+	)
+}
+
+// ResumePutConfigurationPoller reconstructs a put Configuration poller from a resume token.
+func (c *Client) ResumePutConfigurationPoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientPutResponse], error) {
+	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.ConfigurationsClientPutResponse](
 		token,
 		c.armClient.Pipeline(),
 		nil,
