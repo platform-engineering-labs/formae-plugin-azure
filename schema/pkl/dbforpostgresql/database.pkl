@@ -1,0 +1,56 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dbforpostgresql.database
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::DBforPostgreSQL::Database"
+const apiVersion = "2024-08-01"
+
+open class DatabaseResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatabaseResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatabaseResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::DBforPostgreSQL::FlexibleServer"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+}
+open class Database extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { createOnly = true }
+    charset: String?
+
+    @azure.FieldHint { createOnly = true }
+    collation: String?
+
+    hidden parent = this
+
+    hidden res: DatabaseResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

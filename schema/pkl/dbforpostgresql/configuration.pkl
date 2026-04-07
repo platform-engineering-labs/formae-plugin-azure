@@ -1,0 +1,56 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dbforpostgresql.configuration
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::DBforPostgreSQL::Configuration"
+const apiVersion = "2024-08-01"
+
+open class ConfigurationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ConfigurationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ConfigurationResolvable = (this) {
+        property = "name"
+    }
+    hidden value: ConfigurationResolvable = (this) {
+        property = "value"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::DBforPostgreSQL::FlexibleServer"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+}
+open class Configuration extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    value: String
+
+    hidden parent = this
+
+    hidden res: ConfigurationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,76 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/dbforpostgresql/flexibleserver.pkl"
+import "@azure/dbforpostgresql/database.pkl"
+
+local stackName = "plugin-sdk-test-db-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "db-test-rg"
+  name = "formae-plugin-sdk-test-db-rg-\(testRunID)"
+  location = "westus2"
+}
+
+local pg = new flexibleserver.FlexibleServer {
+  label = "db-test-pg"
+  name = "fpsdt-db-pg-\(testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  sku = new flexibleserver.SKU {
+    name = "Standard_B1ms"
+    tier = "Burstable"
+  }
+  version = "16"
+  administratorLogin = "pgadmin"
+  administratorLoginPassword = "T3stP@ssw0rd!"
+  storage = new flexibleserver.Storage {
+    storageSizeGB = 32
+    autoGrow = "Disabled"
+    tier = "P4"
+    iops = 120
+  }
+  backup = new flexibleserver.Backup {
+    backupRetentionDays = 7
+    geoRedundantBackup = "Disabled"
+  }
+  highAvailability = new flexibleserver.HighAvailability {
+    mode = "Disabled"
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure Database"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  pg
+
+  new database.Database {
+    label = "plugin-sdk-test-db"
+    name = "testdb"
+    resourceGroupName = rg.res.name
+    serverName = pg.res.name
+    charset = "UTF8"
+    collation = "en_US.utf8"
+  }
+}
