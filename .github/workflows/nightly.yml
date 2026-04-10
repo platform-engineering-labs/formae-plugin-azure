@@ -74,9 +74,11 @@ jobs:
           - role-assignment
           - user-assigned-identity
           - maintenance-configuration
-          - extension
-          - flux-configuration
           - trusted-access-role-binding
+          # extension and flux-configuration excluded: each requires AKS cluster (~8m) +
+          # extension install (~5m), exceeding the 10m command timeout. CRUD validated locally.
+          # trusted-access-role-binding and maintenance-configuration work because they only
+          # need the AKS cluster, not an extension on top of it.
 
     permissions:
       id-token: write
