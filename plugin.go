@@ -35,7 +35,6 @@ var _ plugin.ResourcePlugin = &Plugin{}
 func (p *Plugin) RateLimit() plugin.RateLimitConfig {
 	// Azure ARM API has rate limits, but we'll start conservative
 	return plugin.RateLimitConfig{
-		Scope:                            plugin.RateLimitScopeNamespace,
 		MaxRequestsPerSecondForNamespace: 10,
 	}
 }

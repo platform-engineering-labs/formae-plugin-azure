@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerservice.maintenanceconfiguration
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::ContainerService::MaintenanceConfiguration"
+const apiVersion = "2024-01-01"
+
+open class MaintenanceConfigurationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: MaintenanceConfigurationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: MaintenanceConfigurationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Day of the week
+typealias WeekDay = "Monday"|"Tuesday"|"Wednesday"|"Thursday"|"Friday"|"Saturday"|"Sunday"
+
+/// A time slot within a week
+class TimeInWeek {
+    /// The day of the week
+    day: WeekDay?
+
+    /// Hour slots (0-23). Each represents a 1-hour window starting at that hour (UTC).
+    hourSlots: Listing<Int(this >= 0 && this <= 23)>?
+}
+
+/// A time span during which maintenance is not allowed
+class TimeSpan {
+    /// Start of the disallowed time span (ISO 8601)
+    start: String?
+
+    /// End of the disallowed time span (ISO 8601)
+    end: String?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::ContainerService::ManagedCluster"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
+}
+open class MaintenanceConfiguration extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    clusterName: String(length >= 1)|formae.Resolvable
+
+    // Time slots when maintenance is allowed
+    @azure.FieldHint {}
+    timeInWeek: Listing<TimeInWeek>?
+
+    // Time spans when maintenance is not allowed
+    @azure.FieldHint {}
+    notAllowedTime: Listing<TimeSpan>?
+
+    hidden parent = this
+
+    hidden res: MaintenanceConfigurationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
