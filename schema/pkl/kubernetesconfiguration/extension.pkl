@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.kubernetesconfiguration.extension
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::KubernetesConfiguration::Extension"
+const apiVersion = "2022-03-01"
+
+open class ExtensionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ExtensionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ExtensionResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::ContainerService::ManagedCluster"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
+}
+open class Extension extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    clusterName: String(length >= 1)|formae.Resolvable
+
+    /// Extension type (e.g. "microsoft.flux", "microsoft.dapr", "microsoft.azureml.kubernetes")
+    @azure.FieldHint { required = true; createOnly = true }
+    extensionType: String
+
+    /// Auto-upgrade minor version
+    @azure.FieldHint {}
+    autoUpgradeMinorVersion: Boolean?
+
+    /// Release train (e.g. "Stable", "Preview")
+    @azure.FieldHint {}
+    releaseTrain: String?
+
+    /// Pinned version (requires autoUpgradeMinorVersion = false)
+    @azure.FieldHint {}
+    version: String?
+
+    /// Configuration settings as key-value pairs
+    @azure.FieldHint {}
+    configurationSettings: Mapping<String, String>?
+
+    /// Sensitive configuration settings as key-value pairs
+    @azure.FieldHint {}
+    configurationProtectedSettings: Mapping<String, String>?
+
+    hidden parent = this
+
+    hidden res: ExtensionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

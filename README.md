@@ -19,6 +19,10 @@ Formae plugin for managing Azure resources.
 | `Azure::Storage::StorageAccount` | Storage accounts |
 | `Azure::KeyVault::Vault` | Key vaults |
 | `Azure::ContainerService::ManagedCluster` | AKS clusters |
+| `Azure::ContainerService::MaintenanceConfiguration` | AKS maintenance windows |
+| `Azure::ContainerService::TrustedAccessRoleBinding` | AKS trusted access for Azure services |
+| `Azure::KubernetesConfiguration::Extension` | Kubernetes extensions (Flux, Dapr, etc.) |
+| `Azure::KubernetesConfiguration::FluxConfiguration` | GitOps Flux v2 configurations |
 | `Azure::ContainerRegistry::Registry` | Container registries |
 | `Azure::DBforPostgreSQL::FlexibleServer` | PostgreSQL flexible servers |
 | `Azure::DBforPostgreSQL::FirewallRule` | PostgreSQL firewall rules |
