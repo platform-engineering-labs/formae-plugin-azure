@@ -13,6 +13,11 @@ on:
         required: false
         default: "main"
         type: string
+      skip_makefile_align:
+        description: "Skip Makefile branch alignment (test the triggered branch as-is)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   # Integration tests run against real Azure resources.
@@ -133,6 +138,7 @@ jobs:
       # plugin branch to build against. Parse the @ref suffix and check
       # out that ref so the plugin is compatible with the formae binary.
       - name: Align plugin branch with formae Makefile
+        if: ${{ !inputs.skip_makefile_align }}
         run: |
           PLUGIN_NAME=$(basename "${{ github.repository }}")
           REF=$(grep "${PLUGIN_NAME}" /tmp/formae/Makefile \
