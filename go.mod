@@ -10,6 +10,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4 v4.8.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault v1.5.0
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kubernetesconfiguration/armkubernetesconfiguration v1.1.1
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4 v4.3.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4 v4.1.0
@@ -81,4 +82,12 @@ require (
 
 replace ergo.services/ergo => github.com/JeroenSoeters/ergo v1.999.320-pel.1
 
-replace ergo.services/actor/statemachine => github.com/JeroenSoeters/actor/statemachine v0.0.0-20260205190926-8b1b2eaf30f4
+replace ergo.services/actor/statemachine => github.com/JeroenSoeters/actor/statemachine v0.0.0-20260319024748-85c28f9f660b
+
+replace github.com/platform-engineering-labs/formae/pkg/plugin => /Users/nb/Workspace/github.com/platform-engineering-labs/formae/pkg/plugin
+
+replace github.com/platform-engineering-labs/formae/pkg/model => /Users/nb/Workspace/github.com/platform-engineering-labs/formae/pkg/model
+
+replace github.com/platform-engineering-labs/formae/pkg/api/model => /Users/nb/Workspace/github.com/platform-engineering-labs/formae/pkg/api/model
+
+replace github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests => /Users/nb/Workspace/github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests

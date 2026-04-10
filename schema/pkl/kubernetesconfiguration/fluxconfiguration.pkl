@@ -1,0 +1,175 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.kubernetesconfiguration.fluxconfiguration
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::KubernetesConfiguration::FluxConfiguration"
+const apiVersion = "2022-03-01"
+
+open class FluxConfigurationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FluxConfigurationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FluxConfigurationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Source kind type
+typealias SourceKind = "GitRepository"|"Bucket"
+
+/// Scope at which the operator will be installed
+typealias FluxScope = "cluster"|"namespace"
+
+/// Git repository reference
+class RepositoryRef {
+    /// Branch name
+    branch: String?
+
+    /// Commit SHA (must be combined with branch)
+    commit: String?
+
+    /// Semver range for tag matching
+    semver: String?
+
+    /// Tag name
+    tag: String?
+}
+
+/// Git repository source configuration
+class GitRepository {
+    /// Repository URL
+    url: String
+
+    /// Reference to checkout
+    repositoryRef: RepositoryRef?
+
+    /// Sync interval in seconds
+    syncIntervalInSeconds: Int?
+
+    /// Timeout in seconds
+    timeoutInSeconds: Int?
+
+    /// Base64-encoded HTTPS CA cert
+    httpsCACert: String?
+
+    /// HTTPS username
+    httpsUser: String?
+
+    /// Base64-encoded SSH known hosts
+    sshKnownHosts: String?
+
+    /// Local auth reference
+    localAuthRef: String?
+}
+
+/// Bucket source configuration
+class Bucket {
+    /// Bucket URL
+    url: String?
+
+    /// Bucket name
+    bucketName: String?
+
+    /// Sync interval in seconds
+    syncIntervalInSeconds: Int?
+
+    /// Timeout in seconds
+    timeoutInSeconds: Int?
+
+    /// Access key for bucket
+    accessKey: String?
+
+    /// Use insecure communication
+    insecure: Boolean?
+
+    /// Local auth reference
+    localAuthRef: String?
+}
+
+/// Kustomization definition
+class Kustomization {
+    /// Path in the source reference to reconcile
+    path: String?
+
+    /// Dependencies on other kustomizations
+    dependsOn: Listing<String>?
+
+    /// Sync interval in seconds
+    syncIntervalInSeconds: Int?
+
+    /// Retry interval in seconds
+    retryIntervalInSeconds: Int?
+
+    /// Timeout in seconds
+    timeoutInSeconds: Int?
+
+    /// Enable garbage collection
+    prune: Boolean?
+
+    /// Force re-create on immutable field change
+    force: Boolean?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::ContainerService::ManagedCluster"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
+}
+open class FluxConfiguration extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    clusterName: String(length >= 1)|formae.Resolvable
+
+    /// Source kind
+    @azure.FieldHint { required = true }
+    sourceKind: SourceKind
+
+    /// Scope
+    @azure.FieldHint {}
+    scope: FluxScope?
+
+    /// Namespace for the configuration
+    @azure.FieldHint {}
+    namespace: String?
+
+    /// Whether to suspend reconciliation
+    @azure.FieldHint {}
+    suspend: Boolean?
+
+    /// Git repository source configuration
+    @azure.FieldHint {}
+    gitRepository: GitRepository?
+
+    /// Bucket source configuration
+    @azure.FieldHint {}
+    bucket: Bucket?
+
+    /// Kustomizations (keyed by name)
+    @azure.FieldHint {}
+    kustomizations: Mapping<String, Kustomization>?
+
+    hidden parent = this
+
+    hidden res: FluxConfigurationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

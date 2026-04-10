@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
@@ -197,4 +198,14 @@ func isDeleteSuccessError(err error) bool {
 		return false
 	}
 	return mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound
+}
+
+// parseTime tries common ISO 8601 formats for time strings from Pkl/JSON.
+func parseTime(s string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05Z", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse time: %s", s)
 }

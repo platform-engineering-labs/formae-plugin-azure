@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerservice.trustedaccessrolebinding
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::ContainerService::TrustedAccessRoleBinding"
+const apiVersion = "2024-01-01"
+
+open class TrustedAccessRoleBindingResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TrustedAccessRoleBindingResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TrustedAccessRoleBindingResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::ContainerService::ManagedCluster"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
+}
+open class TrustedAccessRoleBinding extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    clusterName: String(length >= 1)|formae.Resolvable
+
+    /// ARM resource ID of the source resource that trusted access is configured for
+    @azure.FieldHint { required = true }
+    sourceResourceId: String|formae.Resolvable
+
+    /// Qualified role names (e.g. "Microsoft.MachineLearningServices/workspaces/reader")
+    @azure.FieldHint { required = true }
+    roles: Listing<String>
+
+    hidden parent = this
+
+    hidden res: TrustedAccessRoleBindingResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

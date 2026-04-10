@@ -15,6 +15,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kubernetesconfiguration/armkubernetesconfiguration"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
@@ -51,6 +52,10 @@ type Client struct {
 	StorageAccountsClient        *armstorage.AccountsClient
 	VaultsClient                 *armkeyvault.VaultsClient
 	ManagedClustersClient        *armcontainerservice.ManagedClustersClient
+	MaintenanceConfigurationsClient *armcontainerservice.MaintenanceConfigurationsClient
+	TrustedAccessRoleBindingsClient *armcontainerservice.TrustedAccessRoleBindingsClient
+	ExtensionsClient             *armkubernetesconfiguration.ExtensionsClient
+	FluxConfigurationsClient     *armkubernetesconfiguration.FluxConfigurationsClient
 	RegistriesClient             *armcontainerregistry.RegistriesClient
 	UserAssignedIdentitiesClient *armmsi.UserAssignedIdentitiesClient
 	RoleAssignmentsClient        *armauthorization.RoleAssignmentsClient
@@ -124,6 +129,26 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	maintenanceConfigurationsClient, err := armcontainerservice.NewMaintenanceConfigurationsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	trustedAccessRoleBindingsClient, err := armcontainerservice.NewTrustedAccessRoleBindingsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	extensionsClient, err := armkubernetesconfiguration.NewExtensionsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	fluxConfigurationsClient, err := armkubernetesconfiguration.NewFluxConfigurationsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	registriesClient, err := armcontainerregistry.NewRegistriesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -177,6 +202,10 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		StorageAccountsClient:        storageAccountsClient,
 		VaultsClient:                 vaultsClient,
 		ManagedClustersClient:        managedClustersClient,
+		MaintenanceConfigurationsClient: maintenanceConfigurationsClient,
+		TrustedAccessRoleBindingsClient: trustedAccessRoleBindingsClient,
+		ExtensionsClient:             extensionsClient,
+		FluxConfigurationsClient:     fluxConfigurationsClient,
 		RegistriesClient:             registriesClient,
 		UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
 		RoleAssignmentsClient:        roleAssignmentsClient,
@@ -469,4 +498,44 @@ func (c *Client) ResumePutConfigurationPoller(token string) (*runtime.Poller[arm
 		c.armClient.Pipeline(),
 		nil,
 	)
+}
+
+// ResumeCreateTrustedAccessRoleBindingPoller reconstructs a create TrustedAccessRoleBinding poller from a resume token.
+func (c *Client) ResumeCreateTrustedAccessRoleBindingPoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeDeleteTrustedAccessRoleBindingPoller reconstructs a delete TrustedAccessRoleBinding poller from a resume token.
+func (c *Client) ResumeDeleteTrustedAccessRoleBindingPoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeCreateExtensionPoller reconstructs a create Extension poller from a resume token.
+func (c *Client) ResumeCreateExtensionPoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientCreateResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeUpdateExtensionPoller reconstructs an update Extension poller from a resume token.
+func (c *Client) ResumeUpdateExtensionPoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientUpdateResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeDeleteExtensionPoller reconstructs a delete Extension poller from a resume token.
+func (c *Client) ResumeDeleteExtensionPoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientDeleteResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeCreateFluxConfigurationPoller reconstructs a create FluxConfiguration poller from a resume token.
+func (c *Client) ResumeCreateFluxConfigurationPoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeUpdateFluxConfigurationPoller reconstructs an update FluxConfiguration poller from a resume token.
+func (c *Client) ResumeUpdateFluxConfigurationPoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientUpdateResponse](token, c.armClient.Pipeline(), nil)
+}
+
+// ResumeDeleteFluxConfigurationPoller reconstructs a delete FluxConfiguration poller from a resume token.
+func (c *Client) ResumeDeleteFluxConfigurationPoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse](token, c.armClient.Pipeline(), nil)
 }
