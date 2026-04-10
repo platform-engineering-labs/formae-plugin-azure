@@ -68,6 +68,10 @@ jobs:
           # CRUD tests still run via test-integration.
           - role-assignment
           - user-assigned-identity
+          - maintenance-configuration
+          - extension
+          - flux-configuration
+          - trusted-access-role-binding
 
     permissions:
       id-token: write
