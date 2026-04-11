@@ -36,7 +36,8 @@ var _ plugin.ResourcePlugin = &Plugin{}
 func (p *Plugin) RateLimit() model.RateLimitConfig {
 	// Azure ARM API has rate limits, but we'll start conservative
 	return model.RateLimitConfig{
-		MaxRequestsPerSecond: 10,
+		Scope:                            model.RateLimitScopeNamespace,
+		MaxRequestsPerSecondForNamespace: 10,
 	}
 }
 
