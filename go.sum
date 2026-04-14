@@ -38,8 +38,8 @@ github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1 h1:WJ
 github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1/go.mod h1:tCcJZ0uHAmvjsVYzEFivsRTN00oz5BEsRgQHu5JZ9WE=
 github.com/AzureAD/microsoft-authentication-library-for-go v1.5.0 h1:XkkQbfMyuH2jTSjQjSoihryI8GINRcs4xp8lNawg0FI=
 github.com/AzureAD/microsoft-authentication-library-for-go v1.5.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
-github.com/JeroenSoeters/actor/statemachine v0.0.0-20260414171442-1ef660e4a3bc h1:u7q7LSGOPFHHkekIuz88u45nCu6wOlkyJbGoSqz+UWg=
-github.com/JeroenSoeters/actor/statemachine v0.0.0-20260414171442-1ef660e4a3bc/go.mod h1:XbiEudzYCbg5YvbIMqylWXH2iWnUeKagDTfPR7uOaqg=
+github.com/JeroenSoeters/actor/statemachine v0.0.0-20260319024748-85c28f9f660b h1:HBny9tCyJDRftwBjIYPO2cHJu2faBhmyfvFMeGda/cU=
+github.com/JeroenSoeters/actor/statemachine v0.0.0-20260319024748-85c28f9f660b/go.mod h1:pZkasfR9a9QIG3HbjvI5dDZpv07YQFgYXiXqCctIrmg=
 github.com/JeroenSoeters/ergo v1.999.320-pel.1 h1:f+FhIqLSeK81oArXJ9QkaOhHjahyW9Ec0T50xlGVxI4=
 github.com/JeroenSoeters/ergo v1.999.320-pel.1/go.mod h1:bLQ6PoO6Mz/8gVuzvPv3xfMfo1P9w6rZV1WnMXMeMdg=
 github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
@@ -92,8 +92,8 @@ github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1 h1:ZMTgKwSomy2c
 github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1/go.mod h1:0ncHFCsGA6b0w1kBm6m+QwJ823qAY2vL47GvoR0BTyU=
 github.com/platform-engineering-labs/formae/pkg/model v0.1.6 h1:5Ao8Kog2tpTD4Om7hs07QB0tKwwUejuLku9Gv5C8pF8=
 github.com/platform-engineering-labs/formae/pkg/model v0.1.6/go.mod h1:XmGJA7jNPX9cEGc8TxTiEDitBuEVJOddNakdTZ/bH4U=
-github.com/platform-engineering-labs/formae/pkg/plugin v0.1.23 h1:hkLd5wO1ikVqzg2IXi2QLDIVb6H+aL+dJD4ED5U1Dds=
-github.com/platform-engineering-labs/formae/pkg/plugin v0.1.23/go.mod h1:RlZ7kQLDEDU6yuqT1jveD+odicnKFpv3pLQZr6S+sEw=
+github.com/platform-engineering-labs/formae/pkg/plugin v0.1.22 h1:joHgX9GjUKP0EIwLAka4+v9ukzzkqr+PLpMF28BOKRo=
+github.com/platform-engineering-labs/formae/pkg/plugin v0.1.22/go.mod h1:RlZ7kQLDEDU6yuqT1jveD+odicnKFpv3pLQZr6S+sEw=
 github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.42 h1:EdxMbtUEt93StlvACmw4lOUrqdEVEOjZ4uhNyI5UKPE=
 github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.42/go.mod h1:PljEOiOoJXYM2qKGFhEGTmo5SxundvO6Jz/8c5xMxJQ=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
