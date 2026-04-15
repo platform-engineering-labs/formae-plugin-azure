@@ -12,6 +12,7 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/nativeid"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
+	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 
@@ -32,23 +33,24 @@ var _ plugin.ResourcePlugin = &Plugin{}
 // =============================================================================
 
 // RateLimit returns the rate limiting configuration for this plugin.
-func (p *Plugin) RateLimit() plugin.RateLimitConfig {
+func (p *Plugin) RateLimit() model.RateLimitConfig {
 	// Azure ARM API has rate limits, but we'll start conservative
-	return plugin.RateLimitConfig{
+	return model.RateLimitConfig{
+		Scope:                            model.RateLimitScopeNamespace,
 		MaxRequestsPerSecondForNamespace: 10,
 	}
 }
 
 // DiscoveryFilters returns filters to exclude certain resources from discovery.
-func (p *Plugin) DiscoveryFilters() []plugin.MatchFilter {
+func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 	// TODO: Implement match filters for discovery
-	return []plugin.MatchFilter{}
+	return []model.MatchFilter{}
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
 // from discovered resources. All Azure resources serialize a "name" property.
-func (p *Plugin) LabelConfig() plugin.LabelConfig {
-	return plugin.LabelConfig{
+func (p *Plugin) LabelConfig() model.LabelConfig {
+	return model.LabelConfig{
 		DefaultQuery: "$.name",
 	}
 }

@@ -17,7 +17,8 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.8.1
 	github.com/google/uuid v1.6.0
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.22
+	github.com/platform-engineering-labs/formae/pkg/model v0.1.23
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.1.23
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.1.42
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
@@ -44,7 +45,6 @@ require (
 	github.com/masterminds/semver v1.5.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1 // indirect
-	github.com/platform-engineering-labs/formae/pkg/model v0.1.6 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.1 // indirect
@@ -82,4 +82,4 @@ require (
 
 replace ergo.services/ergo => github.com/JeroenSoeters/ergo v1.999.320-pel.1
 
-replace ergo.services/actor/statemachine => github.com/JeroenSoeters/actor/statemachine v0.0.0-20260319024748-85c28f9f660b
+replace ergo.services/actor/statemachine => github.com/JeroenSoeters/actor/statemachine v0.0.0-20260414171442-1ef660e4a3bc
