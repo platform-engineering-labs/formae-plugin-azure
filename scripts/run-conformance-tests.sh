@@ -170,18 +170,35 @@ fi
 echo ""
 echo "Updating PKL dependencies for formae version ${VERSION}..."
 
-# Update PklProject files with the resolved formae version
+# Update PklProject files with the resolved formae version, but only if the
+# binary version is newer than or equal to what's already declared. This
+# prevents downgrading a PklProject that intentionally targets a pre-release
+# schema version for testing (e.g. 0.84.0 when the latest stable is 0.83.2).
+update_pkl_project_version() {
+    local file="$1"
+    local new_version="$2"
+    local current
+    current=$(grep -oP 'formae/formae@\K[0-9]+\.[0-9]+\.[0-9]+' "$file" 2>/dev/null | head -1)
+    if [[ -z "$current" ]]; then
+        echo "  No formae version found in $file, setting to ${new_version}"
+        sed_inplace "s|formae/formae@[0-9a-zA-Z.\-]*\"|formae/formae@${new_version}\"|g" "$file"
+    elif printf '%s\n%s\n' "$new_version" "$current" | sort -V | tail -1 | grep -q "^${current}$" && [[ "$current" != "$new_version" ]]; then
+        echo "  Keeping $file at formae@${current} (newer than binary version ${new_version})"
+    else
+        echo "  Updating $file to formae@${new_version} (was ${current})"
+        sed_inplace "s|formae/formae@[0-9a-zA-Z.\-]*\"|formae/formae@${new_version}\"|g" "$file"
+    fi
+}
+
 if [[ "${VERSION}" != "latest" ]]; then
     # Update schema/pkl/PklProject (plugin schema depends on formae)
     if [[ -f "${PROJECT_ROOT}/schema/pkl/PklProject" ]]; then
-        echo "Updating schema/pkl/PklProject to use formae@${VERSION}..."
-        sed_inplace "s|formae/formae@[0-9a-zA-Z.\-]*\"|formae/formae@${VERSION}\"|g" "${PROJECT_ROOT}/schema/pkl/PklProject"
+        update_pkl_project_version "${PROJECT_ROOT}/schema/pkl/PklProject" "${VERSION}"
     fi
 
     # Update testdata/PklProject (test files depend on formae)
     if [[ -f "${PROJECT_ROOT}/testdata/PklProject" ]]; then
-        echo "Updating testdata/PklProject to use formae@${VERSION}..."
-        sed_inplace "s|formae/formae@[0-9a-zA-Z.\-]*\"|formae/formae@${VERSION}\"|g" "${PROJECT_ROOT}/testdata/PklProject"
+        update_pkl_project_version "${PROJECT_ROOT}/testdata/PklProject" "${VERSION}"
     fi
 fi
 
