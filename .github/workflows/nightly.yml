@@ -11,7 +11,7 @@ on:
       formae_branch:
         description: "Formae branch to build from (default: main)"
         required: false
-        default: "main"
+        default: "0.84.0"
         type: string
       skip_makefile_align:
         description: "Skip Makefile branch alignment (test the triggered branch as-is)"
