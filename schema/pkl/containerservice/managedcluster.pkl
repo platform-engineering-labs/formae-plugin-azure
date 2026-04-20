@@ -27,6 +27,9 @@ open class ManagedClusterResolvable extends formae.Resolvable {
     hidden kubeConfig: ManagedClusterResolvable = (this) {
         property = "kubeConfig"
     }
+    hidden certificateAuthority: ManagedClusterResolvable = (this) {
+        property = "certificateAuthority"
+    }
 }
 
 /// SKU name for the managed cluster

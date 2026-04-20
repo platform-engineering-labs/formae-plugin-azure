@@ -6,6 +6,7 @@ package resources
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	"gopkg.in/yaml.v3"
 )
 
 const ResourceTypeManagedCluster = "Azure::ContainerService::ManagedCluster"
@@ -191,6 +193,29 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 	}
 
 	return json.Marshal(props)
+}
+
+// kubeConfig represents the minimal structure of a kubeconfig YAML file
+// needed to extract the certificate-authority-data field.
+type kubeConfig struct {
+	Clusters []struct {
+		Cluster struct {
+			CertificateAuthorityData string `yaml:"certificate-authority-data"`
+		} `yaml:"cluster"`
+	} `yaml:"clusters"`
+}
+
+// extractCACert parses a raw kubeconfig YAML and returns the base64-encoded
+// certificate-authority-data from the first cluster entry.
+func extractCACert(raw []byte) (string, error) {
+	var kc kubeConfig
+	if err := yaml.Unmarshal(raw, &kc); err != nil {
+		return "", fmt.Errorf("failed to parse kubeconfig YAML: %w", err)
+	}
+	if len(kc.Clusters) == 0 {
+		return "", fmt.Errorf("kubeconfig contains no cluster entries")
+	}
+	return kc.Clusters[0].Cluster.CertificateAuthorityData, nil
 }
 
 func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -474,6 +499,31 @@ func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadReques
 	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
+	}
+
+	// Fetch cluster credentials to populate kubeConfig and certificateAuthority
+	credsResp, err := mc.Client.ManagedClustersClient.ListClusterUserCredentials(ctx, rgName, clusterName, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cluster user credentials: %w", err)
+	}
+
+	if len(credsResp.Kubeconfigs) > 0 && credsResp.Kubeconfigs[0].Value != nil {
+		var props map[string]interface{}
+		if err := json.Unmarshal(propsJSON, &props); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal properties for credential enrichment: %w", err)
+		}
+
+		kubeConfigRaw := credsResp.Kubeconfigs[0].Value
+		props["kubeConfig"] = base64.StdEncoding.EncodeToString(kubeConfigRaw)
+
+		if caCert, err := extractCACert(kubeConfigRaw); err == nil && caCert != "" {
+			props["certificateAuthority"] = caCert
+		}
+
+		propsJSON, err = json.Marshal(props)
+		if err != nil {
+			return nil, fmt.Errorf("failed to re-serialize properties with credentials: %w", err)
+		}
 	}
 
 	return &resource.ReadResult{
