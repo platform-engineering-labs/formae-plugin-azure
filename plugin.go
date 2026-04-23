@@ -48,10 +48,21 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
-// from discovered resources. All Azure resources serialize a "name" property.
+// from discovered resources.
+//
+// The RFC 9535 name-list selector pulls resourceGroupName and name out in
+// selector order. The formae labeler joins multi-value query results with
+// "-", producing labels like "rg-prod-web". Using "$.name" alone causes
+// non-deterministic "-N" drift when two resources share a leaf name across
+// resource groups or subscriptions — whichever is discovered second collides
+// with the first in the unmanaged-label uniqueness check.
+//
+// Azure::Resources::ResourceGroup has no resourceGroupName property, so the
+// selector returns just [name], yielding "myrg" — still unique within a
+// subscription.
 func (p *Plugin) LabelConfig() model.LabelConfig {
 	return model.LabelConfig{
-		DefaultQuery: "$.name",
+		DefaultQuery: "$['resourceGroupName','name']",
 	}
 }
 
