@@ -50,8 +50,69 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: make test-integration
 
-  conformance-tests-main:
+  # Build formae once and share the binary across conformance jobs
+  build-formae:
     needs: [test-integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Build formae
+        run: |
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          echo "Building formae from branch: ${BRANCH}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags --unshallow
+          make build
+          /tmp/formae/formae --version
+
+      - name: Track formae clone
+        if: env.POSTHOG_API_KEY != ''
+        env:
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: |
+          REPO=$(basename "$(git remote get-url origin)" .git 2>/dev/null || echo "unknown")
+          curl -sf -o /dev/null https://k.platform.engineering/capture/ \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg api_key "$POSTHOG_API_KEY" \
+              --arg repo "$REPO" \
+              --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --arg run_id "${GITHUB_RUN_ID:-}" \
+              '{
+                api_key: $api_key,
+                distinct_id: "formae-ci",
+                event: "ci_repo_clone",
+                timestamp: $ts,
+                properties: {
+                  "$process_person_profile": false,
+                  repo: $repo,
+                  cloned_repo: "formae",
+                  ci_run_id: $run_id
+                }
+              }')" || echo "[telemetry] event send failed (non-critical)" >&2
+
+      - name: Upload formae binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: formae-binary
+          path: /tmp/formae/formae
+          retention-days: 1
+
+      - name: Upload formae source (for replace directives)
+        uses: actions/upload-artifact@v4
+        with:
+          name: formae-source
+          path: /tmp/formae
+          retention-days: 1
+
+  conformance-tests-main:
+    needs: [build-formae]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -97,42 +158,23 @@ jobs:
         with:
           pkl-version: 0.30.0
 
-      - name: Build formae
-        run: |
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          echo "Building formae from branch: ${BRANCH}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
-          cd /tmp/formae
-          # Fetch tags with enough depth for `git describe` to resolve version
-          git fetch --tags --unshallow
-          make build
-          echo "FORMAE_BINARY=/tmp/formae/formae" >> $GITHUB_ENV
+      - name: Download formae binary
+        uses: actions/download-artifact@v4
+        with:
+          name: formae-binary
+          path: /tmp/formae-bin
 
-      - name: Track formae clone
-        if: env.POSTHOG_API_KEY != ''
-        env:
-          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+      - name: Download formae source
+        uses: actions/download-artifact@v4
+        with:
+          name: formae-source
+          path: /tmp/formae
+
+      - name: Set up formae binary
         run: |
-          REPO=$(basename "$(git remote get-url origin)" .git 2>/dev/null || echo "unknown")
-          curl -sf -o /dev/null https://k.platform.engineering/capture/ \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg api_key "$POSTHOG_API_KEY" \
-              --arg repo "$REPO" \
-              --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --arg run_id "${GITHUB_RUN_ID:-}" \
-              '{
-                api_key: $api_key,
-                distinct_id: "formae-ci",
-                event: "ci_repo_clone",
-                timestamp: $ts,
-                properties: {
-                  "$process_person_profile": false,
-                  repo: $repo,
-                  cloned_repo: "formae",
-                  ci_run_id: $run_id
-                }
-              }')" || echo "[telemetry] event send failed (non-critical)" >&2
+          chmod +x /tmp/formae-bin/formae
+          echo "FORMAE_BINARY=/tmp/formae-bin/formae" >> $GITHUB_ENV
+          /tmp/formae-bin/formae --version
 
       # Temporary: until Orbital package manager handles plugin version
       # coordination, the formae Makefile is the source of truth for which
