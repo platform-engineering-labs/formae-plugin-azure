@@ -190,6 +190,10 @@ open class FlexibleServer extends formae.Resource {
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    fullyQualifiedDomainName: String?
+
     hidden parent = this
 
     hidden res: FlexibleServerResolvable = new {

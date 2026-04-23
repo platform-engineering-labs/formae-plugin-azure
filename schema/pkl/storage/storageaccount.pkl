@@ -24,6 +24,18 @@ open class StorageAccountResolvable extends formae.Resolvable {
     hidden primaryEndpoints: StorageAccountResolvable = (this) {
         property = "primaryEndpoints"
     }
+    hidden primaryBlobEndpoint: StorageAccountResolvable = (this) {
+        property = "primaryBlobEndpoint"
+    }
+    hidden primaryTableEndpoint: StorageAccountResolvable = (this) {
+        property = "primaryTableEndpoint"
+    }
+    hidden primaryQueueEndpoint: StorageAccountResolvable = (this) {
+        property = "primaryQueueEndpoint"
+    }
+    hidden primaryFileEndpoint: StorageAccountResolvable = (this) {
+        property = "primaryFileEndpoint"
+    }
 }
 
 /// SKU name for Storage Account

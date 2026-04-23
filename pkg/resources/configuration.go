@@ -21,9 +21,39 @@ import (
 
 const ResourceTypeConfiguration = "Azure::DBforPostgreSQL::Configuration"
 
+type configurationsAPI interface {
+	BeginUpdate(ctx context.Context, resourceGroupName string, serverName string, configurationName string, parameters armpostgresqlflexibleservers.ConfigurationForUpdate, options *armpostgresqlflexibleservers.ConfigurationsClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, serverName string, configurationName string, options *armpostgresqlflexibleservers.ConfigurationsClientGetOptions) (armpostgresqlflexibleservers.ConfigurationsClientGetResponse, error)
+	NewListByServerPager(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ConfigurationsClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.ConfigurationsClientListByServerResponse]
+	NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
+	ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
+}
+
+// configurationsClientWrapper composes the SDK client with FlexibleServers discovery and resume-poller methods from client.Client.
+type configurationsClientWrapper struct {
+	*armpostgresqlflexibleservers.ConfigurationsClient
+	serversClient *armpostgresqlflexibleservers.ServersClient
+	resumeUpdate  func(string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
+}
+
+func (w *configurationsClientWrapper) NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
+	return w.serversClient.NewListPager(options)
+}
+
+func (w *configurationsClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
+	return w.resumeUpdate(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeConfiguration, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &Configuration{client, cfg}
+	registry.Register(ResourceTypeConfiguration, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &Configuration{
+			api: &configurationsClientWrapper{
+				ConfigurationsClient: c.ConfigurationsClient,
+				serversClient:        c.FlexibleServersClient,
+				resumeUpdate:         c.ResumeUpdateConfigurationPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
@@ -31,8 +61,8 @@ func init() {
 // Configurations are server parameters (e.g. azure.extensions, shared_preload_libraries).
 // They always exist on the server — Create sets a value, Delete resets to default.
 type Configuration struct {
-	Client *client.Client
-	Config *config.Config
+	api    configurationsAPI
+	config *config.Config
 }
 
 func (c *Configuration) buildPropertiesFromResult(cfg *armpostgresqlflexibleservers.Configuration, rgName, serverName string) map[string]interface{} {
@@ -94,7 +124,7 @@ func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequ
 		},
 	}
 
-	poller, err := c.Client.ConfigurationsClient.BeginUpdate(ctx, rgName, serverName, configName, params, nil)
+	poller, err := c.api.BeginUpdate(ctx, rgName, serverName, configName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -106,7 +136,7 @@ func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequ
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.DBforPostgreSQL/flexibleServers/%s/configurations/%s",
-		c.Config.SubscriptionId, rgName, serverName, configName)
+		c.config.SubscriptionId, rgName, serverName, configName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -172,7 +202,7 @@ func (c *Configuration) Read(ctx context.Context, request *resource.ReadRequest)
 		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or configuration name from %s", request.NativeID)
 	}
 
-	result, err := c.Client.ConfigurationsClient.Get(ctx, rgName, serverName, configName, nil)
+	result, err := c.api.Get(ctx, rgName, serverName, configName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -219,7 +249,7 @@ func (c *Configuration) Update(ctx context.Context, request *resource.UpdateRequ
 		},
 	}
 
-	poller, err := c.Client.ConfigurationsClient.BeginUpdate(ctx, rgName, serverName, configName, params, nil)
+	poller, err := c.api.BeginUpdate(ctx, rgName, serverName, configName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -298,7 +328,7 @@ func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequ
 	}
 
 	// Read current config to get the default value
-	current, err := c.Client.ConfigurationsClient.Get(ctx, rgName, serverName, configName, nil)
+	current, err := c.api.Get(ctx, rgName, serverName, configName, nil)
 	if err != nil {
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
@@ -332,7 +362,7 @@ func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequ
 		},
 	}
 
-	poller, err := c.Client.ConfigurationsClient.BeginUpdate(ctx, rgName, serverName, configName, params, nil)
+	poller, err := c.api.BeginUpdate(ctx, rgName, serverName, configName, params, nil)
 	if err != nil {
 		return &resource.DeleteResult{
 			ProgressResult: &resource.ProgressResult{
@@ -390,7 +420,7 @@ func (c *Configuration) Status(ctx context.Context, request *resource.StatusRequ
 		operation = resource.OperationDelete
 	}
 
-	poller, err := c.Client.ResumeUpdateConfigurationPoller(reqID.ResumeToken)
+	poller, err := c.api.ResumeUpdatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -479,7 +509,7 @@ func (c *Configuration) List(ctx context.Context, request *resource.ListRequest)
 		}
 		nativeIDs = ids
 	} else {
-		serverPager := c.Client.FlexibleServersClient.NewListPager(nil)
+		serverPager := c.api.NewListFlexibleServersPager(nil)
 		for serverPager.More() {
 			page, err := serverPager.NextPage(ctx)
 			if err != nil {
@@ -510,7 +540,7 @@ func (c *Configuration) List(ctx context.Context, request *resource.ListRequest)
 }
 
 func (c *Configuration) listByServer(ctx context.Context, resourceGroupName, serverName string) ([]string, error) {
-	pager := c.Client.ConfigurationsClient.NewListByServerPager(resourceGroupName, serverName, nil)
+	pager := c.api.NewListByServerPager(resourceGroupName, serverName, nil)
 
 	var nativeIDs []string
 

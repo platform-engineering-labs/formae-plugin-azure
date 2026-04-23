@@ -22,16 +22,56 @@ import (
 
 const ResourceTypeFlexibleServer = "Azure::DBforPostgreSQL::FlexibleServer"
 
+type flexibleServersAPI interface {
+	BeginCreate(ctx context.Context, resourceGroupName string, serverName string, parameters armpostgresqlflexibleservers.Server, options *armpostgresqlflexibleservers.ServersClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ServersClientGetOptions) (armpostgresqlflexibleservers.ServersClientGetResponse, error)
+	BeginUpdate(ctx context.Context, resourceGroupName string, serverName string, parameters armpostgresqlflexibleservers.ServerForUpdate, options *armpostgresqlflexibleservers.ServersClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error)
+	BeginDelete(ctx context.Context, resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ServersClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
+	NewListByResourceGroupPager(resourceGroupName string, options *armpostgresqlflexibleservers.ServersClientListByResourceGroupOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListByResourceGroupResponse]
+	NewListPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)
+	ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
+}
+
+// flexibleServersWrapper composes the SDK client with resume-poller methods from client.Client.
+type flexibleServersWrapper struct {
+	*armpostgresqlflexibleservers.ServersClient
+	resumeCreate func(string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)
+	resumeUpdate func(string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error)
+	resumeDelete func(string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
+}
+
+func (w *flexibleServersWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *flexibleServersWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error) {
+	return w.resumeUpdate(token)
+}
+
+func (w *flexibleServersWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeFlexibleServer, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &FlexibleServer{client, cfg}
+	registry.Register(ResourceTypeFlexibleServer, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &FlexibleServer{
+			api: &flexibleServersWrapper{
+				ServersClient: c.FlexibleServersClient,
+				resumeCreate:  c.ResumeCreateFlexibleServerPoller,
+				resumeUpdate:  c.ResumeUpdateFlexibleServerPoller,
+				resumeDelete:  c.ResumeDeleteFlexibleServerPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // FlexibleServer is the provisioner for Azure Database for PostgreSQL Flexible Server.
 type FlexibleServer struct {
-	Client *client.Client
-	Config *config.Config
+	api    flexibleServersAPI
+	config *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a FlexibleServer Azure response.
@@ -389,7 +429,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Call Azure API to create server (async/LRO operation)
-	poller, err := f.Client.FlexibleServersClient.BeginCreate(
+	poller, err := f.api.BeginCreate(
 		ctx,
 		rgName,
 		serverName,
@@ -408,7 +448,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 
 	// Build expected NativeID
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.DBforPostgreSQL/flexibleServers/%s",
-		f.Config.SubscriptionId, rgName, serverName)
+		f.config.SubscriptionId, rgName, serverName)
 
 	// Check if the operation completed synchronously
 	if poller.Done() {
@@ -482,7 +522,7 @@ func (f *FlexibleServer) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	// Get server from Azure
-	result, err := f.Client.FlexibleServersClient.Get(ctx, rgName, serverName, nil)
+	result, err := f.api.Get(ctx, rgName, serverName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -640,7 +680,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Call Azure API to update server
-	poller, err := f.Client.FlexibleServersClient.BeginUpdate(
+	poller, err := f.api.BeginUpdate(
 		ctx,
 		rgName,
 		serverName,
@@ -731,7 +771,7 @@ func (f *FlexibleServer) Delete(ctx context.Context, request *resource.DeleteReq
 	}
 
 	// Start async deletion
-	poller, err := f.Client.FlexibleServersClient.BeginDelete(ctx, rgName, serverName, nil)
+	poller, err := f.api.BeginDelete(ctx, rgName, serverName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -816,7 +856,7 @@ func (f *FlexibleServer) Status(ctx context.Context, request *resource.StatusReq
 
 func (f *FlexibleServer) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.Client.ResumeCreateFlexibleServerPoller(reqID.ResumeToken)
+	poller, err := f.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -897,7 +937,7 @@ func (f *FlexibleServer) handleCreateComplete(ctx context.Context, request *reso
 
 func (f *FlexibleServer) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.Client.ResumeUpdateFlexibleServerPoller(reqID.ResumeToken)
+	poller, err := f.api.ResumeUpdatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -978,7 +1018,7 @@ func (f *FlexibleServer) handleUpdateComplete(ctx context.Context, request *reso
 
 func (f *FlexibleServer) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.Client.ResumeDeleteFlexibleServerPoller(reqID.ResumeToken)
+	poller, err := f.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -1102,7 +1142,7 @@ func (f *FlexibleServer) List(ctx context.Context, request *resource.ListRequest
 	var nativeIDs []string
 
 	if resourceGroupName != "" {
-		pager := f.Client.FlexibleServersClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		pager := f.api.NewListByResourceGroupPager(resourceGroupName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -1115,7 +1155,7 @@ func (f *FlexibleServer) List(ctx context.Context, request *resource.ListRequest
 			}
 		}
 	} else {
-		pager := f.Client.FlexibleServersClient.NewListPager(nil)
+		pager := f.api.NewListPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

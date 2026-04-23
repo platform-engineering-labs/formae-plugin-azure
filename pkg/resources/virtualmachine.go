@@ -21,16 +21,51 @@ import (
 
 const ResourceTypeVirtualMachine = "Azure::Compute::VirtualMachine"
 
+type virtualMachinesAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachine, options *armcompute.VirtualMachinesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, vmName string, options *armcompute.VirtualMachinesClientGetOptions) (armcompute.VirtualMachinesClientGetResponse, error)
+	BeginUpdate(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachineUpdate, options *armcompute.VirtualMachinesClientBeginUpdateOptions) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error)
+	BeginDelete(ctx context.Context, resourceGroupName string, vmName string, options *armcompute.VirtualMachinesClientBeginDeleteOptions) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, options *armcompute.VirtualMachinesClientListOptions) *runtime.Pager[armcompute.VirtualMachinesClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error)
+	ResumeUpdatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error)
+}
+
+// virtualMachinesClientWrapper composes the SDK client with resume-poller helpers.
+type virtualMachinesClientWrapper struct {
+	*armcompute.VirtualMachinesClient
+	pipeline runtime.Pipeline
+}
+
+func (w *virtualMachinesClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcompute.VirtualMachinesClientCreateOrUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *virtualMachinesClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcompute.VirtualMachinesClientUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *virtualMachinesClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcompute.VirtualMachinesClientDeleteResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeVirtualMachine, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &VirtualMachine{client, cfg}
+	registry.Register(ResourceTypeVirtualMachine, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &VirtualMachine{
+			api: &virtualMachinesClientWrapper{
+				VirtualMachinesClient: c.VirtualMachinesClient,
+				pipeline:              c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 // VirtualMachine is the provisioner for Azure Virtual Machines.
 type VirtualMachine struct {
-	Client *client.Client
-	Config *config.Config
+	api    virtualMachinesAPI
+	config *config.Config
 }
 
 // serializeVirtualMachineProperties converts an Azure VirtualMachine to Formae property format
@@ -377,7 +412,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Call Azure API to create VM (async/LRO operation)
-	poller, err := vm.Client.VirtualMachinesClient.BeginCreateOrUpdate(
+	poller, err := vm.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		vmName,
@@ -397,7 +432,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 
 	// Build expected NativeID
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
-		vm.Config.SubscriptionId, rgName, vmName)
+		vm.config.SubscriptionId, rgName, vmName)
 
 	// Check if the operation completed synchronously
 	if poller.Done() {
@@ -471,7 +506,7 @@ func (vm *VirtualMachine) Read(ctx context.Context, request *resource.ReadReques
 	}
 
 	// Get VM from Azure
-	result, err := vm.Client.VirtualMachinesClient.Get(ctx, rgName, vmName, nil)
+	result, err := vm.api.Get(ctx, rgName, vmName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -529,7 +564,7 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 	}
 
 	// Call Azure API to update VM
-	poller, err := vm.Client.VirtualMachinesClient.BeginUpdate(
+	poller, err := vm.api.BeginUpdate(
 		ctx,
 		rgName,
 		vmName,
@@ -620,7 +655,7 @@ func (vm *VirtualMachine) Delete(ctx context.Context, request *resource.DeleteRe
 	}
 
 	// Start async deletion
-	poller, err := vm.Client.VirtualMachinesClient.BeginDelete(ctx, rgName, vmName, nil)
+	poller, err := vm.api.BeginDelete(ctx, rgName, vmName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -694,23 +729,22 @@ func (vm *VirtualMachine) Delete(ctx context.Context, request *resource.DeleteRe
 }
 
 func (vm *VirtualMachine) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-
-	// Parse the RequestID to determine operation type
 	var reqID lroRequestID
 	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
 		}, fmt.Errorf("failed to parse request ID: %w", err)
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
-		return vm.statusCreateOrUpdate(ctx, request, &reqID)
+	case "create":
+		return vm.statusCreate(ctx, request, &reqID)
+	case "update":
+		return vm.statusUpdate(ctx, request, &reqID)
 	case "delete":
 		return vm.statusDelete(ctx, request, &reqID)
 	default:
@@ -718,85 +752,69 @@ func (vm *VirtualMachine) Status(ctx context.Context, request *resource.StatusRe
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
 		}, fmt.Errorf("unknown operation type: %s", reqID.OperationType)
 	}
 }
 
-func (vm *VirtualMachine) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
-		operation = resource.OperationUpdate
-	}
-
-	// Reconstruct the poller from the resume token
-	poller, err := vm.Client.ResumeCreateVirtualMachinePoller(reqID.ResumeToken)
+func (vm *VirtualMachine) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	poller, err := vm.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
+				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
+		}, fmt.Errorf("failed to resume poller: %w", err)
 	}
 
-	// Check if the operation is already done
 	if poller.Done() {
-		return vm.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
+		return vm.handleCreateComplete(ctx, request, poller)
 	}
 
-	// Poll for updated status
 	_, err = poller.Poll(ctx)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
+				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
 		}, nil
 	}
 
-	// Check if this poll revealed completion
 	if poller.Done() {
-		return vm.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
+		return vm.handleCreateComplete(ctx, request, poller)
 	}
 
-	// Still in progress - the next status check will determine if Done()
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
+			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
 			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+			NativeID:        reqID.NativeID,
 		},
 	}, nil
 }
 
-func (vm *VirtualMachine) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
+func (vm *VirtualMachine) handleCreateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse]) (*resource.StatusResult, error) {
 	result, err := poller.Result(ctx)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
+				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
 			},
 		}, nil
 	}
 
-	// Extract resource group name from native ID
-	parts := splitResourceID(reqID.NativeID)
+	parts := splitResourceID(*result.ID)
 	rgName := parts["resourcegroups"]
 
 	propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, *result.Name)
@@ -806,46 +824,124 @@ func (vm *VirtualMachine) handleCreateOrUpdateComplete(ctx context.Context, requ
 
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
+			Operation:          resource.OperationCreate,
+			OperationStatus:    resource.OperationStatusSuccess,
+			RequestID:          request.RequestID,
 			NativeID:           *result.ID,
 			ResourceProperties: propsJSON,
 		},
 	}, nil
 }
 
+func (vm *VirtualMachine) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	poller, err := vm.api.ResumeUpdatePoller(reqID.ResumeToken)
+	if err != nil {
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationUpdate,
+				OperationStatus: resource.OperationStatusFailure,
+				RequestID:       request.RequestID,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
+			},
+		}, fmt.Errorf("failed to resume poller: %w", err)
+	}
+
+	if poller.Done() {
+		result, err := poller.Result(ctx)
+		if err != nil {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationUpdate,
+					OperationStatus: resource.OperationStatusFailure,
+					RequestID:       request.RequestID,
+					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				},
+			}, nil
+		}
+		parts := splitResourceID(*result.ID)
+		rgName := parts["resourcegroups"]
+		propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, *result.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
+		}
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:          resource.OperationUpdate,
+				OperationStatus:    resource.OperationStatusSuccess,
+				RequestID:          request.RequestID,
+				NativeID:           *result.ID,
+				ResourceProperties: propsJSON,
+			},
+		}, nil
+	}
+
+	_, err = poller.Poll(ctx)
+	if err != nil {
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationUpdate,
+				OperationStatus: resource.OperationStatusFailure,
+				RequestID:       request.RequestID,
+				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+			},
+		}, nil
+	}
+
+	if poller.Done() {
+		result, err := poller.Result(ctx)
+		if err != nil {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					Operation:       resource.OperationUpdate,
+					OperationStatus: resource.OperationStatusFailure,
+					RequestID:       request.RequestID,
+					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				},
+			}, nil
+		}
+		parts := splitResourceID(*result.ID)
+		rgName := parts["resourcegroups"]
+		propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, *result.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
+		}
+		return &resource.StatusResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:          resource.OperationUpdate,
+				OperationStatus:    resource.OperationStatusSuccess,
+				RequestID:          request.RequestID,
+				NativeID:           *result.ID,
+				ResourceProperties: propsJSON,
+			},
+		}, nil
+	}
+
+	return &resource.StatusResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationUpdate,
+			OperationStatus: resource.OperationStatusInProgress,
+			RequestID:       request.RequestID,
+			NativeID:        reqID.NativeID,
+		},
+	}, nil
+}
+
 func (vm *VirtualMachine) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := vm.Client.ResumeDeleteVirtualMachinePoller(reqID.ResumeToken)
+	poller, err := vm.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
+		}, fmt.Errorf("failed to resume poller: %w", err)
 	}
 
-	// Check if the operation is already done
 	if poller.Done() {
 		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
+		if err != nil && !isDeleteSuccessError(err) {
 			return &resource.StatusResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -865,10 +961,8 @@ func (vm *VirtualMachine) statusDelete(ctx context.Context, request *resource.St
 		}, nil
 	}
 
-	// Poll for updated status
 	_, err = poller.Poll(ctx)
 	if err != nil {
-		// NotFound means resource is already deleted - success
 		if isDeleteSuccessError(err) {
 			return &resource.StatusResult{
 				ProgressResult: &resource.ProgressResult{
@@ -889,21 +983,9 @@ func (vm *VirtualMachine) statusDelete(ctx context.Context, request *resource.St
 		}, nil
 	}
 
-	// Check if this poll revealed completion
 	if poller.Done() {
 		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
+		if err != nil && !isDeleteSuccessError(err) {
 			return &resource.StatusResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -923,14 +1005,12 @@ func (vm *VirtualMachine) statusDelete(ctx context.Context, request *resource.St
 		}, nil
 	}
 
-	// Still in progress - the next status check will determine if Done()
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
 			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+			NativeID:        reqID.NativeID,
 		},
 	}, nil
 }
@@ -942,7 +1022,7 @@ func (vm *VirtualMachine) List(ctx context.Context, request *resource.ListReques
 		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing VirtualMachines")
 	}
 
-	pager := vm.Client.VirtualMachinesClient.NewListPager(resourceGroupName, nil)
+	pager := vm.api.NewListPager(resourceGroupName, nil)
 
 	var nativeIDs []string
 

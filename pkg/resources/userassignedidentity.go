@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -19,16 +20,25 @@ import (
 
 const ResourceTypeUserAssignedIdentity = "Azure::ManagedIdentity::UserAssignedIdentity"
 
+type userAssignedIdentitiesAPI interface {
+	CreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, parameters armmsi.Identity, options *armmsi.UserAssignedIdentitiesClientCreateOrUpdateOptions) (armmsi.UserAssignedIdentitiesClientCreateOrUpdateResponse, error)
+	Get(ctx context.Context, resourceGroupName string, resourceName string, options *armmsi.UserAssignedIdentitiesClientGetOptions) (armmsi.UserAssignedIdentitiesClientGetResponse, error)
+	Update(ctx context.Context, resourceGroupName string, resourceName string, parameters armmsi.IdentityUpdate, options *armmsi.UserAssignedIdentitiesClientUpdateOptions) (armmsi.UserAssignedIdentitiesClientUpdateResponse, error)
+	Delete(ctx context.Context, resourceGroupName string, resourceName string, options *armmsi.UserAssignedIdentitiesClientDeleteOptions) (armmsi.UserAssignedIdentitiesClientDeleteResponse, error)
+	NewListByResourceGroupPager(resourceGroupName string, options *armmsi.UserAssignedIdentitiesClientListByResourceGroupOptions) *runtime.Pager[armmsi.UserAssignedIdentitiesClientListByResourceGroupResponse]
+	NewListBySubscriptionPager(options *armmsi.UserAssignedIdentitiesClientListBySubscriptionOptions) *runtime.Pager[armmsi.UserAssignedIdentitiesClientListBySubscriptionResponse]
+}
+
 func init() {
-	registry.Register(ResourceTypeUserAssignedIdentity, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &UserAssignedIdentity{client, cfg}
+	registry.Register(ResourceTypeUserAssignedIdentity, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &UserAssignedIdentity{api: c.UserAssignedIdentitiesClient, config: cfg}
 	})
 }
 
 // UserAssignedIdentity is the provisioner for Azure User Assigned Managed Identities.
 type UserAssignedIdentity struct {
-	Client *client.Client
-	Config *config.Config
+	api    userAssignedIdentitiesAPI
+	config *config.Config
 }
 
 // serializeUserAssignedIdentityProperties converts an Azure UserAssignedIdentity to Formae property format
@@ -102,7 +112,7 @@ func (u *UserAssignedIdentity) Create(ctx context.Context, request *resource.Cre
 	}
 
 	// User assigned identity creation is synchronous
-	result, err := u.Client.UserAssignedIdentitiesClient.CreateOrUpdate(ctx, rgName, identityName, params, nil)
+	result, err := u.api.CreateOrUpdate(ctx, rgName, identityName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -141,7 +151,7 @@ func (u *UserAssignedIdentity) Read(ctx context.Context, request *resource.ReadR
 		return nil, fmt.Errorf("invalid NativeID: could not extract UserAssignedIdentity name from %s", request.NativeID)
 	}
 
-	result, err := u.Client.UserAssignedIdentitiesClient.Get(ctx, rgName, identityName, nil)
+	result, err := u.api.Get(ctx, rgName, identityName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -180,7 +190,7 @@ func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.Upd
 	}
 
 	// User assigned identity update is synchronous
-	result, err := u.Client.UserAssignedIdentitiesClient.Update(ctx, rgName, identityName, params, nil)
+	result, err := u.api.Update(ctx, rgName, identityName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -222,7 +232,7 @@ func (u *UserAssignedIdentity) Delete(ctx context.Context, request *resource.Del
 	}
 
 	// User assigned identity deletion is synchronous
-	_, err := u.Client.UserAssignedIdentitiesClient.Delete(ctx, rgName, identityName, nil)
+	_, err := u.api.Delete(ctx, rgName, identityName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -271,7 +281,7 @@ func (u *UserAssignedIdentity) Status(ctx context.Context, request *resource.Sta
 		}, fmt.Errorf("invalid NativeID: could not extract resource group or identity name")
 	}
 
-	result, err := u.Client.UserAssignedIdentitiesClient.Get(ctx, rgName, identityName, nil)
+	result, err := u.api.Get(ctx, rgName, identityName, nil)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -303,7 +313,7 @@ func (u *UserAssignedIdentity) List(ctx context.Context, request *resource.ListR
 	var nativeIDs []string
 
 	if resourceGroupName != "" {
-		pager := u.Client.UserAssignedIdentitiesClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		pager := u.api.NewListByResourceGroupPager(resourceGroupName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -316,7 +326,7 @@ func (u *UserAssignedIdentity) List(ctx context.Context, request *resource.ListR
 			}
 		}
 	} else {
-		pager := u.Client.UserAssignedIdentitiesClient.NewListBySubscriptionPager(nil)
+		pager := u.api.NewListBySubscriptionPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

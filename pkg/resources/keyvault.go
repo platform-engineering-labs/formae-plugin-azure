@@ -21,16 +21,46 @@ import (
 
 const ResourceTypeKeyVault = "Azure::KeyVault::Vault"
 
+type vaultsAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, vaultName string, parameters armkeyvault.VaultCreateOrUpdateParameters, options *armkeyvault.VaultsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, vaultName string, options *armkeyvault.VaultsClientGetOptions) (armkeyvault.VaultsClientGetResponse, error)
+	Delete(ctx context.Context, resourceGroupName string, vaultName string, options *armkeyvault.VaultsClientDeleteOptions) (armkeyvault.VaultsClientDeleteResponse, error)
+	NewListByResourceGroupPager(resourceGroupName string, options *armkeyvault.VaultsClientListByResourceGroupOptions) *runtime.Pager[armkeyvault.VaultsClientListByResourceGroupResponse]
+	NewListBySubscriptionPager(options *armkeyvault.VaultsClientListBySubscriptionOptions) *runtime.Pager[armkeyvault.VaultsClientListBySubscriptionResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientPurgeDeletedResponse], error)
+}
+
+// vaultsClientWrapper composes the SDK client with resume-poller helpers.
+type vaultsClientWrapper struct {
+	*armkeyvault.VaultsClient
+	pipeline runtime.Pipeline
+}
+
+func (w *vaultsClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkeyvault.VaultsClientCreateOrUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *vaultsClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientPurgeDeletedResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkeyvault.VaultsClientPurgeDeletedResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeKeyVault, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &KeyVault{client, cfg}
+	registry.Register(ResourceTypeKeyVault, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &KeyVault{
+			api: &vaultsClientWrapper{
+				VaultsClient: c.VaultsClient,
+				pipeline:     c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 // KeyVault is the provisioner for Azure Key Vaults.
 type KeyVault struct {
-	Client *client.Client
-	Config *config.Config
+	api    vaultsAPI
+	config *config.Config
 }
 
 // serializeKeyVaultProperties converts an Azure Vault to Formae property format
@@ -386,7 +416,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	// Call Azure API to create Key Vault (async/LRO operation)
-	poller, err := kv.Client.VaultsClient.BeginCreateOrUpdate(
+	poller, err := kv.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		vaultName,
@@ -406,7 +436,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 
 	// Build expected NativeID
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.KeyVault/vaults/%s",
-		kv.Config.SubscriptionId, rgName, vaultName)
+		kv.config.SubscriptionId, rgName, vaultName)
 
 	// Check if the operation completed synchronously
 	if poller.Done() {
@@ -480,7 +510,7 @@ func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*r
 	}
 
 	// Get Key Vault from Azure
-	result, err := kv.Client.VaultsClient.Get(ctx, rgName, vaultName, nil)
+	result, err := kv.api.Get(ctx, rgName, vaultName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -689,7 +719,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	// Call Azure API to update Key Vault
-	poller, err := kv.Client.VaultsClient.BeginCreateOrUpdate(
+	poller, err := kv.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		vaultName,
@@ -780,7 +810,7 @@ func (kv *KeyVault) Delete(ctx context.Context, request *resource.DeleteRequest)
 	}
 
 	// First, soft-delete the vault (synchronous operation)
-	_, err := kv.Client.VaultsClient.Delete(ctx, rgName, vaultName, nil)
+	_, err := kv.api.Delete(ctx, rgName, vaultName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -854,7 +884,7 @@ func (kv *KeyVault) statusCreateOrUpdate(ctx context.Context, request *resource.
 	}
 
 	// Reconstruct the poller from the resume token
-	poller, err := kv.Client.ResumeCreateKeyVaultPoller(reqID.ResumeToken)
+	poller, err := kv.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -947,7 +977,7 @@ func (kv *KeyVault) statusDelete(ctx context.Context, request *resource.StatusRe
 	rgName := parts["resourcegroups"]
 	vaultName := parts["vaults"]
 
-	_, err := kv.Client.VaultsClient.Get(ctx, rgName, vaultName, nil)
+	_, err := kv.api.Get(ctx, rgName, vaultName, nil)
 	if err != nil {
 		// If we get an error (likely NotFound), the vault was deleted
 		return &resource.StatusResult{
@@ -979,7 +1009,7 @@ func (kv *KeyVault) List(ctx context.Context, request *resource.ListRequest) (*r
 	var nativeIDs []string
 
 	if resourceGroupName != "" {
-		pager := kv.Client.VaultsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		pager := kv.api.NewListByResourceGroupPager(resourceGroupName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -992,7 +1022,7 @@ func (kv *KeyVault) List(ctx context.Context, request *resource.ListRequest) (*r
 			}
 		}
 	} else {
-		pager := kv.Client.VaultsClient.NewListBySubscriptionPager(nil)
+		pager := kv.api.NewListBySubscriptionPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

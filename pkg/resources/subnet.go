@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -19,16 +20,54 @@ import (
 
 const ResourceTypeSubnet = "Azure::Network::Subnet"
 
+type subnetsAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, virtualNetworkName string, subnetName string, subnetParameters armnetwork.Subnet, options *armnetwork.SubnetsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, virtualNetworkName string, subnetName string, options *armnetwork.SubnetsClientGetOptions) (armnetwork.SubnetsClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, virtualNetworkName string, subnetName string, options *armnetwork.SubnetsClientBeginDeleteOptions) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, virtualNetworkName string, options *armnetwork.SubnetsClientListOptions) *runtime.Pager[armnetwork.SubnetsClientListResponse]
+	NewListAllVNetsPager(options *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error)
+}
+
+// subnetsWrapper composes the SDK client with VirtualNetworks discovery and resume-poller methods from client.Client.
+type subnetsWrapper struct {
+	*armnetwork.SubnetsClient
+	vnetsClient  *armnetwork.VirtualNetworksClient
+	resumeCreate func(string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error)
+	resumeDelete func(string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error)
+}
+
+func (w *subnetsWrapper) NewListAllVNetsPager(options *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse] {
+	return w.vnetsClient.NewListAllPager(options)
+}
+
+func (w *subnetsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *subnetsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeSubnet, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &Subnet{client, cfg}
+	registry.Register(ResourceTypeSubnet, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &Subnet{
+			api: &subnetsWrapper{
+				SubnetsClient: c.SubnetsClient,
+				vnetsClient:   c.VirtualNetworksClient,
+				resumeCreate:  c.ResumeCreateSubnetPoller,
+				resumeDelete:  c.ResumeDeleteSubnetPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // Subnet is the provisioner for Azure Subnets.
 type Subnet struct {
-	Client *client.Client
-	Config *config.Config
+	api    subnetsAPI
+	config *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a Subnet Azure response.
@@ -137,7 +176,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 	}
 
 	// Call Azure API to create Subnet (async/LRO operation)
-	poller, err := s.Client.SubnetsClient.BeginCreateOrUpdate(
+	poller, err := s.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		vnetName,
@@ -158,7 +197,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 
 	// Build expected NativeID (we know the format)
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s/subnets/%s",
-		s.Config.SubscriptionId, rgName, vnetName, subnetName)
+		s.config.SubscriptionId, rgName, vnetName, subnetName)
 
 	// Check if the operation completed synchronously (already Done)
 	if poller.Done() {
@@ -241,7 +280,7 @@ func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 	}
 
 	// Get Subnet from Azure
-	result, err := s.Client.SubnetsClient.Get(ctx, rgName, vnetName, subnetName, nil)
+	result, err := s.api.Get(ctx, rgName, vnetName, subnetName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -300,7 +339,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 	}
 
 	// Call Azure API to update Subnet (CreateOrUpdate is idempotent)
-	poller, err := s.Client.SubnetsClient.BeginCreateOrUpdate(
+	poller, err := s.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		vnetName,
@@ -401,7 +440,7 @@ func (s *Subnet) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 	}
 
 	// Start async deletion
-	poller, err := s.Client.SubnetsClient.BeginDelete(ctx, rgName, vnetName, subnetName, nil)
+	poller, err := s.api.BeginDelete(ctx, rgName, vnetName, subnetName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -495,7 +534,7 @@ func (s *Subnet) statusCreateOrUpdate(ctx context.Context, request *resource.Sta
 	vnetName := parts["virtualnetworks"]
 
 	// Reconstruct the poller from the resume token
-	poller, err := s.Client.ResumeCreateSubnetPoller(reqID.ResumeToken)
+	poller, err := s.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -581,7 +620,7 @@ func (s *Subnet) handleCreateOrUpdateComplete(ctx context.Context, request *reso
 
 func (s *Subnet) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := s.Client.ResumeDeleteSubnetPoller(reqID.ResumeToken)
+	poller, err := s.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -712,7 +751,7 @@ func (s *Subnet) List(ctx context.Context, request *resource.ListRequest) (*reso
 		nativeIDs = ids
 	} else {
 		// Discovery path: enumerate all VNets across the subscription
-		vnetPager := s.Client.VirtualNetworksClient.NewListAllPager(nil)
+		vnetPager := s.api.NewListAllVNetsPager(nil)
 		for vnetPager.More() {
 			page, err := vnetPager.NextPage(ctx)
 			if err != nil {
@@ -743,7 +782,7 @@ func (s *Subnet) List(ctx context.Context, request *resource.ListRequest) (*reso
 }
 
 func (s *Subnet) listByVNet(ctx context.Context, resourceGroupName, virtualNetworkName string) ([]string, error) {
-	pager := s.Client.SubnetsClient.NewListPager(resourceGroupName, virtualNetworkName, nil)
+	pager := s.api.NewListPager(resourceGroupName, virtualNetworkName, nil)
 
 	var nativeIDs []string
 
