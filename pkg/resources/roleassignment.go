@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/google/uuid"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
@@ -20,16 +21,23 @@ import (
 
 const ResourceTypeRoleAssignment = "Azure::Authorization::RoleAssignment"
 
+type roleAssignmentsAPI interface {
+	Create(ctx context.Context, scope string, roleAssignmentName string, parameters armauthorization.RoleAssignmentCreateParameters, options *armauthorization.RoleAssignmentsClientCreateOptions) (armauthorization.RoleAssignmentsClientCreateResponse, error)
+	GetByID(ctx context.Context, roleAssignmentID string, options *armauthorization.RoleAssignmentsClientGetByIDOptions) (armauthorization.RoleAssignmentsClientGetByIDResponse, error)
+	DeleteByID(ctx context.Context, roleAssignmentID string, options *armauthorization.RoleAssignmentsClientDeleteByIDOptions) (armauthorization.RoleAssignmentsClientDeleteByIDResponse, error)
+	NewListForScopePager(scope string, options *armauthorization.RoleAssignmentsClientListForScopeOptions) *runtime.Pager[armauthorization.RoleAssignmentsClientListForScopeResponse]
+}
+
 func init() {
-	registry.Register(ResourceTypeRoleAssignment, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &RoleAssignment{client, cfg}
+	registry.Register(ResourceTypeRoleAssignment, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &RoleAssignment{api: c.RoleAssignmentsClient, config: cfg}
 	})
 }
 
 // RoleAssignment is the provisioner for Azure Role Assignments.
 type RoleAssignment struct {
-	Client *client.Client
-	Config *config.Config
+	api    roleAssignmentsAPI
+	config *config.Config
 }
 
 // serializeRoleAssignmentProperties converts an Azure RoleAssignment to Formae property format
@@ -129,7 +137,7 @@ func (r *RoleAssignment) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Role assignment creation is synchronous
-	result, err := r.Client.RoleAssignmentsClient.Create(ctx, scope, roleAssignmentName, params, nil)
+	result, err := r.api.Create(ctx, scope, roleAssignmentName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -152,7 +160,7 @@ func (r *RoleAssignment) Create(ctx context.Context, request *resource.CreateReq
 
 func (r *RoleAssignment) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
 	// RoleAssignment NativeID is the full resource ID which serves as the scope
-	result, err := r.Client.RoleAssignmentsClient.GetByID(ctx, request.NativeID, nil)
+	result, err := r.api.GetByID(ctx, request.NativeID, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -186,7 +194,7 @@ func (r *RoleAssignment) Update(ctx context.Context, request *resource.UpdateReq
 
 func (r *RoleAssignment) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	// Role assignment deletion uses the full resource ID
-	_, err := r.Client.RoleAssignmentsClient.DeleteByID(ctx, request.NativeID, nil)
+	_, err := r.api.DeleteByID(ctx, request.NativeID, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -220,7 +228,7 @@ func (r *RoleAssignment) Delete(ctx context.Context, request *resource.DeleteReq
 func (r *RoleAssignment) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
 	// Role assignment operations are synchronous, so Status should not normally be called
 	// If it is called, do a Read to get current state
-	result, err := r.Client.RoleAssignmentsClient.GetByID(ctx, request.NativeID, nil)
+	result, err := r.api.GetByID(ctx, request.NativeID, nil)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -252,10 +260,10 @@ func (r *RoleAssignment) List(ctx context.Context, request *resource.ListRequest
 	scope, ok := request.AdditionalProperties["scope"]
 	if !ok || scope == "" {
 		// Default to subscription scope
-		scope = fmt.Sprintf("/subscriptions/%s", r.Config.SubscriptionId)
+		scope = fmt.Sprintf("/subscriptions/%s", r.config.SubscriptionId)
 	}
 
-	pager := r.Client.RoleAssignmentsClient.NewListForScopePager(scope, nil)
+	pager := r.api.NewListForScopePager(scope, nil)
 
 	var nativeIDs []string
 

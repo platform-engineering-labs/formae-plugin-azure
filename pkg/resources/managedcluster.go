@@ -6,7 +6,6 @@ package resources
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -18,21 +17,51 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
-	"gopkg.in/yaml.v3"
 )
 
 const ResourceTypeManagedCluster = "Azure::ContainerService::ManagedCluster"
 
+type managedClustersAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, parameters armcontainerservice.ManagedCluster, options *armcontainerservice.ManagedClustersClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientGetOptions) (armcontainerservice.ManagedClustersClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientBeginDeleteOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
+	NewListByResourceGroupPager(resourceGroupName string, options *armcontainerservice.ManagedClustersClientListByResourceGroupOptions) *runtime.Pager[armcontainerservice.ManagedClustersClientListByResourceGroupResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
+}
+
+// managedClustersWrapper composes the SDK client with resume-poller methods from client.Client.
+type managedClustersWrapper struct {
+	*armcontainerservice.ManagedClustersClient
+	resumeCreate func(string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
+	resumeDelete func(string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
+}
+
+func (w *managedClustersWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *managedClustersWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeManagedCluster, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &ManagedCluster{client, cfg}
+	registry.Register(ResourceTypeManagedCluster, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &ManagedCluster{
+			api: &managedClustersWrapper{
+				ManagedClustersClient: c.ManagedClustersClient,
+				resumeCreate:         c.ResumeCreateManagedClusterPoller,
+				resumeDelete:         c.ResumeDeleteManagedClusterPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // ManagedCluster is the provisioner for Azure Kubernetes Service (AKS) clusters.
 type ManagedCluster struct {
-	Client *client.Client
-	Config *config.Config
+	api    managedClustersAPI
+	config *config.Config
 }
 
 // serializeManagedClusterProperties converts an Azure ManagedCluster to Formae property format
@@ -84,6 +113,21 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 		// FQDN (read-only output)
 		if result.Properties.Fqdn != nil {
 			props["fqdn"] = *result.Properties.Fqdn
+		}
+
+		// Provisioning state (read-only output)
+		if result.Properties.ProvisioningState != nil {
+			props["provisioningState"] = *result.Properties.ProvisioningState
+		}
+
+		// Current Kubernetes version (read-only output — actual running version)
+		if result.Properties.CurrentKubernetesVersion != nil {
+			props["currentKubernetesVersion"] = *result.Properties.CurrentKubernetesVersion
+		}
+
+		// Node resource group (read-only output)
+		if result.Properties.NodeResourceGroup != nil {
+			props["nodeResourceGroup"] = *result.Properties.NodeResourceGroup
 		}
 
 		// Kubernetes version
@@ -193,29 +237,6 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 	}
 
 	return json.Marshal(props)
-}
-
-// kubeConfig represents the minimal structure of a kubeconfig YAML file
-// needed to extract the certificate-authority-data field.
-type kubeConfig struct {
-	Clusters []struct {
-		Cluster struct {
-			CertificateAuthorityData string `yaml:"certificate-authority-data"`
-		} `yaml:"cluster"`
-	} `yaml:"clusters"`
-}
-
-// extractCACert parses a raw kubeconfig YAML and returns the base64-encoded
-// certificate-authority-data from the first cluster entry.
-func extractCACert(raw []byte) (string, error) {
-	var kc kubeConfig
-	if err := yaml.Unmarshal(raw, &kc); err != nil {
-		return "", fmt.Errorf("failed to parse kubeconfig YAML: %w", err)
-	}
-	if len(kc.Clusters) == 0 {
-		return "", fmt.Errorf("kubeconfig contains no cluster entries")
-	}
-	return kc.Clusters[0].Cluster.CertificateAuthorityData, nil
 }
 
 func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -410,7 +431,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 		params.Tags = azureTags
 	}
 
-	poller, err := mc.Client.ManagedClustersClient.BeginCreateOrUpdate(ctx, rgName, clusterName, params, nil)
+	poller, err := mc.api.BeginCreateOrUpdate(ctx, rgName, clusterName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -422,7 +443,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
-		mc.Config.SubscriptionId, rgName, clusterName)
+		mc.config.SubscriptionId, rgName, clusterName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -489,7 +510,7 @@ func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadReques
 		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
 	}
 
-	result, err := mc.Client.ManagedClustersClient.Get(ctx, rgName, clusterName, nil)
+	result, err := mc.api.Get(ctx, rgName, clusterName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -499,31 +520,6 @@ func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadReques
 	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
-	}
-
-	// Fetch cluster credentials to populate kubeConfig and certificateAuthority
-	credsResp, err := mc.Client.ManagedClustersClient.ListClusterUserCredentials(ctx, rgName, clusterName, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list cluster user credentials: %w", err)
-	}
-
-	if len(credsResp.Kubeconfigs) > 0 && credsResp.Kubeconfigs[0].Value != nil {
-		var props map[string]interface{}
-		if err := json.Unmarshal(propsJSON, &props); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal properties for credential enrichment: %w", err)
-		}
-
-		kubeConfigRaw := credsResp.Kubeconfigs[0].Value
-		props["kubeConfig"] = base64.StdEncoding.EncodeToString(kubeConfigRaw)
-
-		if caCert, err := extractCACert(kubeConfigRaw); err == nil && caCert != "" {
-			props["certificateAuthority"] = caCert
-		}
-
-		propsJSON, err = json.Marshal(props)
-		if err != nil {
-			return nil, fmt.Errorf("failed to re-serialize properties with credentials: %w", err)
-		}
 	}
 
 	return &resource.ReadResult{
@@ -588,7 +584,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 		params.Tags = azureTags
 	}
 
-	poller, err := mc.Client.ManagedClustersClient.BeginCreateOrUpdate(ctx, rgName, clusterName, params, nil)
+	poller, err := mc.api.BeginCreateOrUpdate(ctx, rgName, clusterName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -666,7 +662,7 @@ func (mc *ManagedCluster) Delete(ctx context.Context, request *resource.DeleteRe
 		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
 	}
 
-	poller, err := mc.Client.ManagedClustersClient.BeginDelete(ctx, rgName, clusterName, nil)
+	poller, err := mc.api.BeginDelete(ctx, rgName, clusterName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -747,7 +743,7 @@ func (mc *ManagedCluster) statusCreateOrUpdate(ctx context.Context, request *res
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := mc.Client.ResumeCreateManagedClusterPoller(reqID.ResumeToken)
+	poller, err := mc.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -823,7 +819,7 @@ func (mc *ManagedCluster) handleCreateOrUpdateComplete(ctx context.Context, requ
 }
 
 func (mc *ManagedCluster) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := mc.Client.ResumeDeleteManagedClusterPoller(reqID.ResumeToken)
+	poller, err := mc.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -941,7 +937,7 @@ func (mc *ManagedCluster) List(ctx context.Context, request *resource.ListReques
 		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing ManagedClusters")
 	}
 
-	pager := mc.Client.ManagedClustersClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	pager := mc.api.NewListByResourceGroupPager(resourceGroupName, nil)
 
 	var nativeIDs []string
 

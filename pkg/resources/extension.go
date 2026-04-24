@@ -19,6 +19,35 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
+type extensionsAPI interface {
+	BeginCreate(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, extension armkubernetesconfiguration.Extension, options *armkubernetesconfiguration.ExtensionsClientBeginCreateOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, options *armkubernetesconfiguration.ExtensionsClientGetOptions) (armkubernetesconfiguration.ExtensionsClientGetResponse, error)
+	BeginUpdate(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, patchExtension armkubernetesconfiguration.PatchExtension, options *armkubernetesconfiguration.ExtensionsClientBeginUpdateOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error)
+	BeginDelete(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, options *armkubernetesconfiguration.ExtensionsClientBeginDeleteOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.ExtensionsClientListOptions) *runtime.Pager[armkubernetesconfiguration.ExtensionsClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error)
+	ResumeUpdatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error)
+}
+
+// extensionsClientWrapper composes the SDK client with resume-poller helpers.
+type extensionsClientWrapper struct {
+	*armkubernetesconfiguration.ExtensionsClient
+	pipeline runtime.Pipeline
+}
+
+func (w *extensionsClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientCreateResponse](token, w.pipeline, nil)
+}
+
+func (w *extensionsClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *extensionsClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientDeleteResponse](token, w.pipeline, nil)
+}
+
 const (
 	ResourceTypeExtension = "Azure::KubernetesConfiguration::Extension"
 
@@ -28,14 +57,20 @@ const (
 )
 
 func init() {
-	registry.Register(ResourceTypeExtension, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &Extension{client, cfg}
+	registry.Register(ResourceTypeExtension, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &Extension{
+			api: &extensionsClientWrapper{
+				ExtensionsClient: c.ExtensionsClient,
+				pipeline:         c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 type Extension struct {
-	Client *client.Client
-	Config *config.Config
+	api    extensionsAPI
+	config *config.Config
 }
 
 func serializeExtensionProperties(result armkubernetesconfiguration.Extension, rgName, clusterName string) (json.RawMessage, error) {
@@ -136,7 +171,7 @@ func (e *Extension) Create(ctx context.Context, request *resource.CreateRequest)
 		params.Properties.ConfigurationProtectedSettings = protectedSettings
 	}
 
-	poller, err := e.Client.ExtensionsClient.BeginCreate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, params, nil)
+	poller, err := e.api.BeginCreate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -148,7 +183,7 @@ func (e *Extension) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s/providers/Microsoft.KubernetesConfiguration/extensions/%s",
-		e.Config.SubscriptionId, rgName, clusterName, extensionName)
+		e.config.SubscriptionId, rgName, clusterName, extensionName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -208,7 +243,7 @@ func (e *Extension) Read(ctx context.Context, request *resource.ReadRequest) (*r
 		return nil, err
 	}
 
-	result, err := e.Client.ExtensionsClient.Get(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, nil)
+	result, err := e.api.Get(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -256,7 +291,7 @@ func (e *Extension) Update(ctx context.Context, request *resource.UpdateRequest)
 		patch.Properties.ConfigurationProtectedSettings = protectedSettings
 	}
 
-	poller, err := e.Client.ExtensionsClient.BeginUpdate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, patch, nil)
+	poller, err := e.api.BeginUpdate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, patch, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -327,7 +362,7 @@ func (e *Extension) Delete(ctx context.Context, request *resource.DeleteRequest)
 		return nil, err
 	}
 
-	poller, err := e.Client.ExtensionsClient.BeginDelete(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, nil)
+	poller, err := e.api.BeginDelete(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, nil)
 	if err != nil {
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
@@ -404,7 +439,7 @@ func (e *Extension) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (e *Extension) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := e.Client.ResumeCreateExtensionPoller(reqID.ResumeToken)
+	poller, err := e.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -480,7 +515,7 @@ func (e *Extension) handleCreateComplete(ctx context.Context, request *resource.
 }
 
 func (e *Extension) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := e.Client.ResumeUpdateExtensionPoller(reqID.ResumeToken)
+	poller, err := e.api.ResumeUpdatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -575,7 +610,7 @@ func (e *Extension) statusUpdate(ctx context.Context, request *resource.StatusRe
 }
 
 func (e *Extension) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := e.Client.ResumeDeleteExtensionPoller(reqID.ResumeToken)
+	poller, err := e.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -674,7 +709,7 @@ func (e *Extension) List(ctx context.Context, request *resource.ListRequest) (*r
 		return nil, fmt.Errorf("clusterName is required in AdditionalProperties for listing Extensions")
 	}
 
-	pager := e.Client.ExtensionsClient.NewListPager(resourceGroupName, aksClusterRP, aksClusterResourceName, clusterName, nil)
+	pager := e.api.NewListPager(resourceGroupName, aksClusterRP, aksClusterResourceName, clusterName, nil)
 
 	var nativeIDs []string
 

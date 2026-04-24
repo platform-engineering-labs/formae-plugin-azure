@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -19,16 +20,52 @@ import (
 
 const ResourceTypeContainerRegistry = "Azure::ContainerRegistry::Registry"
 
+type containerRegistryAPI interface {
+	BeginCreate(ctx context.Context, resourceGroupName string, registryName string, registry armcontainerregistry.Registry, options *armcontainerregistry.RegistriesClientBeginCreateOptions) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, registryName string, options *armcontainerregistry.RegistriesClientGetOptions) (armcontainerregistry.RegistriesClientGetResponse, error)
+	BeginUpdate(ctx context.Context, resourceGroupName string, registryName string, registryUpdateParameters armcontainerregistry.RegistryUpdateParameters, options *armcontainerregistry.RegistriesClientBeginUpdateOptions) (*runtime.Poller[armcontainerregistry.RegistriesClientUpdateResponse], error)
+	BeginDelete(ctx context.Context, resourceGroupName string, registryName string, options *armcontainerregistry.RegistriesClientBeginDeleteOptions) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error)
+	NewListPager(options *armcontainerregistry.RegistriesClientListOptions) *runtime.Pager[armcontainerregistry.RegistriesClientListResponse]
+	NewListByResourceGroupPager(resourceGroupName string, options *armcontainerregistry.RegistriesClientListByResourceGroupOptions) *runtime.Pager[armcontainerregistry.RegistriesClientListByResourceGroupResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error)
+	ResumeUpdatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error)
+}
+
+// containerRegistryClientWrapper composes the SDK client with resume-poller helpers.
+type containerRegistryClientWrapper struct {
+	*armcontainerregistry.RegistriesClient
+	pipeline runtime.Pipeline
+}
+
+func (w *containerRegistryClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcontainerregistry.RegistriesClientCreateResponse](token, w.pipeline, nil)
+}
+
+func (w *containerRegistryClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcontainerregistry.RegistriesClientUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *containerRegistryClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armcontainerregistry.RegistriesClientDeleteResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeContainerRegistry, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &ContainerRegistry{client, cfg}
+	registry.Register(ResourceTypeContainerRegistry, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &ContainerRegistry{
+			api: &containerRegistryClientWrapper{
+				RegistriesClient: c.RegistriesClient,
+				pipeline:         c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 // ContainerRegistry is the provisioner for Azure Container Registries.
 type ContainerRegistry struct {
-	Client *client.Client
-	Config *config.Config
+	api    containerRegistryAPI
+	config *config.Config
 }
 
 // serializeContainerRegistryProperties converts an Azure Registry to Formae property format
@@ -144,7 +181,7 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 	}
 
 	// Container Registry creation is async (LRO)
-	poller, err := cr.Client.RegistriesClient.BeginCreate(ctx, rgName, registryName, params, nil)
+	poller, err := cr.api.BeginCreate(ctx, rgName, registryName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -156,7 +193,7 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerRegistry/registries/%s",
-		cr.Config.SubscriptionId, rgName, registryName)
+		cr.config.SubscriptionId, rgName, registryName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -223,7 +260,7 @@ func (cr *ContainerRegistry) Read(ctx context.Context, request *resource.ReadReq
 		return nil, fmt.Errorf("invalid NativeID: could not extract registry name from %s", request.NativeID)
 	}
 
-	result, err := cr.Client.RegistriesClient.Get(ctx, rgName, registryName, nil)
+	result, err := cr.api.Get(ctx, rgName, registryName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -287,7 +324,7 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 	}
 
 	// Container Registry update is async (LRO)
-	poller, err := cr.Client.RegistriesClient.BeginUpdate(ctx, rgName, registryName, params, nil)
+	poller, err := cr.api.BeginUpdate(ctx, rgName, registryName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -366,7 +403,7 @@ func (cr *ContainerRegistry) Delete(ctx context.Context, request *resource.Delet
 	}
 
 	// Container Registry deletion is async (LRO)
-	poller, err := cr.Client.RegistriesClient.BeginDelete(ctx, rgName, registryName, nil)
+	poller, err := cr.api.BeginDelete(ctx, rgName, registryName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -466,7 +503,7 @@ func (cr *ContainerRegistry) Status(ctx context.Context, request *resource.Statu
 }
 
 func (cr *ContainerRegistry) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID lroRequestID) (*resource.StatusResult, error) {
-	poller, err := cr.Client.ResumeCreateContainerRegistryPoller(reqID.ResumeToken)
+	poller, err := cr.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -566,7 +603,7 @@ func (cr *ContainerRegistry) statusCreate(ctx context.Context, request *resource
 }
 
 func (cr *ContainerRegistry) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID lroRequestID) (*resource.StatusResult, error) {
-	poller, err := cr.Client.ResumeUpdateContainerRegistryPoller(reqID.ResumeToken)
+	poller, err := cr.api.ResumeUpdatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -670,7 +707,7 @@ func (cr *ContainerRegistry) statusUpdate(ctx context.Context, request *resource
 }
 
 func (cr *ContainerRegistry) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID lroRequestID) (*resource.StatusResult, error) {
-	poller, err := cr.Client.ResumeDeleteContainerRegistryPoller(reqID.ResumeToken)
+	poller, err := cr.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -792,7 +829,7 @@ func (cr *ContainerRegistry) List(ctx context.Context, request *resource.ListReq
 	var nativeIDs []string
 
 	if rgName != "" {
-		pager := cr.Client.RegistriesClient.NewListByResourceGroupPager(rgName, nil)
+		pager := cr.api.NewListByResourceGroupPager(rgName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -805,7 +842,7 @@ func (cr *ContainerRegistry) List(ctx context.Context, request *resource.ListReq
 			}
 		}
 	} else {
-		pager := cr.Client.RegistriesClient.NewListPager(nil)
+		pager := cr.api.NewListPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

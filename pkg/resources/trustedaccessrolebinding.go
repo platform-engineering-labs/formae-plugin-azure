@@ -21,15 +21,46 @@ import (
 
 const ResourceTypeTrustedAccessRoleBinding = "Azure::ContainerService::TrustedAccessRoleBinding"
 
+type trustedAccessRoleBindingsAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, trustedAccessRoleBindingName string, trustedAccessRoleBinding armcontainerservice.TrustedAccessRoleBinding, options *armcontainerservice.TrustedAccessRoleBindingsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, resourceName string, trustedAccessRoleBindingName string, options *armcontainerservice.TrustedAccessRoleBindingsClientGetOptions) (armcontainerservice.TrustedAccessRoleBindingsClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, resourceName string, trustedAccessRoleBindingName string, options *armcontainerservice.TrustedAccessRoleBindingsClientBeginDeleteOptions) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, resourceName string, options *armcontainerservice.TrustedAccessRoleBindingsClientListOptions) *runtime.Pager[armcontainerservice.TrustedAccessRoleBindingsClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error)
+}
+
+// trustedAccessRoleBindingsWrapper composes the SDK client with resume-poller methods from client.Client.
+type trustedAccessRoleBindingsWrapper struct {
+	*armcontainerservice.TrustedAccessRoleBindingsClient
+	resumeCreate func(string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error)
+	resumeDelete func(string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error)
+}
+
+func (w *trustedAccessRoleBindingsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *trustedAccessRoleBindingsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeTrustedAccessRoleBinding, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &TrustedAccessRoleBinding{client, cfg}
+	registry.Register(ResourceTypeTrustedAccessRoleBinding, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &TrustedAccessRoleBinding{
+			api: &trustedAccessRoleBindingsWrapper{
+				TrustedAccessRoleBindingsClient: c.TrustedAccessRoleBindingsClient,
+				resumeCreate:                    c.ResumeCreateTrustedAccessRoleBindingPoller,
+				resumeDelete:                    c.ResumeDeleteTrustedAccessRoleBindingPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 type TrustedAccessRoleBinding struct {
-	Client *client.Client
-	Config *config.Config
+	api    trustedAccessRoleBindingsAPI
+	config *config.Config
 }
 
 func serializeTrustedAccessRoleBindingProperties(result armcontainerservice.TrustedAccessRoleBinding, rgName, clusterName string) (json.RawMessage, error) {
@@ -104,7 +135,7 @@ func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource
 		},
 	}
 
-	poller, err := t.Client.TrustedAccessRoleBindingsClient.BeginCreateOrUpdate(ctx, rgName, clusterName, bindingName, params, nil)
+	poller, err := t.api.BeginCreateOrUpdate(ctx, rgName, clusterName, bindingName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -116,7 +147,7 @@ func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s/trustedAccessRoleBindings/%s",
-		t.Config.SubscriptionId, rgName, clusterName, bindingName)
+		t.config.SubscriptionId, rgName, clusterName, bindingName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -176,7 +207,7 @@ func (t *TrustedAccessRoleBinding) Read(ctx context.Context, request *resource.R
 		return nil, err
 	}
 
-	result, err := t.Client.TrustedAccessRoleBindingsClient.Get(ctx, rgName, clusterName, bindingName, nil)
+	result, err := t.api.Get(ctx, rgName, clusterName, bindingName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -225,7 +256,7 @@ func (t *TrustedAccessRoleBinding) Update(ctx context.Context, request *resource
 		},
 	}
 
-	poller, err := t.Client.TrustedAccessRoleBindingsClient.BeginCreateOrUpdate(ctx, rgName, clusterName, bindingName, params, nil)
+	poller, err := t.api.BeginCreateOrUpdate(ctx, rgName, clusterName, bindingName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -296,7 +327,7 @@ func (t *TrustedAccessRoleBinding) Delete(ctx context.Context, request *resource
 		return nil, err
 	}
 
-	poller, err := t.Client.TrustedAccessRoleBindingsClient.BeginDelete(ctx, rgName, clusterName, bindingName, nil)
+	poller, err := t.api.BeginDelete(ctx, rgName, clusterName, bindingName, nil)
 	if err != nil {
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
@@ -376,7 +407,7 @@ func (t *TrustedAccessRoleBinding) statusCreateOrUpdate(ctx context.Context, req
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := t.Client.ResumeCreateTrustedAccessRoleBindingPoller(reqID.ResumeToken)
+	poller, err := t.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -452,7 +483,7 @@ func (t *TrustedAccessRoleBinding) handleCreateOrUpdateComplete(ctx context.Cont
 }
 
 func (t *TrustedAccessRoleBinding) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := t.Client.ResumeDeleteTrustedAccessRoleBindingPoller(reqID.ResumeToken)
+	poller, err := t.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -551,7 +582,7 @@ func (t *TrustedAccessRoleBinding) List(ctx context.Context, request *resource.L
 		return nil, fmt.Errorf("clusterName is required in AdditionalProperties for listing TrustedAccessRoleBindings")
 	}
 
-	pager := t.Client.TrustedAccessRoleBindingsClient.NewListPager(resourceGroupName, clusterName, nil)
+	pager := t.api.NewListPager(resourceGroupName, clusterName, nil)
 
 	var nativeIDs []string
 

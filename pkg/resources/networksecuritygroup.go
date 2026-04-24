@@ -20,16 +20,48 @@ import (
 
 const ResourceTypeNetworkSecurityGroup = "Azure::Network::NetworkSecurityGroup"
 
+type networkSecurityGroupsAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, networkSecurityGroupName string, parameters armnetwork.SecurityGroup, options *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, networkSecurityGroupName string, options *armnetwork.SecurityGroupsClientGetOptions) (armnetwork.SecurityGroupsClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, networkSecurityGroupName string, options *armnetwork.SecurityGroupsClientBeginDeleteOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, options *armnetwork.SecurityGroupsClientListOptions) *runtime.Pager[armnetwork.SecurityGroupsClientListResponse]
+	NewListAllPager(options *armnetwork.SecurityGroupsClientListAllOptions) *runtime.Pager[armnetwork.SecurityGroupsClientListAllResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error)
+}
+
+// networkSecurityGroupsWrapper composes the SDK client with resume-poller methods from client.Client.
+type networkSecurityGroupsWrapper struct {
+	*armnetwork.SecurityGroupsClient
+	resumeCreate func(string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error)
+	resumeDelete func(string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error)
+}
+
+func (w *networkSecurityGroupsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *networkSecurityGroupsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeNetworkSecurityGroup, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &NetworkSecurityGroup{client, cfg}
+	registry.Register(ResourceTypeNetworkSecurityGroup, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &NetworkSecurityGroup{
+			api: &networkSecurityGroupsWrapper{
+				SecurityGroupsClient: c.SecurityGroupsClient,
+				resumeCreate:         c.ResumeCreateSecurityGroupPoller,
+				resumeDelete:         c.ResumeDeleteSecurityGroupPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // NetworkSecurityGroup is the provisioner for Azure Network Security Groups.
 type NetworkSecurityGroup struct {
-	Client *client.Client
-	Config *config.Config
+	api    networkSecurityGroupsAPI
+	config *config.Config
 }
 
 // serializeNSGProperties converts an Azure NetworkSecurityGroup to Formae property format
@@ -191,7 +223,7 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 		params.Tags = azureTags
 	}
 
-	poller, err := n.Client.SecurityGroupsClient.BeginCreateOrUpdate(ctx, rgName, nsgName, params, nil)
+	poller, err := n.api.BeginCreateOrUpdate(ctx, rgName, nsgName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -204,7 +236,7 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkSecurityGroups/%s",
-		n.Config.SubscriptionId, rgName, nsgName)
+		n.config.SubscriptionId, rgName, nsgName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -273,7 +305,7 @@ func (n *NetworkSecurityGroup) Read(ctx context.Context, request *resource.ReadR
 		return nil, fmt.Errorf("invalid NativeID: could not extract NSG name from %s", request.NativeID)
 	}
 
-	result, err := n.Client.SecurityGroupsClient.Get(ctx, rgName, nsgName, nil)
+	result, err := n.api.Get(ctx, rgName, nsgName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -378,7 +410,7 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 		params.Tags = azureTags
 	}
 
-	poller, err := n.Client.SecurityGroupsClient.BeginCreateOrUpdate(ctx, rgName, nsgName, params, nil)
+	poller, err := n.api.BeginCreateOrUpdate(ctx, rgName, nsgName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -459,7 +491,7 @@ func (n *NetworkSecurityGroup) Delete(ctx context.Context, request *resource.Del
 		return nil, fmt.Errorf("invalid NativeID: could not extract NSG name from %s", request.NativeID)
 	}
 
-	poller, err := n.Client.SecurityGroupsClient.BeginDelete(ctx, rgName, nsgName, nil)
+	poller, err := n.api.BeginDelete(ctx, rgName, nsgName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -543,7 +575,7 @@ func (n *NetworkSecurityGroup) statusCreateOrUpdate(ctx context.Context, request
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := n.Client.ResumeCreateSecurityGroupPoller(reqID.ResumeToken)
+	poller, err := n.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -625,7 +657,7 @@ func (n *NetworkSecurityGroup) handleCreateOrUpdateComplete(ctx context.Context,
 }
 
 func (n *NetworkSecurityGroup) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := n.Client.ResumeDeleteSecurityGroupPoller(reqID.ResumeToken)
+	poller, err := n.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -746,7 +778,7 @@ func (n *NetworkSecurityGroup) List(ctx context.Context, request *resource.ListR
 	var nativeIDs []string
 
 	if resourceGroupName != "" {
-		pager := n.Client.SecurityGroupsClient.NewListPager(resourceGroupName, nil)
+		pager := n.api.NewListPager(resourceGroupName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -759,7 +791,7 @@ func (n *NetworkSecurityGroup) List(ctx context.Context, request *resource.ListR
 			}
 		}
 	} else {
-		pager := n.Client.SecurityGroupsClient.NewListAllPager(nil)
+		pager := n.api.NewListAllPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

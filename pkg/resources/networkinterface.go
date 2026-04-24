@@ -21,16 +21,45 @@ import (
 
 const ResourceTypeNetworkInterface = "Azure::Network::NetworkInterface"
 
+type networkInterfacesAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, networkInterfaceName string, parameters armnetwork.Interface, options *armnetwork.InterfacesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, networkInterfaceName string, options *armnetwork.InterfacesClientGetOptions) (armnetwork.InterfacesClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, networkInterfaceName string, options *armnetwork.InterfacesClientBeginDeleteOptions) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, options *armnetwork.InterfacesClientListOptions) *runtime.Pager[armnetwork.InterfacesClientListResponse]
+	ResumeCreateOrUpdatePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error)
+}
+
+// networkInterfacesClientWrapper composes the SDK client with resume-poller helpers.
+type networkInterfacesClientWrapper struct {
+	*armnetwork.InterfacesClient
+	pipeline runtime.Pipeline
+}
+
+func (w *networkInterfacesClientWrapper) ResumeCreateOrUpdatePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armnetwork.InterfacesClientCreateOrUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *networkInterfacesClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armnetwork.InterfacesClientDeleteResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeNetworkInterface, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &NetworkInterface{client, cfg}
+	registry.Register(ResourceTypeNetworkInterface, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &NetworkInterface{
+			api: &networkInterfacesClientWrapper{
+				InterfacesClient: c.InterfacesClient,
+				pipeline:         c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 // NetworkInterface is the provisioner for Azure Network Interfaces.
 type NetworkInterface struct {
-	Client *client.Client
-	Config *config.Config
+	api    networkInterfacesAPI
+	config *config.Config
 }
 
 // serializeNetworkInterfaceProperties converts an Azure Interface to Formae property format
@@ -220,7 +249,7 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 	}
 
 	// Call Azure API to create NetworkInterface (async/LRO operation)
-	poller, err := nic.Client.InterfacesClient.BeginCreateOrUpdate(
+	poller, err := nic.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		nicName,
@@ -240,7 +269,7 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 
 	// Build expected NativeID
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkInterfaces/%s",
-		nic.Config.SubscriptionId, rgName, nicName)
+		nic.config.SubscriptionId, rgName, nicName)
 
 	// Check if the operation completed synchronously
 	if poller.Done() {
@@ -314,7 +343,7 @@ func (nic *NetworkInterface) Read(ctx context.Context, request *resource.ReadReq
 	}
 
 	// Get NetworkInterface from Azure
-	result, err := nic.Client.InterfacesClient.Get(ctx, rgName, nicName, nil)
+	result, err := nic.api.Get(ctx, rgName, nicName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -438,7 +467,7 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 	}
 
 	// Call Azure API to update NetworkInterface
-	poller, err := nic.Client.InterfacesClient.BeginCreateOrUpdate(
+	poller, err := nic.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		nicName,
@@ -529,7 +558,7 @@ func (nic *NetworkInterface) Delete(ctx context.Context, request *resource.Delet
 	}
 
 	// Start async deletion
-	poller, err := nic.Client.InterfacesClient.BeginDelete(ctx, rgName, nicName, nil)
+	poller, err := nic.api.BeginDelete(ctx, rgName, nicName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -641,7 +670,7 @@ func (nic *NetworkInterface) statusCreateOrUpdate(ctx context.Context, request *
 	}
 
 	// Reconstruct the poller from the resume token
-	poller, err := nic.Client.ResumeCreateNetworkInterfacePoller(reqID.ResumeToken)
+	poller, err := nic.api.ResumeCreateOrUpdatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -727,7 +756,7 @@ func (nic *NetworkInterface) handleCreateOrUpdateComplete(ctx context.Context, r
 
 func (nic *NetworkInterface) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := nic.Client.ResumeDeleteNetworkInterfacePoller(reqID.ResumeToken)
+	poller, err := nic.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -851,7 +880,7 @@ func (nic *NetworkInterface) List(ctx context.Context, request *resource.ListReq
 		return nil, fmt.Errorf("resourceGroupName is required in AdditionalProperties for listing NetworkInterfaces")
 	}
 
-	pager := nic.Client.InterfacesClient.NewListPager(resourceGroupName, nil)
+	pager := nic.api.NewListPager(resourceGroupName, nil)
 
 	var nativeIDs []string
 

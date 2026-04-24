@@ -21,16 +21,52 @@ import (
 
 const ResourceTypeDatabase = "Azure::DBforPostgreSQL::Database"
 
+type databasesAPI interface {
+	BeginCreate(ctx context.Context, resourceGroupName string, serverName string, databaseName string, parameters armpostgresqlflexibleservers.Database, options *armpostgresqlflexibleservers.DatabasesClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, serverName string, databaseName string, options *armpostgresqlflexibleservers.DatabasesClientGetOptions) (armpostgresqlflexibleservers.DatabasesClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, serverName string, databaseName string, options *armpostgresqlflexibleservers.DatabasesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error)
+	NewListByServerPager(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.DatabasesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.DatabasesClientListByServerResponse]
+	NewListServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error)
+}
+
+// databasesClientWrapper composes the SDK client with resume-poller helpers and server discovery.
+type databasesClientWrapper struct {
+	*armpostgresqlflexibleservers.DatabasesClient
+	serversClient *armpostgresqlflexibleservers.ServersClient
+	pipeline      runtime.Pipeline
+}
+
+func (w *databasesClientWrapper) NewListServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
+	return w.serversClient.NewListPager(options)
+}
+
+func (w *databasesClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.DatabasesClientCreateResponse](token, w.pipeline, nil)
+}
+
+func (w *databasesClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.DatabasesClientDeleteResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeDatabase, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &Database{client, cfg}
+	registry.Register(ResourceTypeDatabase, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &Database{
+			api: &databasesClientWrapper{
+				DatabasesClient: c.DatabasesClient,
+				serversClient:   c.FlexibleServersClient,
+				pipeline:        c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 // Database is the provisioner for Azure Database for PostgreSQL Flexible Server Databases.
 type Database struct {
-	Client *client.Client
-	Config *config.Config
+	api    databasesAPI
+	config *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a Database Azure response.
@@ -92,7 +128,7 @@ func (d *Database) Create(ctx context.Context, request *resource.CreateRequest) 
 		params.Properties.Collation = to.Ptr(collation)
 	}
 
-	poller, err := d.Client.DatabasesClient.BeginCreate(ctx, rgName, serverName, dbName, params, nil)
+	poller, err := d.api.BeginCreate(ctx, rgName, serverName, dbName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -104,7 +140,7 @@ func (d *Database) Create(ctx context.Context, request *resource.CreateRequest) 
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.DBforPostgreSQL/flexibleServers/%s/databases/%s",
-		d.Config.SubscriptionId, rgName, serverName, dbName)
+		d.config.SubscriptionId, rgName, serverName, dbName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -170,7 +206,7 @@ func (d *Database) Read(ctx context.Context, request *resource.ReadRequest) (*re
 		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s", request.NativeID)
 	}
 
-	result, err := d.Client.DatabasesClient.Get(ctx, rgName, serverName, dbName, nil)
+	result, err := d.api.Get(ctx, rgName, serverName, dbName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -219,7 +255,7 @@ func (d *Database) Update(ctx context.Context, request *resource.UpdateRequest) 
 		params.Properties.Collation = to.Ptr(collation)
 	}
 
-	poller, err := d.Client.DatabasesClient.BeginCreate(ctx, rgName, serverName, dbName, params, nil)
+	poller, err := d.api.BeginCreate(ctx, rgName, serverName, dbName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -296,7 +332,7 @@ func (d *Database) Delete(ctx context.Context, request *resource.DeleteRequest) 
 		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s", request.NativeID)
 	}
 
-	poller, err := d.Client.DatabasesClient.BeginDelete(ctx, rgName, serverName, dbName, nil)
+	poller, err := d.api.BeginDelete(ctx, rgName, serverName, dbName, nil)
 	if err != nil {
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
@@ -376,7 +412,7 @@ func (d *Database) statusCreateOrUpdate(ctx context.Context, request *resource.S
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := d.Client.ResumeCreateDatabasePoller(reqID.ResumeToken)
+	poller, err := d.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -453,7 +489,7 @@ func (d *Database) handleCreateOrUpdateComplete(ctx context.Context, request *re
 }
 
 func (d *Database) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := d.Client.ResumeDeleteDatabasePoller(reqID.ResumeToken)
+	poller, err := d.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -554,7 +590,7 @@ func (d *Database) List(ctx context.Context, request *resource.ListRequest) (*re
 		}
 		nativeIDs = ids
 	} else {
-		serverPager := d.Client.FlexibleServersClient.NewListPager(nil)
+		serverPager := d.api.NewListServersPager(nil)
 		for serverPager.More() {
 			page, err := serverPager.NextPage(ctx)
 			if err != nil {
@@ -585,7 +621,7 @@ func (d *Database) List(ctx context.Context, request *resource.ListRequest) (*re
 }
 
 func (d *Database) listByServer(ctx context.Context, resourceGroupName, serverName string) ([]string, error) {
-	pager := d.Client.DatabasesClient.NewListByServerPager(resourceGroupName, serverName, nil)
+	pager := d.api.NewListByServerPager(resourceGroupName, serverName, nil)
 
 	var nativeIDs []string
 

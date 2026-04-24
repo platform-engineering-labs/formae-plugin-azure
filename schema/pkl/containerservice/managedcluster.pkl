@@ -30,6 +30,15 @@ open class ManagedClusterResolvable extends formae.Resolvable {
     hidden certificateAuthority: ManagedClusterResolvable = (this) {
         property = "certificateAuthority"
     }
+    hidden provisioningState: ManagedClusterResolvable = (this) {
+        property = "provisioningState"
+    }
+    hidden currentKubernetesVersion: ManagedClusterResolvable = (this) {
+        property = "currentKubernetesVersion"
+    }
+    hidden nodeResourceGroup: ManagedClusterResolvable = (this) {
+        property = "nodeResourceGroup"
+    }
 }
 
 /// SKU name for the managed cluster
@@ -213,6 +222,16 @@ open class ManagedCluster extends formae.Resource {
     // Tags
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    provisioningState: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    currentKubernetesVersion: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    nodeResourceGroup: String?
 
     hidden parent = this
 

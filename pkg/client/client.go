@@ -219,6 +219,11 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	}, nil
 }
 
+// Pipeline returns the low-level ARM pipeline for resuming pollers.
+func (c *Client) Pipeline() runtime.Pipeline {
+	return c.armClient.Pipeline()
+}
+
 // ResumeDeleteResourceGroupPoller reconstructs a delete poller from a resume token.
 // This allows tracking the status of a long-running delete operation across process restarts.
 func (c *Client) ResumeDeleteResourceGroupPoller(token string) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error) {

@@ -20,16 +20,48 @@ import (
 
 const ResourceTypePublicIPAddress = "Azure::Network::PublicIPAddress"
 
+type publicIPAddressesAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, publicIPAddressName string, parameters armnetwork.PublicIPAddress, options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, publicIPAddressName string, options *armnetwork.PublicIPAddressesClientGetOptions) (armnetwork.PublicIPAddressesClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, publicIPAddressName string, options *armnetwork.PublicIPAddressesClientBeginDeleteOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, options *armnetwork.PublicIPAddressesClientListOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListResponse]
+	NewListAllPager(options *armnetwork.PublicIPAddressesClientListAllOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListAllResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
+}
+
+// publicIPAddressesWrapper composes the SDK client with resume-poller methods from client.Client.
+type publicIPAddressesWrapper struct {
+	*armnetwork.PublicIPAddressesClient
+	resumeCreate func(string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
+	resumeDelete func(string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
+}
+
+func (w *publicIPAddressesWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *publicIPAddressesWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypePublicIPAddress, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &PublicIPAddress{client, cfg}
+	registry.Register(ResourceTypePublicIPAddress, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &PublicIPAddress{
+			api: &publicIPAddressesWrapper{
+				PublicIPAddressesClient: c.PublicIPAddressesClient,
+				resumeCreate:           c.ResumeCreatePublicIPAddressPoller,
+				resumeDelete:           c.ResumeDeletePublicIPAddressPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // PublicIPAddress is the provisioner for Azure Public IP Addresses.
 type PublicIPAddress struct {
-	Client *client.Client
-	Config *config.Config
+	api    publicIPAddressesAPI
+	config *config.Config
 }
 
 // serializePublicIPProperties converts an Azure PublicIPAddress to Formae property format
@@ -175,7 +207,7 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 		params.Tags = azureTags
 	}
 
-	poller, err := p.Client.PublicIPAddressesClient.BeginCreateOrUpdate(ctx, rgName, pipName, params, nil)
+	poller, err := p.api.BeginCreateOrUpdate(ctx, rgName, pipName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -188,7 +220,7 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/publicIPAddresses/%s",
-		p.Config.SubscriptionId, rgName, pipName)
+		p.config.SubscriptionId, rgName, pipName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -257,7 +289,7 @@ func (p *PublicIPAddress) Read(ctx context.Context, request *resource.ReadReques
 		return nil, fmt.Errorf("invalid NativeID: could not extract PublicIP name from %s", request.NativeID)
 	}
 
-	result, err := p.Client.PublicIPAddressesClient.Get(ctx, rgName, pipName, nil)
+	result, err := p.api.Get(ctx, rgName, pipName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -352,7 +384,7 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 		params.Tags = azureTags
 	}
 
-	poller, err := p.Client.PublicIPAddressesClient.BeginCreateOrUpdate(ctx, rgName, pipName, params, nil)
+	poller, err := p.api.BeginCreateOrUpdate(ctx, rgName, pipName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -433,7 +465,7 @@ func (p *PublicIPAddress) Delete(ctx context.Context, request *resource.DeleteRe
 		return nil, fmt.Errorf("invalid NativeID: could not extract PublicIP name from %s", request.NativeID)
 	}
 
-	poller, err := p.Client.PublicIPAddressesClient.BeginDelete(ctx, rgName, pipName, nil)
+	poller, err := p.api.BeginDelete(ctx, rgName, pipName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -517,7 +549,7 @@ func (p *PublicIPAddress) statusCreateOrUpdate(ctx context.Context, request *res
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := p.Client.ResumeCreatePublicIPAddressPoller(reqID.ResumeToken)
+	poller, err := p.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -599,7 +631,7 @@ func (p *PublicIPAddress) handleCreateOrUpdateComplete(ctx context.Context, requ
 }
 
 func (p *PublicIPAddress) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := p.Client.ResumeDeletePublicIPAddressPoller(reqID.ResumeToken)
+	poller, err := p.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -720,7 +752,7 @@ func (p *PublicIPAddress) List(ctx context.Context, request *resource.ListReques
 	var nativeIDs []string
 
 	if resourceGroupName != "" {
-		pager := p.Client.PublicIPAddressesClient.NewListPager(resourceGroupName, nil)
+		pager := p.api.NewListPager(resourceGroupName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -733,7 +765,7 @@ func (p *PublicIPAddress) List(ctx context.Context, request *resource.ListReques
 			}
 		}
 	} else {
-		pager := p.Client.PublicIPAddressesClient.NewListAllPager(nil)
+		pager := p.api.NewListAllPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

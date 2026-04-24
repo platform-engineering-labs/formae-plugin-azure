@@ -21,15 +21,44 @@ import (
 
 const ResourceTypeFluxConfiguration = "Azure::KubernetesConfiguration::FluxConfiguration"
 
+type fluxConfigurationsAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, fluxConfiguration armkubernetesconfiguration.FluxConfiguration, options *armkubernetesconfiguration.FluxConfigurationsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, options *armkubernetesconfiguration.FluxConfigurationsClientGetOptions) (armkubernetesconfiguration.FluxConfigurationsClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, options *armkubernetesconfiguration.FluxConfigurationsClientBeginDeleteOptions) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error)
+	NewListPager(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.FluxConfigurationsClientListOptions) *runtime.Pager[armkubernetesconfiguration.FluxConfigurationsClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error)
+}
+
+// fluxConfigurationsWrapper composes the SDK client with pipeline-based resume methods.
+type fluxConfigurationsWrapper struct {
+	*armkubernetesconfiguration.FluxConfigurationsClient
+	pipeline runtime.Pipeline
+}
+
+func (w *fluxConfigurationsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse](token, w.pipeline, nil)
+}
+
+func (w *fluxConfigurationsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeFluxConfiguration, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &FluxConfiguration{client, cfg}
+	registry.Register(ResourceTypeFluxConfiguration, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &FluxConfiguration{
+			api: &fluxConfigurationsWrapper{
+				FluxConfigurationsClient: c.FluxConfigurationsClient,
+				pipeline:                 c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 type FluxConfiguration struct {
-	Client *client.Client
-	Config *config.Config
+	api    fluxConfigurationsAPI
+	config *config.Config
 }
 
 func serializeFluxConfigurationProperties(result armkubernetesconfiguration.FluxConfiguration, rgName, clusterName string) (json.RawMessage, error) {
@@ -276,7 +305,7 @@ func (fc *FluxConfiguration) Create(ctx context.Context, request *resource.Creat
 
 	params := buildFluxConfigurationParams(props)
 
-	poller, err := fc.Client.FluxConfigurationsClient.BeginCreateOrUpdate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, params, nil)
+	poller, err := fc.api.BeginCreateOrUpdate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -288,7 +317,7 @@ func (fc *FluxConfiguration) Create(ctx context.Context, request *resource.Creat
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s/providers/Microsoft.KubernetesConfiguration/fluxConfigurations/%s",
-		fc.Config.SubscriptionId, rgName, clusterName, fluxName)
+		fc.config.SubscriptionId, rgName, clusterName, fluxName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -348,7 +377,7 @@ func (fc *FluxConfiguration) Read(ctx context.Context, request *resource.ReadReq
 		return nil, err
 	}
 
-	result, err := fc.Client.FluxConfigurationsClient.Get(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, nil)
+	result, err := fc.api.Get(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -379,7 +408,7 @@ func (fc *FluxConfiguration) Update(ctx context.Context, request *resource.Updat
 	// FluxConfiguration uses CreateOrUpdate for updates (not PATCH)
 	params := buildFluxConfigurationParams(props)
 
-	poller, err := fc.Client.FluxConfigurationsClient.BeginCreateOrUpdate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, params, nil)
+	poller, err := fc.api.BeginCreateOrUpdate(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -450,7 +479,7 @@ func (fc *FluxConfiguration) Delete(ctx context.Context, request *resource.Delet
 		return nil, err
 	}
 
-	poller, err := fc.Client.FluxConfigurationsClient.BeginDelete(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, nil)
+	poller, err := fc.api.BeginDelete(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, nil)
 	if err != nil {
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
@@ -530,7 +559,7 @@ func (fc *FluxConfiguration) statusCreateOrUpdate(ctx context.Context, request *
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := fc.Client.ResumeCreateFluxConfigurationPoller(reqID.ResumeToken)
+	poller, err := fc.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -606,7 +635,7 @@ func (fc *FluxConfiguration) handleCreateOrUpdateComplete(ctx context.Context, r
 }
 
 func (fc *FluxConfiguration) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := fc.Client.ResumeDeleteFluxConfigurationPoller(reqID.ResumeToken)
+	poller, err := fc.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -705,7 +734,7 @@ func (fc *FluxConfiguration) List(ctx context.Context, request *resource.ListReq
 		return nil, fmt.Errorf("clusterName is required in AdditionalProperties for listing FluxConfigurations")
 	}
 
-	pager := fc.Client.FluxConfigurationsClient.NewListPager(resourceGroupName, aksClusterRP, aksClusterResourceName, clusterName, nil)
+	pager := fc.api.NewListPager(resourceGroupName, aksClusterRP, aksClusterResourceName, clusterName, nil)
 
 	var nativeIDs []string
 

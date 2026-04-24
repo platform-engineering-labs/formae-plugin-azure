@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
@@ -20,15 +21,22 @@ import (
 
 const ResourceTypeMaintenanceConfiguration = "Azure::ContainerService::MaintenanceConfiguration"
 
+type maintenanceConfigurationsAPI interface {
+	CreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, configName string, parameters armcontainerservice.MaintenanceConfiguration, options *armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateOptions) (armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateResponse, error)
+	Get(ctx context.Context, resourceGroupName string, resourceName string, configName string, options *armcontainerservice.MaintenanceConfigurationsClientGetOptions) (armcontainerservice.MaintenanceConfigurationsClientGetResponse, error)
+	Delete(ctx context.Context, resourceGroupName string, resourceName string, configName string, options *armcontainerservice.MaintenanceConfigurationsClientDeleteOptions) (armcontainerservice.MaintenanceConfigurationsClientDeleteResponse, error)
+	NewListByManagedClusterPager(resourceGroupName string, resourceName string, options *armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterOptions) *runtime.Pager[armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse]
+}
+
 func init() {
-	registry.Register(ResourceTypeMaintenanceConfiguration, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &MaintenanceConfiguration{client, cfg}
+	registry.Register(ResourceTypeMaintenanceConfiguration, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &MaintenanceConfiguration{api: c.MaintenanceConfigurationsClient, config: cfg}
 	})
 }
 
 type MaintenanceConfiguration struct {
-	Client *client.Client
-	Config *config.Config
+	api    maintenanceConfigurationsAPI
+	config *config.Config
 }
 
 func serializeMaintenanceConfigurationProperties(result armcontainerservice.MaintenanceConfiguration, rgName, clusterName string) (json.RawMessage, error) {
@@ -174,7 +182,7 @@ func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resourc
 		params.Properties.NotAllowedTime = spans
 	}
 
-	result, err := mc.Client.MaintenanceConfigurationsClient.CreateOrUpdate(ctx, rgName, clusterName, configName, params, nil)
+	result, err := mc.api.CreateOrUpdate(ctx, rgName, clusterName, configName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -218,7 +226,7 @@ func (mc *MaintenanceConfiguration) Read(ctx context.Context, request *resource.
 		return nil, fmt.Errorf("invalid NativeID: could not extract maintenance configuration name from %s", request.NativeID)
 	}
 
-	result, err := mc.Client.MaintenanceConfigurationsClient.Get(ctx, rgName, clusterName, configName, nil)
+	result, err := mc.api.Get(ctx, rgName, clusterName, configName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -315,7 +323,7 @@ func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resourc
 		params.Properties.NotAllowedTime = spans
 	}
 
-	result, err := mc.Client.MaintenanceConfigurationsClient.CreateOrUpdate(ctx, rgName, clusterName, configName, params, nil)
+	result, err := mc.api.CreateOrUpdate(ctx, rgName, clusterName, configName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -360,7 +368,7 @@ func (mc *MaintenanceConfiguration) Delete(ctx context.Context, request *resourc
 		return nil, fmt.Errorf("invalid NativeID: could not extract maintenance configuration name from %s", request.NativeID)
 	}
 
-	_, err := mc.Client.MaintenanceConfigurationsClient.Delete(ctx, rgName, clusterName, configName, nil)
+	_, err := mc.api.Delete(ctx, rgName, clusterName, configName, nil)
 	if err != nil {
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
@@ -411,7 +419,7 @@ func (mc *MaintenanceConfiguration) List(ctx context.Context, request *resource.
 		return nil, fmt.Errorf("clusterName is required in AdditionalProperties for listing MaintenanceConfigurations")
 	}
 
-	pager := mc.Client.MaintenanceConfigurationsClient.NewListByManagedClusterPager(resourceGroupName, clusterName, nil)
+	pager := mc.api.NewListByManagedClusterPager(resourceGroupName, clusterName, nil)
 
 	var nativeIDs []string
 

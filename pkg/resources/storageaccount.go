@@ -20,16 +20,42 @@ import (
 
 const ResourceTypeStorageAccount = "Azure::Storage::StorageAccount"
 
+type storageAccountsAPI interface {
+	BeginCreate(ctx context.Context, resourceGroupName string, accountName string, parameters armstorage.AccountCreateParameters, options *armstorage.AccountsClientBeginCreateOptions) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)
+	GetProperties(ctx context.Context, resourceGroupName string, accountName string, options *armstorage.AccountsClientGetPropertiesOptions) (armstorage.AccountsClientGetPropertiesResponse, error)
+	Update(ctx context.Context, resourceGroupName string, accountName string, parameters armstorage.AccountUpdateParameters, options *armstorage.AccountsClientUpdateOptions) (armstorage.AccountsClientUpdateResponse, error)
+	Delete(ctx context.Context, resourceGroupName string, accountName string, options *armstorage.AccountsClientDeleteOptions) (armstorage.AccountsClientDeleteResponse, error)
+	NewListByResourceGroupPager(resourceGroupName string, options *armstorage.AccountsClientListByResourceGroupOptions) *runtime.Pager[armstorage.AccountsClientListByResourceGroupResponse]
+	NewListPager(options *armstorage.AccountsClientListOptions) *runtime.Pager[armstorage.AccountsClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)
+}
+
+// storageAccountsWrapper composes the SDK client with resume-poller methods from client.Client.
+type storageAccountsWrapper struct {
+	*armstorage.AccountsClient
+	resumeCreate func(string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)
+}
+
+func (w *storageAccountsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error) {
+	return w.resumeCreate(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeStorageAccount, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &StorageAccount{client, cfg}
+	registry.Register(ResourceTypeStorageAccount, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &StorageAccount{
+			api: &storageAccountsWrapper{
+				AccountsClient: c.StorageAccountsClient,
+				resumeCreate:   c.ResumeCreateStorageAccountPoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // StorageAccount is the provisioner for Azure Storage Accounts.
 type StorageAccount struct {
-	Client *client.Client
-	Config *config.Config
+	api    storageAccountsAPI
+	config *config.Config
 }
 
 // serializeStorageAccountProperties converts an Azure StorageAccount to Formae property format
@@ -79,15 +105,19 @@ func serializeStorageAccountProperties(result armstorage.Account, rgName, accoun
 			endpoints := make(map[string]any)
 			if result.Properties.PrimaryEndpoints.Blob != nil {
 				endpoints["blob"] = *result.Properties.PrimaryEndpoints.Blob
+				props["primaryBlobEndpoint"] = *result.Properties.PrimaryEndpoints.Blob
 			}
 			if result.Properties.PrimaryEndpoints.Queue != nil {
 				endpoints["queue"] = *result.Properties.PrimaryEndpoints.Queue
+				props["primaryQueueEndpoint"] = *result.Properties.PrimaryEndpoints.Queue
 			}
 			if result.Properties.PrimaryEndpoints.Table != nil {
 				endpoints["table"] = *result.Properties.PrimaryEndpoints.Table
+				props["primaryTableEndpoint"] = *result.Properties.PrimaryEndpoints.Table
 			}
 			if result.Properties.PrimaryEndpoints.File != nil {
 				endpoints["file"] = *result.Properties.PrimaryEndpoints.File
+				props["primaryFileEndpoint"] = *result.Properties.PrimaryEndpoints.File
 			}
 			if result.Properties.PrimaryEndpoints.Web != nil {
 				endpoints["web"] = *result.Properties.PrimaryEndpoints.Web
@@ -190,7 +220,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Storage account creation is async (LRO)
-	poller, err := s.Client.StorageAccountsClient.BeginCreate(ctx, rgName, accountName, params, nil)
+	poller, err := s.api.BeginCreate(ctx, rgName, accountName, params, nil)
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -203,7 +233,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s",
-		s.Config.SubscriptionId, rgName, accountName)
+		s.config.SubscriptionId, rgName, accountName)
 
 	if poller.Done() {
 		result, err := poller.Result(ctx)
@@ -272,7 +302,7 @@ func (s *StorageAccount) Read(ctx context.Context, request *resource.ReadRequest
 		return nil, fmt.Errorf("invalid NativeID: could not extract StorageAccount name from %s", request.NativeID)
 	}
 
-	result, err := s.Client.StorageAccountsClient.GetProperties(ctx, rgName, accountName, nil)
+	result, err := s.api.GetProperties(ctx, rgName, accountName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -340,7 +370,7 @@ func (s *StorageAccount) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Storage account update is synchronous
-	result, err := s.Client.StorageAccountsClient.Update(ctx, rgName, accountName, params, nil)
+	result, err := s.api.Update(ctx, rgName, accountName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{
@@ -383,7 +413,7 @@ func (s *StorageAccount) Delete(ctx context.Context, request *resource.DeleteReq
 	}
 
 	// Storage account deletion is synchronous
-	_, err := s.Client.StorageAccountsClient.Delete(ctx, rgName, accountName, nil)
+	_, err := s.api.Delete(ctx, rgName, accountName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -440,7 +470,7 @@ func (s *StorageAccount) Status(ctx context.Context, request *resource.StatusReq
 		}, fmt.Errorf("unexpected async operation type for storage account: %s", reqID.OperationType)
 	}
 
-	poller, err := s.Client.ResumeCreateStorageAccountPoller(reqID.ResumeToken)
+	poller, err := s.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -525,7 +555,7 @@ func (s *StorageAccount) List(ctx context.Context, request *resource.ListRequest
 	var nativeIDs []string
 
 	if resourceGroupName != "" {
-		pager := s.Client.StorageAccountsClient.NewListByResourceGroupPager(resourceGroupName, nil)
+		pager := s.api.NewListByResourceGroupPager(resourceGroupName, nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
@@ -538,7 +568,7 @@ func (s *StorageAccount) List(ctx context.Context, request *resource.ListRequest
 			}
 		}
 	} else {
-		pager := s.Client.StorageAccountsClient.NewListPager(nil)
+		pager := s.api.NewListPager(nil)
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {

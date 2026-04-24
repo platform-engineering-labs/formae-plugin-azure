@@ -21,16 +21,54 @@ import (
 
 const ResourceTypeFirewallRule = "Azure::DBforPostgreSQL::FirewallRule"
 
+type firewallRulesAPI interface {
+	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, serverName string, firewallRuleName string, parameters armpostgresqlflexibleservers.FirewallRule, options *armpostgresqlflexibleservers.FirewallRulesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
+	Get(ctx context.Context, resourceGroupName string, serverName string, firewallRuleName string, options *armpostgresqlflexibleservers.FirewallRulesClientGetOptions) (armpostgresqlflexibleservers.FirewallRulesClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, serverName string, firewallRuleName string, options *armpostgresqlflexibleservers.FirewallRulesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
+	NewListByServerPager(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.FirewallRulesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.FirewallRulesClientListByServerResponse]
+	NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
+	ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
+	ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
+}
+
+// firewallRulesWrapper composes the SDK client with FlexibleServers discovery and resume-poller methods from client.Client.
+type firewallRulesWrapper struct {
+	*armpostgresqlflexibleservers.FirewallRulesClient
+	serversClient *armpostgresqlflexibleservers.ServersClient
+	resumeCreate  func(string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
+	resumeDelete  func(string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
+}
+
+func (w *firewallRulesWrapper) NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
+	return w.serversClient.NewListPager(options)
+}
+
+func (w *firewallRulesWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error) {
+	return w.resumeCreate(token)
+}
+
+func (w *firewallRulesWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error) {
+	return w.resumeDelete(token)
+}
+
 func init() {
-	registry.Register(ResourceTypeFirewallRule, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &FirewallRule{client, cfg}
+	registry.Register(ResourceTypeFirewallRule, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &FirewallRule{
+			api: &firewallRulesWrapper{
+				FirewallRulesClient: c.FirewallRulesClient,
+				serversClient:       c.FlexibleServersClient,
+				resumeCreate:        c.ResumeCreateFirewallRulePoller,
+				resumeDelete:        c.ResumeDeleteFirewallRulePoller,
+			},
+			config: cfg,
+		}
 	})
 }
 
 // FirewallRule is the provisioner for Azure Database for PostgreSQL Flexible Server Firewall Rules.
 type FirewallRule struct {
-	Client *client.Client
-	Config *config.Config
+	api    firewallRulesAPI
+	config *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a FirewallRule Azure response.
@@ -105,7 +143,7 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 	}
 
 	// Call Azure API to create firewall rule (async/LRO operation)
-	poller, err := f.Client.FirewallRulesClient.BeginCreateOrUpdate(
+	poller, err := f.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		serverName,
@@ -125,7 +163,7 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 
 	// Build expected NativeID
 	expectedNativeID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.DBforPostgreSQL/flexibleServers/%s/firewallRules/%s",
-		f.Config.SubscriptionId, rgName, serverName, ruleName)
+		f.config.SubscriptionId, rgName, serverName, ruleName)
 
 	// Check if the operation completed synchronously
 	if poller.Done() {
@@ -204,7 +242,7 @@ func (f *FirewallRule) Read(ctx context.Context, request *resource.ReadRequest) 
 	}
 
 	// Get firewall rule from Azure
-	result, err := f.Client.FirewallRulesClient.Get(ctx, rgName, serverName, ruleName, nil)
+	result, err := f.api.Get(ctx, rgName, serverName, ruleName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 			ErrorCode: mapAzureErrorToOperationErrorCode(err),
@@ -267,7 +305,7 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	// Call Azure API to update firewall rule (CreateOrUpdate is idempotent)
-	poller, err := f.Client.FirewallRulesClient.BeginCreateOrUpdate(
+	poller, err := f.api.BeginCreateOrUpdate(
 		ctx,
 		rgName,
 		serverName,
@@ -364,7 +402,7 @@ func (f *FirewallRule) Delete(ctx context.Context, request *resource.DeleteReque
 	}
 
 	// Start async deletion
-	poller, err := f.Client.FirewallRulesClient.BeginDelete(ctx, rgName, serverName, ruleName, nil)
+	poller, err := f.api.BeginDelete(ctx, rgName, serverName, ruleName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -450,7 +488,7 @@ func (f *FirewallRule) statusCreateOrUpdate(ctx context.Context, request *resour
 	}
 
 	// Reconstruct the poller from the resume token
-	poller, err := f.Client.ResumeCreateFirewallRulePoller(reqID.ResumeToken)
+	poller, err := f.api.ResumeCreatePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -533,7 +571,7 @@ func (f *FirewallRule) handleCreateOrUpdateComplete(ctx context.Context, request
 
 func (f *FirewallRule) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.Client.ResumeDeleteFirewallRulePoller(reqID.ResumeToken)
+	poller, err := f.api.ResumeDeletePoller(reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -661,7 +699,7 @@ func (f *FirewallRule) List(ctx context.Context, request *resource.ListRequest) 
 		nativeIDs = ids
 	} else {
 		// Discovery path: enumerate all flexible servers across the subscription
-		serverPager := f.Client.FlexibleServersClient.NewListPager(nil)
+		serverPager := f.api.NewListFlexibleServersPager(nil)
 		for serverPager.More() {
 			page, err := serverPager.NextPage(ctx)
 			if err != nil {
@@ -692,7 +730,7 @@ func (f *FirewallRule) List(ctx context.Context, request *resource.ListRequest) 
 }
 
 func (f *FirewallRule) listByServer(ctx context.Context, resourceGroupName, serverName string) ([]string, error) {
-	pager := f.Client.FirewallRulesClient.NewListByServerPager(resourceGroupName, serverName, nil)
+	pager := f.api.NewListByServerPager(resourceGroupName, serverName, nil)
 
 	var nativeIDs []string
 

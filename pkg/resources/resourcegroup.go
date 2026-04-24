@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -24,15 +25,39 @@ const ResourceTypeResourceGroup = "Azure::Resources::ResourceGroup"
 // azureTagsToFormaeTags, formaeTagsToAzureTags, mapAzureErrorToOperationErrorCode,
 // splitResourceID are defined in common.go
 
+type resourceGroupsAPI interface {
+	CreateOrUpdate(ctx context.Context, resourceGroupName string, parameters armresources.ResourceGroup, options *armresources.ResourceGroupsClientCreateOrUpdateOptions) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error)
+	Get(ctx context.Context, resourceGroupName string, options *armresources.ResourceGroupsClientGetOptions) (armresources.ResourceGroupsClientGetResponse, error)
+	BeginDelete(ctx context.Context, resourceGroupName string, options *armresources.ResourceGroupsClientBeginDeleteOptions) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error)
+	NewListPager(options *armresources.ResourceGroupsClientListOptions) *runtime.Pager[armresources.ResourceGroupsClientListResponse]
+	ResumeDeletePoller(token string) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error)
+}
+
+// resourceGroupsClientWrapper composes the SDK client with resume-poller helpers.
+type resourceGroupsClientWrapper struct {
+	*armresources.ResourceGroupsClient
+	pipeline runtime.Pipeline
+}
+
+func (w *resourceGroupsClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error) {
+	return runtime.NewPollerFromResumeToken[armresources.ResourceGroupsClientDeleteResponse](token, w.pipeline, nil)
+}
+
 func init() {
-	registry.Register(ResourceTypeResourceGroup, func(client *client.Client, cfg *config.Config) prov.Provisioner {
-		return &ResourceGroup{client, cfg}
+	registry.Register(ResourceTypeResourceGroup, func(c *client.Client, cfg *config.Config) prov.Provisioner {
+		return &ResourceGroup{
+			api: &resourceGroupsClientWrapper{
+				ResourceGroupsClient: c.ResourceGroupsClient,
+				pipeline:             c.Pipeline(),
+			},
+			config: cfg,
+		}
 	})
 }
 
 type ResourceGroup struct {
-	Client *client.Client
-	Config *config.Config
+	api    resourceGroupsAPI
+	config *config.Config
 }
 
 // serializeResourceGroupProperties converts an Azure ResourceGroup to Formae property format
@@ -103,7 +128,7 @@ func (rg *ResourceGroup) Create(ctx context.Context, request *resource.CreateReq
 
 	// Call Azure API to create resource group
 	// Note: Resource Groups are synchronous operations (no LRO polling needed)
-	result, err := rg.Client.ResourceGroupsClient.CreateOrUpdate(
+	result, err := rg.api.CreateOrUpdate(
 		ctx,
 		rgName, // Resource group name from properties or label
 		params,
@@ -173,7 +198,7 @@ func (rg *ResourceGroup) Update(ctx context.Context, request *resource.UpdateReq
 	// Call Azure API to update resource group
 	// Note: CreateOrUpdate handles both create and update operations
 	// Resource Groups are synchronous operations (no LRO polling needed)
-	result, err := rg.Client.ResourceGroupsClient.CreateOrUpdate(
+	result, err := rg.api.CreateOrUpdate(
 		ctx,
 		rgName,
 		params,
@@ -218,7 +243,7 @@ func (rg *ResourceGroup) Delete(ctx context.Context, request *resource.DeleteReq
 	}
 
 	// Start async deletion
-	poller, err := rg.Client.ResourceGroupsClient.BeginDelete(ctx, rgName, nil)
+	poller, err := rg.api.BeginDelete(ctx, rgName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
 		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
@@ -298,7 +323,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 	resumeToken := request.RequestID
 
 	// Reconstruct the poller from the resume token
-	poller, err := rg.Client.ResumeDeleteResourceGroupPoller(resumeToken)
+	poller, err := rg.api.ResumeDeletePoller(resumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -422,7 +447,7 @@ func (rg *ResourceGroup) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	// Get resource group from Azure
-	result, err := rg.Client.ResourceGroupsClient.Get(ctx, rgName, nil)
+	result, err := rg.api.Get(ctx, rgName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
@@ -446,7 +471,7 @@ func (rg *ResourceGroup) List(ctx context.Context, request *resource.ListRequest
 	log := plugin.LoggerFromContext(ctx)
 	log.Debug("ResourceGroup.List starting")
 
-	pager := rg.Client.ResourceGroupsClient.NewListPager(nil)
+	pager := rg.api.NewListPager(nil)
 
 	var nativeIDs []string
 	pageNum := 0
