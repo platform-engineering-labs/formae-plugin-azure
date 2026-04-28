@@ -38,7 +38,7 @@ test:
 test-unit:
 	$(GO) test -v -tags=unit ./...
 
-## test-integration: Run integration tests (requires cloud credentials)
+## test-integration: Run integration tests (mocked SDK clients, no cloud creds needed)
 ## Add tests with //go:build integration tag
 test-integration:
 	$(GO) test -v -tags=integration -timeout 30m ./...
