@@ -1,0 +1,169 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.loadbalancer
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::LoadBalancer"
+const apiVersion = "2023-05-01"
+
+open class LoadBalancerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LoadBalancerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LoadBalancerResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// SKU name for Load Balancer
+typealias LoadBalancerSKUName = "Basic"|"Standard"|"Gateway"
+
+/// SKU tier for Load Balancer
+typealias LoadBalancerSKUTier = "Regional"|"Global"
+
+/// Transport protocol for load balancing rules and probes
+typealias TransportProtocol = "Tcp"|"Udp"|"All"
+
+/// Probe protocol
+typealias ProbeProtocol = "Http"|"Https"|"Tcp"
+
+/// Load distribution algorithm
+typealias LoadDistribution = "Default"|"SourceIP"|"SourceIPProtocol"
+
+/// SKU configuration for a Load Balancer
+class LoadBalancerSKU {
+    /// SKU name (Basic, Standard, or Gateway)
+    name: LoadBalancerSKUName
+
+    /// SKU tier (Regional or Global)
+    tier: LoadBalancerSKUTier?
+}
+
+/// Frontend IP configuration. Public LBs reference a Public IP; internal LBs
+/// reference a Subnet (not modeled in this initial version — public LB only).
+class FrontendIPConfiguration {
+    /// Name of the frontend IP configuration (used to construct internal refs).
+    name: String(length >= 1 && length <= 80)
+
+    /// Reference to the PublicIPAddress that fronts this configuration. May
+    /// be a literal ARM ID or a Resolvable (typically `pip.res.id`).
+    publicIPAddressId: String|formae.Resolvable
+}
+
+/// Backend address pool. Membership is populated by NIC ipConfigurations or
+/// VMSS NIC ipConfigurations referencing this pool — not by the LB itself.
+class BackendAddressPool {
+    /// Name of the backend address pool.
+    name: String(length >= 1 && length <= 80)
+}
+
+/// Health probe used by load balancing rules.
+class Probe {
+    /// Probe name.
+    name: String(length >= 1 && length <= 80)
+
+    /// Probe protocol.
+    protocol: ProbeProtocol
+
+    /// Port to probe (1-65535).
+    port: Int(this >= 1 && this <= 65535)
+
+    /// HTTP/HTTPS probe path. Required when protocol is Http or Https.
+    requestPath: String?
+
+    /// Interval between probes in seconds (5-2147483646). Azure default 15.
+    @azure.FieldHint { hasProviderDefault = true }
+    intervalInSeconds: Int(this >= 5)?
+
+    /// Number of consecutive failed probes before marking unhealthy (1+). Azure default 2.
+    @azure.FieldHint { hasProviderDefault = true }
+    numberOfProbes: Int(this >= 1)?
+}
+
+/// Load balancing rule mapping a frontend port to a backend port.
+class LoadBalancingRule {
+    /// Rule name.
+    name: String(length >= 1 && length <= 80)
+
+    /// Name of the FrontendIPConfiguration referenced by this rule.
+    frontendIPConfigurationName: String
+
+    /// Name of the BackendAddressPool referenced by this rule.
+    backendAddressPoolName: String
+
+    /// Name of the Probe referenced by this rule.
+    probeName: String
+
+    /// Transport protocol.
+    protocol: TransportProtocol
+
+    /// Frontend port (1-65534, or 0 for HA ports).
+    frontendPort: Int(this >= 0 && this <= 65534)
+
+    /// Backend port (1-65535, or 0 for HA ports).
+    backendPort: Int(this >= 0 && this <= 65535)
+
+    /// Idle timeout in minutes (4-100). Azure default 4.
+    @azure.FieldHint { hasProviderDefault = true }
+    idleTimeoutInMinutes: Int(this >= 4 && this <= 100)?
+
+    /// Disable outbound source NAT. Azure default false.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableOutboundSnat: Boolean?
+
+    /// Load distribution algorithm. Azure default "Default".
+    @azure.FieldHint { hasProviderDefault = true }
+    loadDistribution: LoadDistribution?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class LoadBalancer extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: LoadBalancerSKU
+
+    @azure.FieldHint { required = true }
+    frontendIPConfigurations: Listing<FrontendIPConfiguration>
+
+    @azure.FieldHint { required = true }
+    backendAddressPools: Listing<BackendAddressPool>
+
+    @azure.FieldHint { required = true }
+    probes: Listing<Probe>
+
+    @azure.FieldHint { required = true }
+    loadBalancingRules: Listing<LoadBalancingRule>
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: LoadBalancerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

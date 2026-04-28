@@ -25,27 +25,6 @@ type extensionsAPI interface {
 	BeginUpdate(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, patchExtension armkubernetesconfiguration.PatchExtension, options *armkubernetesconfiguration.ExtensionsClientBeginUpdateOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error)
 	BeginDelete(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, options *armkubernetesconfiguration.ExtensionsClientBeginDeleteOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.ExtensionsClientListOptions) *runtime.Pager[armkubernetesconfiguration.ExtensionsClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error)
-	ResumeUpdatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error)
-}
-
-// extensionsClientWrapper composes the SDK client with resume-poller helpers.
-type extensionsClientWrapper struct {
-	*armkubernetesconfiguration.ExtensionsClient
-	pipeline runtime.Pipeline
-}
-
-func (w *extensionsClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientCreateResponse](token, w.pipeline, nil)
-}
-
-func (w *extensionsClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *extensionsClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.ExtensionsClientDeleteResponse](token, w.pipeline, nil)
 }
 
 const (
@@ -59,18 +38,17 @@ const (
 func init() {
 	registry.Register(ResourceTypeExtension, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &Extension{
-			api: &extensionsClientWrapper{
-				ExtensionsClient: c.ExtensionsClient,
-				pipeline:         c.Pipeline(),
-			},
-			config: cfg,
+			api:      c.ExtensionsClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 type Extension struct {
-	api    extensionsAPI
-	config *config.Config
+	api      extensionsAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 func serializeExtensionProperties(result armkubernetesconfiguration.Extension, rgName, clusterName string) (json.RawMessage, error) {
@@ -217,21 +195,16 @@ func (e *Extension) Create(ctx context.Context, request *resource.CreateRequest)
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
@@ -336,21 +309,16 @@ func (e *Extension) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -388,44 +356,39 @@ func (e *Extension) Delete(ctx context.Context, request *resource.DeleteRequest)
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (e *Extension) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create":
+	case lroOpCreate:
 		return e.statusCreate(ctx, request, &reqID)
-	case "update":
+	case lroOpUpdate:
 		return e.statusUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return e.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -439,7 +402,7 @@ func (e *Extension) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (e *Extension) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := e.api.ResumeCreatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armkubernetesconfiguration.ExtensionsClientCreateResponse](e.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -515,7 +478,7 @@ func (e *Extension) handleCreateComplete(ctx context.Context, request *resource.
 }
 
 func (e *Extension) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := e.api.ResumeUpdatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armkubernetesconfiguration.ExtensionsClientUpdateResponse](e.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -610,7 +573,7 @@ func (e *Extension) statusUpdate(ctx context.Context, request *resource.StatusRe
 }
 
 func (e *Extension) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := e.api.ResumeDeletePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armkubernetesconfiguration.ExtensionsClientDeleteResponse](e.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{

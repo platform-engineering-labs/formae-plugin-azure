@@ -29,49 +29,23 @@ type flexibleServersAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ServersClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
 	NewListByResourceGroupPager(resourceGroupName string, options *armpostgresqlflexibleservers.ServersClientListByResourceGroupOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListByResourceGroupResponse]
 	NewListPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)
-	ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
-}
-
-// flexibleServersWrapper composes the SDK client with resume-poller methods from client.Client.
-type flexibleServersWrapper struct {
-	*armpostgresqlflexibleservers.ServersClient
-	resumeCreate func(string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)
-	resumeUpdate func(string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
-}
-
-func (w *flexibleServersWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *flexibleServersWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error) {
-	return w.resumeUpdate(token)
-}
-
-func (w *flexibleServersWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
 	registry.Register(ResourceTypeFlexibleServer, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &FlexibleServer{
-			api: &flexibleServersWrapper{
-				ServersClient: c.FlexibleServersClient,
-				resumeCreate:  c.ResumeCreateFlexibleServerPoller,
-				resumeUpdate:  c.ResumeUpdateFlexibleServerPoller,
-				resumeDelete:  c.ResumeDeleteFlexibleServerPoller,
-			},
-			config: cfg,
+			api:      c.FlexibleServersClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 // FlexibleServer is the provisioner for Azure Database for PostgreSQL Flexible Server.
 type FlexibleServer struct {
-	api    flexibleServersAPI
-	config *config.Config
+	api      flexibleServersAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a FlexibleServer Azure response.
@@ -485,15 +459,9 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -501,7 +469,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
@@ -734,15 +702,9 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -750,7 +712,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -799,15 +761,9 @@ func (f *FlexibleServer) Delete(ctx context.Context, request *resource.DeleteReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -815,32 +771,31 @@ func (f *FlexibleServer) Delete(ctx context.Context, request *resource.DeleteReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (f *FlexibleServer) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	// Parse the RequestID to determine operation type
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-				StatusMessage:   fmt.Sprintf("failed to parse request ID: %v", err),
+				StatusMessage:   err.Error(),
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create":
+	case lroOpCreate:
 		return f.statusCreate(ctx, request, &reqID)
-	case "update":
+	case lroOpUpdate:
 		return f.statusUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return f.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -856,7 +811,7 @@ func (f *FlexibleServer) Status(ctx context.Context, request *resource.StatusReq
 
 func (f *FlexibleServer) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.api.ResumeCreatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armpostgresqlflexibleservers.ServersClientCreateResponse](f.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -937,7 +892,7 @@ func (f *FlexibleServer) handleCreateComplete(ctx context.Context, request *reso
 
 func (f *FlexibleServer) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.api.ResumeUpdatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armpostgresqlflexibleservers.ServersClientUpdateResponse](f.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -1018,7 +973,7 @@ func (f *FlexibleServer) handleUpdateComplete(ctx context.Context, request *reso
 
 func (f *FlexibleServer) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := f.api.ResumeDeletePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armpostgresqlflexibleservers.ServersClientDeleteResponse](f.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{

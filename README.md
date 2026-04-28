@@ -29,7 +29,16 @@ Formae plugin for managing Azure resources.
 | `Azure::DBforPostgreSQL::Database` | PostgreSQL databases |
 | `Azure::DBforPostgreSQL::Configuration` | PostgreSQL server parameters |
 | `Azure::ManagedIdentity::UserAssignedIdentity` | Managed identities |
+| `Azure::ManagedIdentity::FederatedIdentityCredential` | Federated identity credentials (workload identity / OIDC) |
 | `Azure::Authorization::RoleAssignment` | Role assignments |
+| `Azure::Network::LoadBalancer` | Load balancers |
+| `Azure::Network::PrivateDnsZone` | Private DNS zones |
+| `Azure::Network::PrivateDnsZoneVirtualNetworkLink` | Private DNS zone-to-VNet links |
+| `Azure::Network::PrivateEndpoint` | Private endpoints |
+| `Azure::Network::PrivateDnsZoneGroup` | Private DNS zone group bindings |
+| `Azure::Storage::BlobContainer` | Blob containers |
+| `Azure::Compute::Disk` | Managed disks |
+| `Azure::Compute::VirtualMachineScaleSet` | Virtual machine scale sets |
 
 ## Installation
 

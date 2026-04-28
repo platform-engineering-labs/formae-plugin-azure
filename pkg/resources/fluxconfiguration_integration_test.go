@@ -129,8 +129,6 @@ type fakeFluxConfigurationsAPI struct {
 	getFn                 func(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, options *armkubernetesconfiguration.FluxConfigurationsClientGetOptions) (armkubernetesconfiguration.FluxConfigurationsClientGetResponse, error)
 	beginDeleteFn         func(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, options *armkubernetesconfiguration.FluxConfigurationsClientBeginDeleteOptions) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error)
 	newListPagerFn        func(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.FluxConfigurationsClientListOptions) *runtime.Pager[armkubernetesconfiguration.FluxConfigurationsClientListResponse]
-	resumeCreatePollerFn  func(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error)
-	resumeDeletePollerFn  func(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error)
 }
 
 func (f *fakeFluxConfigurationsAPI) BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, fluxConfiguration armkubernetesconfiguration.FluxConfiguration, options *armkubernetesconfiguration.FluxConfigurationsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
@@ -147,12 +145,4 @@ func (f *fakeFluxConfigurationsAPI) BeginDelete(ctx context.Context, resourceGro
 
 func (f *fakeFluxConfigurationsAPI) NewListPager(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.FluxConfigurationsClientListOptions) *runtime.Pager[armkubernetesconfiguration.FluxConfigurationsClientListResponse] {
 	return f.newListPagerFn(resourceGroupName, clusterRp, clusterResourceName, clusterName, options)
-}
-
-func (f *fakeFluxConfigurationsAPI) ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
-	return f.resumeCreatePollerFn(token)
-}
-
-func (f *fakeFluxConfigurationsAPI) ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error) {
-	return f.resumeDeletePollerFn(token)
 }

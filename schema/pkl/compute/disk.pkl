@@ -1,0 +1,90 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.disk
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Compute::Disk"
+const apiVersion = "2023-10-02"
+
+/// Storage account type used as the disk SKU name.
+typealias DiskStorageAccountType = "Standard_LRS"|"Premium_LRS"|"StandardSSD_LRS"|"UltraSSD_LRS"|"Premium_ZRS"|"StandardSSD_ZRS"|"PremiumV2_LRS"
+
+/// Source of a disk's creation. `Empty` allocates an empty disk of `diskSizeGB`;
+/// other options reference a snapshot, image, or existing disk.
+typealias DiskCreateOption = "Empty"|"Attach"|"FromImage"|"Import"|"Copy"|"Restore"|"Upload"|"CopyStart"
+
+class DiskCreationData {
+    @azure.FieldHint { required = true; createOnly = true }
+    createOption: DiskCreateOption
+
+    /// ARM ID of a source resource (snapshot, image, etc.). Required when
+    /// `createOption` is `Attach`/`Copy`/`Restore`.
+    sourceResourceId: (String|formae.Resolvable)?
+}
+
+class DiskSku {
+    @azure.FieldHint { required = true }
+    name: DiskStorageAccountType
+}
+
+open class DiskResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DiskResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DiskResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Disk extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Disk creation source.
+    @azure.FieldHint { required = true; createOnly = true }
+    creationData: DiskCreationData
+
+    /// Disk size in GiB. Required when `creationData.createOption == "Empty"`. Resizes
+    /// are allowed only when the disk is detached and only to a larger size.
+    @azure.FieldHint { }
+    diskSizeGB: Int(this >= 1 && this <= 32767)?
+
+    @azure.FieldHint { required = true }
+    sku: DiskSku
+
+    /// Logical zones to place the disk in (e.g. `Listing { "1" }`). Empty/null = no zone pinning.
+    @azure.FieldHint { createOnly = true }
+    zones: Listing<String>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DiskResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

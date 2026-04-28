@@ -26,54 +26,23 @@ type virtualNetworksAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, virtualNetworkName string, options *armnetwork.VirtualNetworksClientBeginDeleteOptions) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, options *armnetwork.VirtualNetworksClientListOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListResponse]
 	NewListAllPager(options *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error)
-}
-
-// virtualNetworksWrapper composes the SDK client with resume-poller methods from client.Client.
-type virtualNetworksWrapper struct {
-	*armnetwork.VirtualNetworksClient
-	resumeCreate func(string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error)
-}
-
-func (w *virtualNetworksWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *virtualNetworksWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
 	registry.Register(ResourceTypeVirtualNetwork, func(c *client.Client, cfg *config.Config) prov.Provisioner {
-		pipeline := c.Pipeline()
 		return &VirtualNetwork{
-			api: &virtualNetworksWrapper{
-				VirtualNetworksClient: c.VirtualNetworksClient,
-				resumeCreate: func(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
-					return runtime.NewPollerFromResumeToken[armnetwork.VirtualNetworksClientCreateOrUpdateResponse](token, pipeline, nil)
-				},
-				resumeDelete: func(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error) {
-					return runtime.NewPollerFromResumeToken[armnetwork.VirtualNetworksClientDeleteResponse](token, pipeline, nil)
-				},
-			},
-			config: cfg,
+			api:      c.VirtualNetworksClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
-// lroRequestID stores the operation type and resume token for LRO operations
-type lroRequestID struct {
-	OperationType string `json:"operationType"`
-	ResumeToken   string `json:"resumeToken"`
-	NativeID      string `json:"nativeID,omitempty"`
-}
-
 // VirtualNetwork is the provisioner for Azure Virtual Networks.
 type VirtualNetwork struct {
-	api    virtualNetworksAPI
-	config *config.Config
+	api      virtualNetworksAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a VirtualNetwork Azure response.
@@ -149,6 +118,14 @@ func serializeVirtualNetworkProperties(result armnetwork.VirtualNetwork, rgName,
 
 	if result.Location != nil {
 		props["location"] = *result.Location
+	}
+
+	// Include the ARM ID — required for cross-resource Resolvable refs
+	// (e.g., a PrivateDnsZoneVirtualNetworkLink resolving `vnet.res.id`).
+	// The resolve cache lazy-loads via Read, so omitting `id` here makes
+	// any `vnet.res.id` reference fail with "Unable to resolve property".
+	if result.ID != nil {
+		props["id"] = *result.ID
 	}
 
 	// Add addressSpace
@@ -294,15 +271,9 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -310,7 +281,7 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
@@ -492,15 +463,9 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -508,7 +473,7 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -558,15 +523,9 @@ func (v *VirtualNetwork) Delete(ctx context.Context, request *resource.DeleteReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -574,7 +533,7 @@ func (v *VirtualNetwork) Delete(ctx context.Context, request *resource.DeleteReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -582,9 +541,8 @@ func (v *VirtualNetwork) Delete(ctx context.Context, request *resource.DeleteReq
 
 func (v *VirtualNetwork) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
 
-	// Parse the RequestID to determine operation type
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -592,13 +550,13 @@ func (v *VirtualNetwork) Status(ctx context.Context, request *resource.StatusReq
 
 				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return v.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return v.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -614,12 +572,12 @@ func (v *VirtualNetwork) Status(ctx context.Context, request *resource.StatusReq
 
 func (v *VirtualNetwork) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
 	// Reconstruct the poller from the resume token
-	poller, err := v.api.ResumeCreatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse](v.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -703,7 +661,7 @@ func (v *VirtualNetwork) handleCreateOrUpdateComplete(ctx context.Context, reque
 
 func (v *VirtualNetwork) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := v.api.ResumeDeletePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armnetwork.VirtualNetworksClientDeleteResponse](v.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{

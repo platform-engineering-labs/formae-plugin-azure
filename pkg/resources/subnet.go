@@ -26,28 +26,17 @@ type subnetsAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, virtualNetworkName string, subnetName string, options *armnetwork.SubnetsClientBeginDeleteOptions) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, virtualNetworkName string, options *armnetwork.SubnetsClientListOptions) *runtime.Pager[armnetwork.SubnetsClientListResponse]
 	NewListAllVNetsPager(options *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error)
 }
 
-// subnetsWrapper composes the SDK client with VirtualNetworks discovery and resume-poller methods from client.Client.
+// subnetsWrapper composes the Subnets SDK client with cross-resource VNet
+// discovery (Subnets need to enumerate VNets to list across the subscription).
 type subnetsWrapper struct {
 	*armnetwork.SubnetsClient
-	vnetsClient  *armnetwork.VirtualNetworksClient
-	resumeCreate func(string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error)
+	vnetsClient *armnetwork.VirtualNetworksClient
 }
 
 func (w *subnetsWrapper) NewListAllVNetsPager(options *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse] {
 	return w.vnetsClient.NewListAllPager(options)
-}
-
-func (w *subnetsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *subnetsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
@@ -56,18 +45,18 @@ func init() {
 			api: &subnetsWrapper{
 				SubnetsClient: c.SubnetsClient,
 				vnetsClient:   c.VirtualNetworksClient,
-				resumeCreate:  c.ResumeCreateSubnetPoller,
-				resumeDelete:  c.ResumeDeleteSubnetPoller,
 			},
-			config: cfg,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 // Subnet is the provisioner for Azure Subnets.
 type Subnet struct {
-	api    subnetsAPI
-	config *config.Config
+	api      subnetsAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 // buildPropertiesFromResult extracts properties from a Subnet Azure response.
@@ -237,15 +226,9 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -253,7 +236,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
@@ -398,15 +381,9 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -414,7 +391,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -469,15 +446,9 @@ func (s *Subnet) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -485,16 +456,15 @@ func (s *Subnet) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (s *Subnet) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	// Parse the RequestID to determine operation type
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -502,13 +472,13 @@ func (s *Subnet) Status(ctx context.Context, request *resource.StatusRequest) (*
 
 				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return s.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return s.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -524,7 +494,7 @@ func (s *Subnet) Status(ctx context.Context, request *resource.StatusRequest) (*
 
 func (s *Subnet) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
@@ -534,7 +504,7 @@ func (s *Subnet) statusCreateOrUpdate(ctx context.Context, request *resource.Sta
 	vnetName := parts["virtualnetworks"]
 
 	// Reconstruct the poller from the resume token
-	poller, err := s.api.ResumeCreatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armnetwork.SubnetsClientCreateOrUpdateResponse](s.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -620,7 +590,7 @@ func (s *Subnet) handleCreateOrUpdateComplete(ctx context.Context, request *reso
 
 func (s *Subnet) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	// Reconstruct the poller from the resume token
-	poller, err := s.api.ResumeDeletePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armnetwork.SubnetsClientDeleteResponse](s.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{

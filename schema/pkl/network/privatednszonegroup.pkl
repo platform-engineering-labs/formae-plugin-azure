@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.privatednszonegroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::PrivateDnsZoneGroup"
+const apiVersion = "2023-05-01"
+
+open class PrivateDnsZoneGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrivateDnsZoneGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrivateDnsZoneGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// One configuration entry binding a private DNS zone to the private endpoint's
+/// auto-generated A record.
+class PrivateDnsZoneConfig {
+    /// Config name (unique within the zone group).
+    name: String(length >= 1 && length <= 80)
+
+    /// ARM resource ID of the Private DNS Zone (e.g., `vnet.res.id` or a literal).
+    privateDnsZoneId: String|formae.Resolvable
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Network::PrivateEndpoint"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "privateEndpointName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class PrivateDnsZoneGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent private endpoint.
+    @azure.FieldHint { required = true; createOnly = true }
+    privateEndpointName: String|formae.Resolvable
+
+    /// Zone-config entries — typically one entry per private DNS zone the
+    /// endpoint should register with.
+    @azure.FieldHint { required = true }
+    privateDnsZoneConfigs: Listing<PrivateDnsZoneConfig>
+
+    hidden parent = this
+
+    hidden res: PrivateDnsZoneGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

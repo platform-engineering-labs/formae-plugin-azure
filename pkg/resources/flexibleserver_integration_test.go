@@ -191,9 +191,6 @@ type fakeFlexibleServersAPI struct {
 	beginDeleteFn                 func(ctx context.Context, resourceGroupName, serverName string, options *armpostgresqlflexibleservers.ServersClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
 	newListByResourceGroupPagerFn func(resourceGroupName string, options *armpostgresqlflexibleservers.ServersClientListByResourceGroupOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListByResourceGroupResponse]
 	newListPagerFn                func(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	resumeCreatePollerFn          func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)
-	resumeUpdatePollerFn          func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error)
-	resumeDeletePollerFn          func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error)
 }
 
 func (f *fakeFlexibleServersAPI) BeginCreate(ctx context.Context, resourceGroupName, serverName string, parameters armpostgresqlflexibleservers.Server, options *armpostgresqlflexibleservers.ServersClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error) {
@@ -218,16 +215,4 @@ func (f *fakeFlexibleServersAPI) NewListByResourceGroupPager(resourceGroupName s
 
 func (f *fakeFlexibleServersAPI) NewListPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
 	return f.newListPagerFn(options)
-}
-
-func (f *fakeFlexibleServersAPI) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error) {
-	return f.resumeCreatePollerFn(token)
-}
-
-func (f *fakeFlexibleServersAPI) ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error) {
-	return f.resumeUpdatePollerFn(token)
-}
-
-func (f *fakeFlexibleServersAPI) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error) {
-	return f.resumeDeletePollerFn(token)
 }

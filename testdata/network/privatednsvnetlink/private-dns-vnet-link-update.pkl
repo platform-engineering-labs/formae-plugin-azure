@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/privatednszone.pkl"
+import "@azure/network/privatednsvnetlink.pkl"
+
+local stackName = "plugin-sdk-test-pdvnl-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "pdvnl-test-rg"
+  name = "formae-plugin-sdk-test-pdvnl-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "pdvnl-test-vnet"
+  name = "formae-plugin-sdk-test-pdvnl-vnet-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+local zone = new privatednszone.PrivateDnsZone {
+  label = "pdvnl-test-zone"
+  name = "formae-plugin-sdk-test-pdvnl-\(testRunID).internal"
+  location = "global"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure PrivateDnsZoneVirtualNetworkLink (update)"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  vnet
+  zone
+
+  new privatednsvnetlink.PrivateDnsZoneVirtualNetworkLink {
+    label = "plugin-sdk-test-pdvnl"
+    name = "formae-plugin-sdk-test-pdvnl-\(testRunID)"
+    location = "global"
+    resourceGroupName = rg.res.name
+    privateZoneName = zone.res.name
+    virtualNetworkId = vnet.res.id
+    // Update: flip registrationEnabled
+    registrationEnabled = true
+    // Update: add tags
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

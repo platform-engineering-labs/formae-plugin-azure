@@ -105,6 +105,15 @@ jobs:
           # CRUD tests still run via test-integration.
           - role-assignment
           - user-assigned-identity
+          - federated-identity-credential
+          - load-balancer
+          - private-dns-zone
+          - private-dns-vnet-link
+          - private-endpoint
+          - private-dns-zone-group
+          - blob-container
+          - disk
+          - virtual-machine-scale-set
 
     permissions:
       id-token: write

@@ -1,0 +1,88 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.privateendpoint
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::PrivateEndpoint"
+const apiVersion = "2023-05-01"
+
+open class PrivateEndpointResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrivateEndpointResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrivateEndpointResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A private link service connection — connects the private endpoint NIC to
+/// a target Azure resource (e.g., a Storage Account) via private link.
+class PrivateLinkServiceConnection {
+    /// Connection name (unique within the endpoint).
+    name: String(length >= 1 && length <= 80)
+
+    /// ARM resource ID of the target resource being connected to (the
+    /// "private link service" — typically a Storage Account, Key Vault, ACR,
+    /// Postgres FlexibleServer, or similar).
+    privateLinkServiceId: String|formae.Resolvable
+
+    /// Sub-resource group identifier on the target. For example, a Storage
+    /// Account exposes "blob", "file", "queue", "table", "dfs", "web". A Key
+    /// Vault exposes "vault". Refer to Azure docs for the right value per
+    /// service.
+    groupIds: Listing<String>
+
+    /// Optional message included in the connection request. Must be ≤140 chars.
+    requestMessage: String?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class PrivateEndpoint extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Subnet that hosts the private endpoint's NIC. The subnet must allow
+    /// private endpoints (privateEndpointNetworkPolicies = Disabled, which is
+    /// Azure's default for newly created subnets).
+    @azure.FieldHint { required = true; createOnly = true }
+    subnetId: String|formae.Resolvable
+
+    /// One or more private link service connections to target resources.
+    @azure.FieldHint { required = true }
+    privateLinkServiceConnections: Listing<PrivateLinkServiceConnection>
+
+    /// Override the auto-generated name for the underlying NIC.
+    @azure.FieldHint { hasProviderDefault = true; createOnly = true }
+    customNetworkInterfaceName: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PrivateEndpointResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,160 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.virtualmachinescaleset
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Compute::VirtualMachineScaleSet"
+const apiVersion = "2023-09-01"
+
+typealias VMSSStorageAccountType = "Standard_LRS"|"Premium_LRS"|"StandardSSD_LRS"|"UltraSSD_LRS"|"Premium_ZRS"|"StandardSSD_ZRS"
+typealias VMSSCachingType = "None"|"ReadOnly"|"ReadWrite"
+typealias VMSSUpgradeMode = "Manual"|"Automatic"|"Rolling"
+typealias VMSSOrchestrationMode = "Uniform"|"Flexible"
+typealias VMSSOSDiskCreateOption = "FromImage"|"Empty"|"Attach"
+
+class VMSSSku {
+    @azure.FieldHint { required = true }
+    name: String
+
+    @azure.FieldHint { required = true }
+    capacity: Int(this >= 0)
+
+    @azure.FieldHint { hasProviderDefault = true }
+    tier: String = "Standard"
+}
+
+class VMSSUpgradePolicy {
+    @azure.FieldHint { required = true }
+    mode: VMSSUpgradeMode
+}
+
+class VMSSImageReference {
+    publisher: String
+    offer: String
+    sku: String
+    version: String
+}
+
+class VMSSManagedDiskParameters {
+    storageAccountType: VMSSStorageAccountType
+}
+
+class VMSSOSDisk {
+    createOption: VMSSOSDiskCreateOption
+    caching: VMSSCachingType?
+    diskSizeGB: Int?
+    managedDisk: VMSSManagedDiskParameters?
+}
+
+class VMSSStorageProfile {
+    imageReference: VMSSImageReference
+    osDisk: VMSSOSDisk
+}
+
+class VMSSLinuxConfiguration {
+    /// Set to true when using SSH-key auth instead of password.
+    disablePasswordAuthentication: Boolean?
+}
+
+class VMSSOSProfile {
+    /// Prefix for instance computer names (Azure appends suffix per instance).
+    computerNamePrefix: String
+
+    adminUsername: String
+
+    /// Password for `adminUsername`. Required unless SSH keys are configured.
+    adminPassword: String?
+
+    /// Base64-encoded cloud-init / custom-data script.
+    customData: String?
+
+    linuxConfiguration: VMSSLinuxConfiguration?
+}
+
+class VMSSIPConfiguration {
+    @azure.FieldHint { required = true }
+    name: String
+
+    @azure.FieldHint { required = true }
+    subnetId: String|formae.Resolvable
+}
+
+class VMSSNICConfiguration {
+    @azure.FieldHint { required = true }
+    name: String
+
+    @azure.FieldHint { hasProviderDefault = true }
+    primary: Boolean = true
+
+    @azure.FieldHint { required = true }
+    ipConfigurations: Listing<VMSSIPConfiguration>
+}
+
+class VMSSNetworkProfile {
+    @azure.FieldHint { required = true }
+    networkInterfaceConfigurations: Listing<VMSSNICConfiguration>
+}
+
+class VMSSVirtualMachineProfile {
+    osProfile: VMSSOSProfile
+    storageProfile: VMSSStorageProfile
+    networkProfile: VMSSNetworkProfile
+}
+
+open class VirtualMachineScaleSetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualMachineScaleSetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualMachineScaleSetResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualMachineScaleSet extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: VMSSSku
+
+    @azure.FieldHint { required = true; createOnly = true }
+    upgradePolicy: VMSSUpgradePolicy
+
+    @azure.FieldHint { hasProviderDefault = true; createOnly = true }
+    orchestrationMode: VMSSOrchestrationMode = "Uniform"
+
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualMachineProfile: VMSSVirtualMachineProfile
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualMachineScaleSetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -26,39 +26,22 @@ type fluxConfigurationsAPI interface {
 	Get(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, options *armkubernetesconfiguration.FluxConfigurationsClientGetOptions) (armkubernetesconfiguration.FluxConfigurationsClientGetResponse, error)
 	BeginDelete(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, fluxConfigurationName string, options *armkubernetesconfiguration.FluxConfigurationsClientBeginDeleteOptions) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.FluxConfigurationsClientListOptions) *runtime.Pager[armkubernetesconfiguration.FluxConfigurationsClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error)
-}
-
-// fluxConfigurationsWrapper composes the SDK client with pipeline-based resume methods.
-type fluxConfigurationsWrapper struct {
-	*armkubernetesconfiguration.FluxConfigurationsClient
-	pipeline runtime.Pipeline
-}
-
-func (w *fluxConfigurationsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *fluxConfigurationsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse](token, w.pipeline, nil)
 }
 
 func init() {
 	registry.Register(ResourceTypeFluxConfiguration, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &FluxConfiguration{
-			api: &fluxConfigurationsWrapper{
-				FluxConfigurationsClient: c.FluxConfigurationsClient,
-				pipeline:                 c.Pipeline(),
-			},
-			config: cfg,
+			api:      c.FluxConfigurationsClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 type FluxConfiguration struct {
-	api    fluxConfigurationsAPI
-	config *config.Config
+	api      fluxConfigurationsAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 func serializeFluxConfigurationProperties(result armkubernetesconfiguration.FluxConfiguration, rgName, clusterName string) (json.RawMessage, error) {
@@ -351,21 +334,16 @@ func (fc *FluxConfiguration) Create(ctx context.Context, request *resource.Creat
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
@@ -453,21 +431,16 @@ func (fc *FluxConfiguration) Update(ctx context.Context, request *resource.Updat
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -505,42 +478,37 @@ func (fc *FluxConfiguration) Delete(ctx context.Context, request *resource.Delet
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (fc *FluxConfiguration) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return fc.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return fc.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -555,11 +523,11 @@ func (fc *FluxConfiguration) Status(ctx context.Context, request *resource.Statu
 
 func (fc *FluxConfiguration) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := fc.api.ResumeCreatePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse](fc.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -635,7 +603,7 @@ func (fc *FluxConfiguration) handleCreateOrUpdateComplete(ctx context.Context, r
 }
 
 func (fc *FluxConfiguration) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := fc.api.ResumeDeletePoller(reqID.ResumeToken)
+	poller, err := resumePoller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse](fc.pipeline, reqID.ResumeToken)
 	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{

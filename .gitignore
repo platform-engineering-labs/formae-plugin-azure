@@ -33,3 +33,10 @@ PklProject.deps.json
 CLAUDE.md
 .handoffs/
 .claude/
+
+# Local notes (kept on disk, not tracked)
+expand-rsc.md
+az-progress.md
+SCHEMA-AUDIT.md
+log-audit.md
+examples/tmp/
