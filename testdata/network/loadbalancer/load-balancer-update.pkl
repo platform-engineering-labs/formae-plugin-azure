@@ -1,0 +1,105 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "@azure/network/loadbalancer.pkl"
+
+local stackName = "plugin-sdk-test-lb-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lb-test-rg"
+  name = "formae-plugin-sdk-test-lb-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local pipSku = new publicipaddress.PublicIPAddressSKU {
+  name = "Standard"
+  tier = "Regional"
+}
+
+local pip = new publicipaddress.PublicIPAddress {
+  label = "lb-test-pip"
+  name = "formae-plugin-sdk-test-lb-pip-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = pipSku
+  publicIPAllocationMethod = "Static"
+}
+
+local lbSku = new loadbalancer.LoadBalancerSKU {
+  name = "Standard"
+  tier = "Regional"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure LoadBalancer (update)"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  pip
+
+  new loadbalancer.LoadBalancer {
+    label = "plugin-sdk-test-lb"
+    name = "formae-plugin-sdk-test-lb-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = lbSku
+    frontendIPConfigurations = new Listing {
+      new loadbalancer.FrontendIPConfiguration {
+        name = "fe-public"
+        publicIPAddressId = pip.res.id
+      }
+    }
+    backendAddressPools = new Listing {
+      new loadbalancer.BackendAddressPool { name = "be-pool" }
+    }
+    probes = new Listing {
+      new loadbalancer.Probe {
+        name = "tcp-80"
+        protocol = "Tcp"
+        port = 80
+        // Update: bump intervalInSeconds and numberOfProbes (non-createOnly)
+        intervalInSeconds = 15
+        numberOfProbes = 3
+      }
+    }
+    loadBalancingRules = new Listing {
+      new loadbalancer.LoadBalancingRule {
+        name = "rule-tcp-80"
+        frontendIPConfigurationName = "fe-public"
+        backendAddressPoolName = "be-pool"
+        probeName = "tcp-80"
+        protocol = "Tcp"
+        frontendPort = 80
+        backendPort = 80
+        // Update: bump idleTimeoutInMinutes (non-createOnly)
+        idleTimeoutInMinutes = 10
+        disableOutboundSnat = false
+        loadDistribution = "Default"
+      }
+    }
+    // Update: add tags (non-createOnly)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

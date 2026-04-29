@@ -174,7 +174,9 @@ update_pkl_project_version() {
     local file="$1"
     local new_version="$2"
     local current
-    current=$(grep -oP 'formae/formae@\K[0-9]+\.[0-9]+\.[0-9]+' "$file" 2>/dev/null | head -1)
+    # POSIX-compatible: BSD grep (macOS) does not support -P (PCRE/\K).
+    # Use -oE to extract the matched prefix+version, then strip the prefix.
+    current=$(grep -oE 'formae/formae@[0-9]+\.[0-9]+\.[0-9]+' "$file" 2>/dev/null | sed 's|^formae/formae@||' | head -1)
     if [[ -z "$current" ]]; then
         echo "  No formae version found in $file, setting to ${new_version}"
         sed_inplace "s|formae/formae@[0-9a-zA-Z.\-]*\"|formae/formae@${new_version}\"|g" "$file"

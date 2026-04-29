@@ -49,17 +49,12 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
-  # Integration tests run against real Azure resources.
-  # These are self-contained: each test creates and cleans up its own resources.
+  # Integration tests are mock-based (fake SDK clients) and need no cloud creds.
   test-integration:
     needs: [checks]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
-    environment: production
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -69,16 +64,7 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Configure Azure Credentials
-        uses: azure/login@v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Run integration tests
-        env:
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: make test-integration
 
   conformance-tests:
@@ -105,6 +91,15 @@ jobs:
           # CRUD tests still run via test-integration.
           - role-assignment
           - user-assigned-identity
+          - federated-identity-credential
+          - load-balancer
+          - private-dns-zone
+          - private-dns-vnet-link
+          - private-endpoint
+          - private-dns-zone-group
+          - blob-container
+          - disk
+          - virtual-machine-scale-set
 
     permissions:
       id-token: write
@@ -139,6 +134,7 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: make conformance-test
 

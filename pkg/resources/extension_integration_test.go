@@ -114,9 +114,6 @@ type fakeExtensionsAPI struct {
 	beginUpdateFn  func(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, patchExtension armkubernetesconfiguration.PatchExtension, options *armkubernetesconfiguration.ExtensionsClientBeginUpdateOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error)
 	beginDeleteFn  func(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, options *armkubernetesconfiguration.ExtensionsClientBeginDeleteOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error)
 	newListPagerFn func(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.ExtensionsClientListOptions) *runtime.Pager[armkubernetesconfiguration.ExtensionsClientListResponse]
-	resumeCreateFn func(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error)
-	resumeUpdateFn func(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error)
-	resumeDeleteFn func(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error)
 }
 
 func (f *fakeExtensionsAPI) BeginCreate(ctx context.Context, resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, extensionName string, extension armkubernetesconfiguration.Extension, options *armkubernetesconfiguration.ExtensionsClientBeginCreateOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
@@ -137,16 +134,4 @@ func (f *fakeExtensionsAPI) BeginDelete(ctx context.Context, resourceGroupName s
 
 func (f *fakeExtensionsAPI) NewListPager(resourceGroupName string, clusterRp string, clusterResourceName string, clusterName string, options *armkubernetesconfiguration.ExtensionsClientListOptions) *runtime.Pager[armkubernetesconfiguration.ExtensionsClientListResponse] {
 	return f.newListPagerFn(resourceGroupName, clusterRp, clusterResourceName, clusterName, options)
-}
-
-func (f *fakeExtensionsAPI) ResumeCreatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
-	return f.resumeCreateFn(token)
-}
-
-func (f *fakeExtensionsAPI) ResumeUpdatePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error) {
-	return f.resumeUpdateFn(token)
-}
-
-func (f *fakeExtensionsAPI) ResumeDeletePoller(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error) {
-	return f.resumeDeleteFn(token)
 }

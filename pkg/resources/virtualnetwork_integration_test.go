@@ -137,8 +137,6 @@ type fakeVirtualNetworksAPI struct {
 	beginDeleteFn         func(ctx context.Context, rgName, vnetName string, opts *armnetwork.VirtualNetworksClientBeginDeleteOptions) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error)
 	newListPagerFn        func(rgName string, opts *armnetwork.VirtualNetworksClientListOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListResponse]
 	newListAllPagerFn     func(opts *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse]
-	resumeCreatePollerFn  func(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error)
-	resumeDeletePollerFn  func(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error)
 }
 
 func (f *fakeVirtualNetworksAPI) BeginCreateOrUpdate(ctx context.Context, rgName, vnetName string, params armnetwork.VirtualNetwork, opts *armnetwork.VirtualNetworksClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
@@ -159,12 +157,4 @@ func (f *fakeVirtualNetworksAPI) NewListPager(rgName string, opts *armnetwork.Vi
 
 func (f *fakeVirtualNetworksAPI) NewListAllPager(opts *armnetwork.VirtualNetworksClientListAllOptions) *runtime.Pager[armnetwork.VirtualNetworksClientListAllResponse] {
 	return f.newListAllPagerFn(opts)
-}
-
-func (f *fakeVirtualNetworksAPI) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
-	return f.resumeCreatePollerFn(token)
-}
-
-func (f *fakeVirtualNetworksAPI) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error) {
-	return f.resumeDeletePollerFn(token)
 }

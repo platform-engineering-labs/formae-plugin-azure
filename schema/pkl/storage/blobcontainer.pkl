@@ -1,0 +1,70 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.blobcontainer
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Storage::BlobContainer"
+const apiVersion = "2024-01-01"
+
+open class BlobContainerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BlobContainerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BlobContainerResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BlobContainer extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex(#"^[a-z0-9](-?[a-z0-9])+$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent storage account.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Public-access level. One of `None`, `Blob`, `Container`. Defaults to `None`.
+    @azure.FieldHint { hasProviderDefault = true }
+    publicAccess: ("None"|"Blob"|"Container") = "None"
+
+    /// Container metadata as name/value pairs.
+    metadata: Listing<azure.Tag>?
+
+    /// Default the container to use this encryption scope for all writes.
+    /// Only set when the storage account has encryption scopes configured —
+    /// ARM rejects sending `denyEncryptionScopeOverride` without this field.
+    defaultEncryptionScope: String?
+
+    /// Block override of the encryption scope from the container default.
+    /// Coupled with `defaultEncryptionScope`; only meaningful when that field is set.
+    denyEncryptionScopeOverride: Boolean?
+
+    hidden parent = this
+
+    hidden res: BlobContainerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

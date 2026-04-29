@@ -1,0 +1,123 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/compute/virtualmachinescaleset.pkl"
+
+local stackName = "plugin-sdk-test-vmss-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vmss-test-rg"
+  name = "formae-plugin-sdk-test-vmss-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing { "10.0.0.0/16" }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vmss-test-vnet"
+  name = "formae-plugin-sdk-test-vmss-vnet-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+local snet = new subnet.Subnet {
+  label = "vmss-test-snet"
+  name = "vmss-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure Virtual Machine Scale Set"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  vnet
+  snet
+
+  new virtualmachinescaleset.VirtualMachineScaleSet {
+    label = "plugin-sdk-test-vmss"
+    name = "fpsdtvmss\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new virtualmachinescaleset.VMSSSku {
+      name = "Standard_D2s_v4"
+      capacity = 1
+      tier = "Standard"
+    }
+    upgradePolicy = new virtualmachinescaleset.VMSSUpgradePolicy {
+      mode = "Manual"
+    }
+    orchestrationMode = "Uniform"
+    virtualMachineProfile = new virtualmachinescaleset.VMSSVirtualMachineProfile {
+      osProfile = new virtualmachinescaleset.VMSSOSProfile {
+        computerNamePrefix = "vmss"
+        adminUsername = "azureuser"
+        adminPassword = "Formae!ConformanceTest42"
+        // Azure populates linuxConfiguration when adminPassword is used; declare
+        // the default-shaped struct so the harness's expected/actual matches.
+        linuxConfiguration = new virtualmachinescaleset.VMSSLinuxConfiguration {
+          disablePasswordAuthentication = false
+        }
+      }
+      storageProfile = new virtualmachinescaleset.VMSSStorageProfile {
+        imageReference = new virtualmachinescaleset.VMSSImageReference {
+          publisher = "Canonical"
+          offer = "0001-com-ubuntu-server-jammy"
+          sku = "22_04-lts-gen2"
+          version = "latest"
+        }
+        osDisk = new virtualmachinescaleset.VMSSOSDisk {
+          createOption = "FromImage"
+          // Azure-provided defaults — declared explicitly so the harness's
+          // expected/actual comparison matches. hasProviderDefault doesn't
+          // cascade into nested-class fields, so we set these in the fixture.
+          caching = "ReadWrite"
+          diskSizeGB = 30
+          managedDisk = new virtualmachinescaleset.VMSSManagedDiskParameters {
+            storageAccountType = "Standard_LRS"
+          }
+        }
+      }
+      networkProfile = new virtualmachinescaleset.VMSSNetworkProfile {
+        networkInterfaceConfigurations = new Listing {
+          new virtualmachinescaleset.VMSSNICConfiguration {
+            name = "vmss-nic"
+            primary = true
+            ipConfigurations = new Listing {
+              new virtualmachinescaleset.VMSSIPConfiguration {
+                name = "vmss-ipcfg"
+                subnetId = snet.res.id
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

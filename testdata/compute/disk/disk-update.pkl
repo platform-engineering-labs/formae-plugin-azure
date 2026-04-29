@@ -1,0 +1,57 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/disk.pkl"
+
+local stackName = "plugin-sdk-test-disk-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "disk-test-rg"
+  name = "formae-plugin-sdk-test-disk-rg-\(testRunID)"
+  location = "eastus"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure managed Disk (update)"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  new disk.Disk {
+    label = "plugin-sdk-test-disk"
+    name = "formae-plugin-sdk-test-disk-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    creationData = new disk.DiskCreationData {
+      createOption = "Empty"
+    }
+    // Update: grow disk size (resize requires detached disk; test fixture is unattached)
+    diskSizeGB = 64
+    sku = new disk.DiskSku {
+      name = "Standard_LRS"
+    }
+    // Update: add tags
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

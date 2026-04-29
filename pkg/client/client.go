@@ -19,6 +19,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -41,30 +42,39 @@ const (
 // When adding new resource types, add new typed client fields here (e.g., StorageClient,
 // NetworkClient) rather than using the generic armClient for operations.
 type Client struct {
-	Config                       *config.Config
-	ResourceGroupsClient         *armresources.ResourceGroupsClient
-	VirtualNetworksClient        *armnetwork.VirtualNetworksClient
-	SubnetsClient                *armnetwork.SubnetsClient
-	SecurityGroupsClient         *armnetwork.SecurityGroupsClient
-	PublicIPAddressesClient      *armnetwork.PublicIPAddressesClient
-	InterfacesClient             *armnetwork.InterfacesClient
-	VirtualMachinesClient        *armcompute.VirtualMachinesClient
-	StorageAccountsClient        *armstorage.AccountsClient
-	VaultsClient                 *armkeyvault.VaultsClient
-	ManagedClustersClient        *armcontainerservice.ManagedClustersClient
-	MaintenanceConfigurationsClient *armcontainerservice.MaintenanceConfigurationsClient
-	TrustedAccessRoleBindingsClient *armcontainerservice.TrustedAccessRoleBindingsClient
-	ExtensionsClient             *armkubernetesconfiguration.ExtensionsClient
-	FluxConfigurationsClient     *armkubernetesconfiguration.FluxConfigurationsClient
-	RegistriesClient             *armcontainerregistry.RegistriesClient
-	UserAssignedIdentitiesClient *armmsi.UserAssignedIdentitiesClient
-	RoleAssignmentsClient        *armauthorization.RoleAssignmentsClient
-	FlexibleServersClient        *armpostgresqlflexibleservers.ServersClient
-	FirewallRulesClient          *armpostgresqlflexibleservers.FirewallRulesClient
-	DatabasesClient              *armpostgresqlflexibleservers.DatabasesClient
-	ConfigurationsClient         *armpostgresqlflexibleservers.ConfigurationsClient
-	credential                   azcore.TokenCredential
-	clientOptions                *arm.ClientOptions
+	Config                             *config.Config
+	ResourceGroupsClient               *armresources.ResourceGroupsClient
+	VirtualNetworksClient              *armnetwork.VirtualNetworksClient
+	SubnetsClient                      *armnetwork.SubnetsClient
+	SecurityGroupsClient               *armnetwork.SecurityGroupsClient
+	PublicIPAddressesClient            *armnetwork.PublicIPAddressesClient
+	LoadBalancersClient                *armnetwork.LoadBalancersClient
+	InterfacesClient                   *armnetwork.InterfacesClient
+	PrivateEndpointsClient             *armnetwork.PrivateEndpointsClient
+	PrivateDnsZoneGroupsClient         *armnetwork.PrivateDNSZoneGroupsClient
+	PrivateDnsZonesClient              *armprivatedns.PrivateZonesClient
+	PrivateDnsVNetLinksClient          *armprivatedns.VirtualNetworkLinksClient
+	VirtualMachinesClient              *armcompute.VirtualMachinesClient
+	DisksClient                        *armcompute.DisksClient
+	VMScaleSetsClient                  *armcompute.VirtualMachineScaleSetsClient
+	StorageAccountsClient              *armstorage.AccountsClient
+	BlobContainersClient               *armstorage.BlobContainersClient
+	VaultsClient                       *armkeyvault.VaultsClient
+	ManagedClustersClient              *armcontainerservice.ManagedClustersClient
+	MaintenanceConfigurationsClient    *armcontainerservice.MaintenanceConfigurationsClient
+	TrustedAccessRoleBindingsClient    *armcontainerservice.TrustedAccessRoleBindingsClient
+	ExtensionsClient                   *armkubernetesconfiguration.ExtensionsClient
+	FluxConfigurationsClient           *armkubernetesconfiguration.FluxConfigurationsClient
+	RegistriesClient                   *armcontainerregistry.RegistriesClient
+	UserAssignedIdentitiesClient       *armmsi.UserAssignedIdentitiesClient
+	FederatedIdentityCredentialsClient *armmsi.FederatedIdentityCredentialsClient
+	RoleAssignmentsClient              *armauthorization.RoleAssignmentsClient
+	FlexibleServersClient              *armpostgresqlflexibleservers.ServersClient
+	FirewallRulesClient                *armpostgresqlflexibleservers.FirewallRulesClient
+	DatabasesClient                    *armpostgresqlflexibleservers.DatabasesClient
+	ConfigurationsClient               *armpostgresqlflexibleservers.ConfigurationsClient
+	credential                         azcore.TokenCredential
+	clientOptions                      *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
 	armClient *arm.Client
 }
@@ -104,6 +114,31 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	loadBalancersClient, err := armnetwork.NewLoadBalancersClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	privateEndpointsClient, err := armnetwork.NewPrivateEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	privateDnsZoneGroupsClient, err := armnetwork.NewPrivateDNSZoneGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	privateDnsZonesClient, err := armprivatedns.NewPrivateZonesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	privateDnsVNetLinksClient, err := armprivatedns.NewVirtualNetworkLinksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	interfacesClient, err := armnetwork.NewInterfacesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -114,7 +149,22 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	disksClient, err := armcompute.NewDisksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	vmScaleSetsClient, err := armcompute.NewVirtualMachineScaleSetsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	storageAccountsClient, err := armstorage.NewAccountsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	blobContainersClient, err := armstorage.NewBlobContainersClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +209,11 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	federatedIdentityCredentialsClient, err := armmsi.NewFederatedIdentityCredentialsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -191,31 +246,40 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	}
 
 	return &Client{
-		Config:                       cfg,
-		ResourceGroupsClient:         rgClient,
-		VirtualNetworksClient:        vnetClient,
-		SubnetsClient:                subnetClient,
-		SecurityGroupsClient:         securityGroupsClient,
-		PublicIPAddressesClient:      publicIPAddressesClient,
-		InterfacesClient:             interfacesClient,
-		VirtualMachinesClient:        virtualMachinesClient,
-		StorageAccountsClient:        storageAccountsClient,
-		VaultsClient:                 vaultsClient,
-		ManagedClustersClient:        managedClustersClient,
-		MaintenanceConfigurationsClient: maintenanceConfigurationsClient,
-		TrustedAccessRoleBindingsClient: trustedAccessRoleBindingsClient,
-		ExtensionsClient:             extensionsClient,
-		FluxConfigurationsClient:     fluxConfigurationsClient,
-		RegistriesClient:             registriesClient,
-		UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
-		RoleAssignmentsClient:        roleAssignmentsClient,
-		FlexibleServersClient:        flexibleServersClient,
-		FirewallRulesClient:          firewallRulesClient,
-		DatabasesClient:              databasesClient,
-		ConfigurationsClient:         configurationsClient,
-		credential:                   cred,
-		clientOptions:                clientOptions,
-		armClient:                    armClient,
+		Config:                             cfg,
+		ResourceGroupsClient:               rgClient,
+		VirtualNetworksClient:              vnetClient,
+		SubnetsClient:                      subnetClient,
+		SecurityGroupsClient:               securityGroupsClient,
+		PublicIPAddressesClient:            publicIPAddressesClient,
+		LoadBalancersClient:                loadBalancersClient,
+		InterfacesClient:                   interfacesClient,
+		PrivateEndpointsClient:             privateEndpointsClient,
+		PrivateDnsZoneGroupsClient:         privateDnsZoneGroupsClient,
+		PrivateDnsZonesClient:              privateDnsZonesClient,
+		PrivateDnsVNetLinksClient:          privateDnsVNetLinksClient,
+		VirtualMachinesClient:              virtualMachinesClient,
+		DisksClient:                        disksClient,
+		VMScaleSetsClient:                  vmScaleSetsClient,
+		StorageAccountsClient:              storageAccountsClient,
+		BlobContainersClient:               blobContainersClient,
+		VaultsClient:                       vaultsClient,
+		ManagedClustersClient:              managedClustersClient,
+		MaintenanceConfigurationsClient:    maintenanceConfigurationsClient,
+		TrustedAccessRoleBindingsClient:    trustedAccessRoleBindingsClient,
+		ExtensionsClient:                   extensionsClient,
+		FluxConfigurationsClient:           fluxConfigurationsClient,
+		RegistriesClient:                   registriesClient,
+		UserAssignedIdentitiesClient:       userAssignedIdentitiesClient,
+		FederatedIdentityCredentialsClient: federatedIdentityCredentialsClient,
+		RoleAssignmentsClient:              roleAssignmentsClient,
+		FlexibleServersClient:              flexibleServersClient,
+		FirewallRulesClient:                firewallRulesClient,
+		DatabasesClient:                    databasesClient,
+		ConfigurationsClient:               configurationsClient,
+		credential:                         cred,
+		clientOptions:                      clientOptions,
+		armClient:                          armClient,
 	}, nil
 }
 

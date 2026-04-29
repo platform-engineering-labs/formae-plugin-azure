@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.privatednsvnetlink
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "Azure::Network::PrivateDnsZoneVirtualNetworkLink"
+const apiVersion = "2024-06-01"
+
+open class PrivateDnsZoneVirtualNetworkLinkResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrivateDnsZoneVirtualNetworkLinkResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrivateDnsZoneVirtualNetworkLinkResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "Azure::Network::PrivateDnsZone"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "privateZoneName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class PrivateDnsZoneVirtualNetworkLink extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Always "global" for private DNS resources.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the private DNS zone this link belongs to.
+    @azure.FieldHint { required = true; createOnly = true }
+    privateZoneName: String|formae.Resolvable
+
+    /// ARM resource ID of the virtual network being linked.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkId: String|formae.Resolvable
+
+    /// Whether VMs in the linked VNet auto-register their A records with this zone.
+    @azure.FieldHint { hasProviderDefault = true }
+    registrationEnabled: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PrivateDnsZoneVirtualNetworkLinkResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
