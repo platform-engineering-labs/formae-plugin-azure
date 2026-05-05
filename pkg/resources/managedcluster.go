@@ -17,6 +17,7 @@ import (
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+	"gopkg.in/yaml.v3"
 )
 
 const ResourceTypeManagedCluster = "Azure::ContainerService::ManagedCluster"
@@ -26,6 +27,7 @@ type managedClustersAPI interface {
 	Get(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientGetOptions) (armcontainerservice.ManagedClustersClientGetResponse, error)
 	BeginDelete(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientBeginDeleteOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
 	NewListByResourceGroupPager(resourceGroupName string, options *armcontainerservice.ManagedClustersClientListByResourceGroupOptions) *runtime.Pager[armcontainerservice.ManagedClustersClientListByResourceGroupResponse]
+	ListClusterAdminCredentials(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientListClusterAdminCredentialsOptions) (armcontainerservice.ManagedClustersClientListClusterAdminCredentialsResponse, error)
 	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
 	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
 }
@@ -50,8 +52,8 @@ func init() {
 		return &ManagedCluster{
 			api: &managedClustersWrapper{
 				ManagedClustersClient: c.ManagedClustersClient,
-				resumeCreate:         c.ResumeCreateManagedClusterPoller,
-				resumeDelete:         c.ResumeDeleteManagedClusterPoller,
+				resumeCreate:          c.ResumeCreateManagedClusterPoller,
+				resumeDelete:          c.ResumeDeleteManagedClusterPoller,
 			},
 			config: cfg,
 		}
@@ -64,8 +66,42 @@ type ManagedCluster struct {
 	config *config.Config
 }
 
+// fetchCertificateAuthority retrieves the cluster's CA cert by parsing the
+// admin kubeconfig (the AKS REST API exposes the CA only via the credentials
+// list endpoint, not on the ManagedCluster resource directly). Returns the
+// base64-encoded `certificate-authority-data` string, or empty on any error
+// (callers treat the field as optional — failing the create/read just because
+// CA fetch failed would be heavy-handed).
+func (mc *ManagedCluster) fetchCertificateAuthority(ctx context.Context, rgName, clusterName string) string {
+	resp, err := mc.api.ListClusterAdminCredentials(ctx, rgName, clusterName, nil)
+	if err != nil {
+		return ""
+	}
+	if resp.CredentialResults.Kubeconfigs == nil || len(resp.CredentialResults.Kubeconfigs) == 0 {
+		return ""
+	}
+	kc := resp.CredentialResults.Kubeconfigs[0]
+	if kc == nil || len(kc.Value) == 0 {
+		return ""
+	}
+	var doc struct {
+		Clusters []struct {
+			Cluster struct {
+				CertificateAuthorityData string `yaml:"certificate-authority-data"`
+			} `yaml:"cluster"`
+		} `yaml:"clusters"`
+	}
+	if err := yaml.Unmarshal(kc.Value, &doc); err != nil {
+		return ""
+	}
+	if len(doc.Clusters) == 0 {
+		return ""
+	}
+	return doc.Clusters[0].Cluster.CertificateAuthorityData
+}
+
 // serializeManagedClusterProperties converts an Azure ManagedCluster to Formae property format
-func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster, rgName, clusterName string) (json.RawMessage, error) {
+func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster, rgName, clusterName, certificateAuthority string) (json.RawMessage, error) {
 	props := make(map[string]interface{})
 
 	props["resourceGroupName"] = rgName
@@ -234,6 +270,12 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 	// Tags
 	if tags := azureTagsToFormaeTags(result.Tags); tags != nil {
 		props["Tags"] = tags
+	}
+
+	// Certificate authority (sourced from a separate ListClusterAdminCredentials
+	// call; the ManagedCluster resource itself doesn't expose this).
+	if certificateAuthority != "" {
+		props["certificateAuthority"] = certificateAuthority
 	}
 
 	return json.Marshal(props)
@@ -457,7 +499,8 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 			}, nil
 		}
 
-		propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
+		certificateAuthority := mc.fetchCertificateAuthority(ctx, rgName, clusterName)
+		propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName, certificateAuthority)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
 		}
@@ -517,7 +560,8 @@ func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadReques
 		}, nil
 	}
 
-	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
+	certificateAuthority := mc.fetchCertificateAuthority(ctx, rgName, clusterName)
+	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName, certificateAuthority)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
 	}
@@ -609,7 +653,8 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 			}, nil
 		}
 
-		propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName)
+		certificateAuthority := mc.fetchCertificateAuthority(ctx, rgName, clusterName)
+		propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName, certificateAuthority)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
 		}
@@ -802,7 +847,8 @@ func (mc *ManagedCluster) handleCreateOrUpdateComplete(ctx context.Context, requ
 	parts := splitResourceID(*result.ID)
 	rgName := parts["resourcegroups"]
 
-	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, *result.Name)
+	certificateAuthority := mc.fetchCertificateAuthority(ctx, rgName, *result.Name)
+	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, *result.Name, certificateAuthority)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
 	}

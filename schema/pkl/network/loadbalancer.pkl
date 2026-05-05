@@ -145,16 +145,16 @@ open class LoadBalancer extends formae.Resource {
     @azure.FieldHint { required = true; createOnly = true }
     sku: LoadBalancerSKU
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { requiredOnCreate = true }
     frontendIPConfigurations: Listing<FrontendIPConfiguration>
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { requiredOnCreate = true }
     backendAddressPools: Listing<BackendAddressPool>
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { requiredOnCreate = true }
     probes: Listing<Probe>
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { requiredOnCreate = true }
     loadBalancingRules: Listing<LoadBalancingRule>
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
