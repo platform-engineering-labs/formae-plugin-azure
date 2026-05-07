@@ -309,13 +309,25 @@ func serializeLoadBalancerProperties(result armnetwork.LoadBalancer, rgName, lbN
 				}
 				if r.Properties != nil {
 					if r.Properties.FrontendIPConfiguration != nil && r.Properties.FrontendIPConfiguration.ID != nil {
-						m["frontendIPConfigurationName"] = childResourceName(*r.Properties.FrontendIPConfiguration.ID)
+						name, err := loadBalancerChildName(*r.Properties.FrontendIPConfiguration.ID, "frontendIPConfigurations")
+						if err != nil {
+							return nil, err
+						}
+						m["frontendIPConfigurationName"] = name
 					}
 					if r.Properties.BackendAddressPool != nil && r.Properties.BackendAddressPool.ID != nil {
-						m["backendAddressPoolName"] = childResourceName(*r.Properties.BackendAddressPool.ID)
+						name, err := loadBalancerChildName(*r.Properties.BackendAddressPool.ID, "backendAddressPools")
+						if err != nil {
+							return nil, err
+						}
+						m["backendAddressPoolName"] = name
 					}
 					if r.Properties.Probe != nil && r.Properties.Probe.ID != nil {
-						m["probeName"] = childResourceName(*r.Properties.Probe.ID)
+						name, err := loadBalancerChildName(*r.Properties.Probe.ID, "probes")
+						if err != nil {
+							return nil, err
+						}
+						m["probeName"] = name
 					}
 					if r.Properties.Protocol != nil {
 						m["protocol"] = string(*r.Properties.Protocol)
@@ -349,15 +361,20 @@ func serializeLoadBalancerProperties(result armnetwork.LoadBalancer, rgName, lbN
 	return json.Marshal(props)
 }
 
-// childResourceName returns the trailing segment of a sub-resource ARM ID,
-// e.g. ".../loadBalancers/lb1/probes/probe1" → "probe1".
-func childResourceName(id string) string {
-	for i := len(id) - 1; i >= 0; i-- {
-		if id[i] == '/' {
-			return id[i+1:]
-		}
+func loadBalancerNativeIDParts(resourceID string) (rgName, lbName string, err error) {
+	rgName, names, err := armIDParts(resourceID, "loadBalancers")
+	if err != nil {
+		return "", "", err
 	}
-	return id
+	return rgName, names["loadBalancers"], nil
+}
+
+func loadBalancerChildName(resourceID, childType string) (string, error) {
+	_, names, err := armIDParts(resourceID, "loadBalancers", childType)
+	if err != nil {
+		return "", err
+	}
+	return names[childType], nil
 }
 
 func int32Ptr(v int32) *int32 { return &v }
@@ -395,7 +412,7 @@ func (lb *LoadBalancer) Create(ctx context.Context, request *resource.CreateRequ
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -410,7 +427,7 @@ func (lb *LoadBalancer) Create(ctx context.Context, request *resource.CreateRequ
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -447,16 +464,14 @@ func (lb *LoadBalancer) Create(ctx context.Context, request *resource.CreateRequ
 }
 
 func (lb *LoadBalancer) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	lbName := parts["loadbalancers"]
-	if rgName == "" || lbName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or loadBalancer name from %s", request.NativeID)
+	rgName, lbName, err := loadBalancerNativeIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or loadBalancer name from %s: %w", request.NativeID, err)
 	}
 
 	result, err := lb.api.Get(ctx, rgName, lbName, nil)
 	if err != nil {
-		return &resource.ReadResult{ErrorCode: mapAzureErrorToOperationErrorCode(err)}, nil
+		return &resource.ReadResult{ErrorCode: operationErrorCode(err)}, nil
 	}
 	propsJSON, err := serializeLoadBalancerProperties(result.LoadBalancer, rgName, lbName)
 	if err != nil {
@@ -469,11 +484,9 @@ func (lb *LoadBalancer) Read(ctx context.Context, request *resource.ReadRequest)
 }
 
 func (lb *LoadBalancer) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	lbName := parts["loadbalancers"]
-	if rgName == "" || lbName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or loadBalancer name from %s", request.NativeID)
+	rgName, lbName, err := loadBalancerNativeIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or loadBalancer name from %s: %w", request.NativeID, err)
 	}
 
 	var props map[string]any
@@ -500,7 +513,7 @@ func (lb *LoadBalancer) Update(ctx context.Context, request *resource.UpdateRequ
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -513,7 +526,7 @@ func (lb *LoadBalancer) Update(ctx context.Context, request *resource.UpdateRequ
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -550,16 +563,14 @@ func (lb *LoadBalancer) Update(ctx context.Context, request *resource.UpdateRequ
 }
 
 func (lb *LoadBalancer) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	lbName := parts["loadbalancers"]
-	if rgName == "" || lbName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or loadBalancer name from %s", request.NativeID)
+	rgName, lbName, err := loadBalancerNativeIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or loadBalancer name from %s: %w", request.NativeID, err)
 	}
 
 	poller, err := lb.api.BeginDelete(ctx, rgName, lbName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -573,7 +584,7 @@ func (lb *LoadBalancer) Delete(ctx context.Context, request *resource.DeleteRequ
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start LoadBalancer deletion: %w", err)
 	}
@@ -630,162 +641,28 @@ func (lb *LoadBalancer) statusCreateOrUpdate(ctx context.Context, request *resou
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := resumePoller[armnetwork.LoadBalancersClientCreateOrUpdateResponse](lb.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		return lb.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	if _, err = poller.Poll(ctx); err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return lb.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.LoadBalancersClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.LoadBalancersClientCreateOrUpdateResponse](lb.pipeline, token)
 		},
-	}, nil
-}
-
-func (lb *LoadBalancer) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armnetwork.LoadBalancersClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	propsJSON, err := serializeLoadBalancerProperties(result.LoadBalancer, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize LoadBalancer properties: %w", err)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.LoadBalancersClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, lbName, err := loadBalancerNativeIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeLoadBalancerProperties(result.LoadBalancer, rgName, lbName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize LoadBalancer properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (lb *LoadBalancer) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armnetwork.LoadBalancersClientDeleteResponse](lb.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	if _, err = poller.Poll(ctx); err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.LoadBalancersClientDeleteResponse], error) {
+			return resumePoller[armnetwork.LoadBalancersClientDeleteResponse](lb.pipeline, token)
+		}, nil)
 }
 
 func (lb *LoadBalancer) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

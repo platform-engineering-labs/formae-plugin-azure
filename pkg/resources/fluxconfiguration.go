@@ -45,7 +45,7 @@ type FluxConfiguration struct {
 }
 
 func serializeFluxConfigurationProperties(result armkubernetesconfiguration.FluxConfiguration, rgName, clusterName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	if result.ID != nil {
 		props["id"] = *result.ID
@@ -73,12 +73,12 @@ func serializeFluxConfigurationProperties(result armkubernetesconfiguration.Flux
 		// Git repository
 		if result.Properties.GitRepository != nil {
 			gr := result.Properties.GitRepository
-			gitRepo := make(map[string]interface{})
+			gitRepo := make(map[string]any)
 			if gr.URL != nil {
 				gitRepo["url"] = *gr.URL
 			}
 			if gr.RepositoryRef != nil {
-				ref := make(map[string]interface{})
+				ref := make(map[string]any)
 				if gr.RepositoryRef.Branch != nil {
 					ref["branch"] = *gr.RepositoryRef.Branch
 				}
@@ -108,12 +108,12 @@ func serializeFluxConfigurationProperties(result armkubernetesconfiguration.Flux
 
 		// Kustomizations
 		if result.Properties.Kustomizations != nil {
-			kustomizations := make(map[string]interface{}, len(result.Properties.Kustomizations))
+			kustomizations := make(map[string]any, len(result.Properties.Kustomizations))
 			for name, k := range result.Properties.Kustomizations {
 				if k == nil {
 					continue
 				}
-				kDef := make(map[string]interface{})
+				kDef := make(map[string]any)
 				if k.Path != nil {
 					kDef["path"] = *k.Path
 				}
@@ -152,12 +152,12 @@ func serializeFluxConfigurationProperties(result armkubernetesconfiguration.Flux
 	return json.Marshal(props)
 }
 
-func parseFluxGitRepository(raw map[string]interface{}) *armkubernetesconfiguration.GitRepositoryDefinition {
+func parseFluxGitRepository(raw map[string]any) *armkubernetesconfiguration.GitRepositoryDefinition {
 	gr := &armkubernetesconfiguration.GitRepositoryDefinition{}
 	if url, ok := raw["url"].(string); ok {
 		gr.URL = to.Ptr(url)
 	}
-	if refRaw, ok := raw["repositoryRef"].(map[string]interface{}); ok {
+	if refRaw, ok := raw["repositoryRef"].(map[string]any); ok {
 		ref := &armkubernetesconfiguration.RepositoryRefDefinition{}
 		if branch, ok := refRaw["branch"].(string); ok {
 			ref.Branch = to.Ptr(branch)
@@ -194,10 +194,10 @@ func parseFluxGitRepository(raw map[string]interface{}) *armkubernetesconfigurat
 	return gr
 }
 
-func parseFluxKustomizations(raw map[string]interface{}) map[string]*armkubernetesconfiguration.KustomizationDefinition {
+func parseFluxKustomizations(raw map[string]any) map[string]*armkubernetesconfiguration.KustomizationDefinition {
 	result := make(map[string]*armkubernetesconfiguration.KustomizationDefinition, len(raw))
 	for name, v := range raw {
-		kMap, ok := v.(map[string]interface{})
+		kMap, ok := v.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -220,7 +220,7 @@ func parseFluxKustomizations(raw map[string]interface{}) map[string]*armkubernet
 		if timeout, ok := kMap["timeoutInSeconds"].(float64); ok {
 			k.TimeoutInSeconds = to.Ptr(int64(timeout))
 		}
-		if depsRaw, ok := kMap["dependsOn"].([]interface{}); ok {
+		if depsRaw, ok := kMap["dependsOn"].([]any); ok {
 			deps := make([]*string, 0, len(depsRaw))
 			for _, d := range depsRaw {
 				if s, ok := d.(string); ok {
@@ -234,7 +234,7 @@ func parseFluxKustomizations(raw map[string]interface{}) map[string]*armkubernet
 	return result
 }
 
-func buildFluxConfigurationParams(props map[string]interface{}) armkubernetesconfiguration.FluxConfiguration {
+func buildFluxConfigurationParams(props map[string]any) armkubernetesconfiguration.FluxConfiguration {
 	params := armkubernetesconfiguration.FluxConfiguration{
 		Properties: &armkubernetesconfiguration.FluxConfigurationProperties{},
 	}
@@ -254,11 +254,11 @@ func buildFluxConfigurationParams(props map[string]interface{}) armkubernetescon
 		params.Properties.Suspend = to.Ptr(suspend)
 	}
 
-	if grRaw, ok := props["gitRepository"].(map[string]interface{}); ok {
+	if grRaw, ok := props["gitRepository"].(map[string]any); ok {
 		params.Properties.GitRepository = parseFluxGitRepository(grRaw)
 	}
 
-	if kustRaw, ok := props["kustomizations"].(map[string]interface{}); ok {
+	if kustRaw, ok := props["kustomizations"].(map[string]any); ok {
 		params.Properties.Kustomizations = parseFluxKustomizations(kustRaw)
 	}
 
@@ -266,7 +266,7 @@ func buildFluxConfigurationParams(props map[string]interface{}) armkubernetescon
 }
 
 func (fc *FluxConfiguration) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -294,7 +294,7 @@ func (fc *FluxConfiguration) Create(ctx context.Context, request *resource.Creat
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -309,7 +309,7 @@ func (fc *FluxConfiguration) Create(ctx context.Context, request *resource.Creat
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -358,7 +358,7 @@ func (fc *FluxConfiguration) Read(ctx context.Context, request *resource.ReadReq
 	result, err := fc.api.Get(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -378,7 +378,7 @@ func (fc *FluxConfiguration) Update(ctx context.Context, request *resource.Updat
 		return nil, err
 	}
 
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -393,7 +393,7 @@ func (fc *FluxConfiguration) Update(ctx context.Context, request *resource.Updat
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -406,7 +406,7 @@ func (fc *FluxConfiguration) Update(ctx context.Context, request *resource.Updat
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -454,7 +454,7 @@ func (fc *FluxConfiguration) Delete(ctx context.Context, request *resource.Delet
 
 	poller, err := fc.api.BeginDelete(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, fluxName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -468,7 +468,7 @@ func (fc *FluxConfiguration) Delete(ctx context.Context, request *resource.Delet
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start flux configuration deletion: %w", err)
 	}
@@ -526,169 +526,28 @@ func (fc *FluxConfiguration) statusCreateOrUpdate(ctx context.Context, request *
 	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
-
-	poller, err := resumePoller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse](fc.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		return fc.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return fc.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse](fc.pipeline, token)
 		},
-	}, nil
-}
-
-func (fc *FluxConfiguration) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	clusterName := parts["managedclusters"]
-
-	propsJSON, err := serializeFluxConfigurationProperties(result.FluxConfiguration, rgName, clusterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize flux configuration properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, clusterName, _, err := parseFluxConfigurationNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeFluxConfigurationProperties(result.FluxConfiguration, rgName, clusterName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize flux configuration properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (fc *FluxConfiguration) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse](fc.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse], error) {
+			return resumePoller[armkubernetesconfiguration.FluxConfigurationsClientDeleteResponse](fc.pipeline, token)
+		}, nil)
 }
 
 func (fc *FluxConfiguration) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -726,22 +585,9 @@ func (fc *FluxConfiguration) List(ctx context.Context, request *resource.ListReq
 }
 
 func parseFluxConfigurationNativeID(nativeID string) (rgName, clusterName, fluxName string, err error) {
-	parts := splitResourceID(nativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract resource group name from %s", nativeID)
+	rgName, names, err := armIDParts(nativeID, "managedclusters", "fluxconfigurations")
+	if err != nil {
+		return "", "", "", err
 	}
-
-	clusterName, ok = parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract cluster name from %s", nativeID)
-	}
-
-	fluxName, ok = parts["fluxconfigurations"]
-	if !ok || fluxName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract flux configuration name from %s", nativeID)
-	}
-
-	return rgName, clusterName, fluxName, nil
+	return rgName, names["managedclusters"], names["fluxconfigurations"], nil
 }

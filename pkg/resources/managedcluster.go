@@ -28,42 +28,31 @@ type managedClustersAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientBeginDeleteOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
 	NewListByResourceGroupPager(resourceGroupName string, options *armcontainerservice.ManagedClustersClientListByResourceGroupOptions) *runtime.Pager[armcontainerservice.ManagedClustersClientListByResourceGroupResponse]
 	ListClusterAdminCredentials(ctx context.Context, resourceGroupName string, resourceName string, options *armcontainerservice.ManagedClustersClientListClusterAdminCredentialsOptions) (armcontainerservice.ManagedClustersClientListClusterAdminCredentialsResponse, error)
-	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
-}
-
-// managedClustersWrapper composes the SDK client with resume-poller methods from client.Client.
-type managedClustersWrapper struct {
-	*armcontainerservice.ManagedClustersClient
-	resumeCreate func(string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
-}
-
-func (w *managedClustersWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *managedClustersWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
 	registry.Register(ResourceTypeManagedCluster, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &ManagedCluster{
-			api: &managedClustersWrapper{
-				ManagedClustersClient: c.ManagedClustersClient,
-				resumeCreate:          c.ResumeCreateManagedClusterPoller,
-				resumeDelete:          c.ResumeDeleteManagedClusterPoller,
-			},
-			config: cfg,
+			api:      c.ManagedClustersClient,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
 
 // ManagedCluster is the provisioner for Azure Kubernetes Service (AKS) clusters.
 type ManagedCluster struct {
-	api    managedClustersAPI
-	config *config.Config
+	api      managedClustersAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
+}
+
+func (mc *ManagedCluster) parseNativeID(nativeID string) (rgName, clusterName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "managedclusters")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["managedclusters"], nil
 }
 
 // fetchCertificateAuthority retrieves the cluster's CA cert by parsing the
@@ -102,7 +91,7 @@ func (mc *ManagedCluster) fetchCertificateAuthority(ctx context.Context, rgName,
 
 // serializeManagedClusterProperties converts an Azure ManagedCluster to Formae property format
 func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster, rgName, clusterName, certificateAuthority string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	if result.Name != nil {
@@ -121,7 +110,7 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 
 	// SKU
 	if result.SKU != nil {
-		sku := make(map[string]interface{})
+		sku := make(map[string]any)
 		if result.SKU.Name != nil {
 			sku["name"] = string(*result.SKU.Name)
 		}
@@ -133,7 +122,7 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 
 	// Identity
 	if result.Identity != nil {
-		identity := make(map[string]interface{})
+		identity := make(map[string]any)
 		if result.Identity.Type != nil {
 			identity["type"] = string(*result.Identity.Type)
 		}
@@ -178,12 +167,12 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 
 		// Agent pool profiles
 		if result.Properties.AgentPoolProfiles != nil {
-			pools := make([]map[string]interface{}, 0, len(result.Properties.AgentPoolProfiles))
+			pools := make([]map[string]any, 0, len(result.Properties.AgentPoolProfiles))
 			for _, pool := range result.Properties.AgentPoolProfiles {
 				if pool == nil {
 					continue
 				}
-				poolMap := make(map[string]interface{})
+				poolMap := make(map[string]any)
 				if pool.Name != nil {
 					poolMap["name"] = *pool.Name
 				}
@@ -221,7 +210,7 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 		// Network profile
 		if result.Properties.NetworkProfile != nil {
 			np := result.Properties.NetworkProfile
-			netProfile := make(map[string]interface{})
+			netProfile := make(map[string]any)
 			if np.NetworkPlugin != nil {
 				netProfile["networkPlugin"] = string(*np.NetworkPlugin)
 			}
@@ -251,7 +240,7 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 		// AAD profile
 		if result.Properties.AADProfile != nil {
 			aad := result.Properties.AADProfile
-			aadProfile := make(map[string]interface{})
+			aadProfile := make(map[string]any)
 			if aad.Managed != nil {
 				aadProfile["managed"] = *aad.Managed
 			}
@@ -282,7 +271,7 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 }
 
 func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -307,7 +296,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Parse SKU
-	if skuRaw, ok := props["sku"].(map[string]interface{}); ok {
+	if skuRaw, ok := props["sku"].(map[string]any); ok {
 		sku := &armcontainerservice.ManagedClusterSKU{}
 		if name, ok := skuRaw["name"].(string); ok {
 			skuName := armcontainerservice.ManagedClusterSKUName(name)
@@ -321,7 +310,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Parse Identity
-	if identityRaw, ok := props["identity"].(map[string]interface{}); ok {
+	if identityRaw, ok := props["identity"].(map[string]any); ok {
 		identity := &armcontainerservice.ManagedClusterIdentity{}
 		if identityType, ok := identityRaw["type"].(string); ok {
 			t := armcontainerservice.ResourceIdentityType(identityType)
@@ -349,10 +338,10 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Parse agent pool profiles
-	if poolsRaw, ok := props["agentPoolProfiles"].([]interface{}); ok && len(poolsRaw) > 0 {
+	if poolsRaw, ok := props["agentPoolProfiles"].([]any); ok && len(poolsRaw) > 0 {
 		pools := make([]*armcontainerservice.ManagedClusterAgentPoolProfile, 0, len(poolsRaw))
 		for i, poolRaw := range poolsRaw {
-			poolMap, ok := poolRaw.(map[string]interface{})
+			poolMap, ok := poolRaw.(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("agentPoolProfiles[%d] must be an object", i)
 			}
@@ -395,7 +384,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Parse network profile
-	if netRaw, ok := props["networkProfile"].(map[string]interface{}); ok {
+	if netRaw, ok := props["networkProfile"].(map[string]any); ok {
 		netProfile := &armcontainerservice.NetworkProfile{}
 		if plugin, ok := netRaw["networkPlugin"].(string); ok {
 			p := armcontainerservice.NetworkPlugin(plugin)
@@ -426,7 +415,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Parse AAD profile
-	if aadRaw, ok := props["aadProfile"].(map[string]interface{}); ok {
+	if aadRaw, ok := props["aadProfile"].(map[string]any); ok {
 		aadProfile := &armcontainerservice.ManagedClusterAADProfile{}
 		if managed, ok := aadRaw["managed"].(bool); ok {
 			aadProfile.Managed = to.Ptr(managed)
@@ -441,16 +430,16 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Parse Linux profile
-	if linuxRaw, ok := props["linuxProfile"].(map[string]interface{}); ok {
+	if linuxRaw, ok := props["linuxProfile"].(map[string]any); ok {
 		linuxProfile := &armcontainerservice.LinuxProfile{}
 		if adminUsername, ok := linuxRaw["adminUsername"].(string); ok {
 			linuxProfile.AdminUsername = to.Ptr(adminUsername)
 		}
-		if sshRaw, ok := linuxRaw["ssh"].(map[string]interface{}); ok {
-			if keysRaw, ok := sshRaw["publicKeys"].([]interface{}); ok {
+		if sshRaw, ok := linuxRaw["ssh"].(map[string]any); ok {
+			if keysRaw, ok := sshRaw["publicKeys"].([]any); ok {
 				keys := make([]*armcontainerservice.SSHPublicKey, 0, len(keysRaw))
 				for _, keyRaw := range keysRaw {
-					if keyMap, ok := keyRaw.(map[string]interface{}); ok {
+					if keyMap, ok := keyRaw.(map[string]any); ok {
 						if keyData, ok := keyMap["keyData"].(string); ok {
 							keys = append(keys, &armcontainerservice.SSHPublicKey{
 								KeyData: to.Ptr(keyData),
@@ -479,7 +468,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -494,7 +483,7 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -541,22 +530,15 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 }
 
 func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	clusterName, ok := parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
+	rgName, clusterName, err := mc.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := mc.api.Get(ctx, rgName, clusterName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -572,19 +554,12 @@ func (mc *ManagedCluster) Read(ctx context.Context, request *resource.ReadReques
 }
 
 func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
+	rgName, clusterName, err := mc.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
-	clusterName, ok := parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
-	}
-
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -600,7 +575,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 	}
 
 	// Parse SKU
-	if skuRaw, ok := props["sku"].(map[string]interface{}); ok {
+	if skuRaw, ok := props["sku"].(map[string]any); ok {
 		sku := &armcontainerservice.ManagedClusterSKU{}
 		if name, ok := skuRaw["name"].(string); ok {
 			skuName := armcontainerservice.ManagedClusterSKUName(name)
@@ -614,7 +589,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 	}
 
 	// Parse Identity
-	if identityRaw, ok := props["identity"].(map[string]interface{}); ok {
+	if identityRaw, ok := props["identity"].(map[string]any); ok {
 		identity := &armcontainerservice.ManagedClusterIdentity{}
 		if identityType, ok := identityRaw["type"].(string); ok {
 			t := armcontainerservice.ResourceIdentityType(identityType)
@@ -635,7 +610,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -648,7 +623,7 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -695,22 +670,15 @@ func (mc *ManagedCluster) Update(ctx context.Context, request *resource.UpdateRe
 }
 
 func (mc *ManagedCluster) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	clusterName, ok := parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
+	rgName, clusterName, err := mc.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	poller, err := mc.api.BeginDelete(ctx, rgName, clusterName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -724,7 +692,7 @@ func (mc *ManagedCluster) Delete(ctx context.Context, request *resource.DeleteRe
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start AKS cluster deletion: %w", err)
 	}
@@ -755,8 +723,8 @@ func (mc *ManagedCluster) Delete(ctx context.Context, request *resource.DeleteRe
 }
 
 func (mc *ManagedCluster) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -767,9 +735,9 @@ func (mc *ManagedCluster) Status(ctx context.Context, request *resource.StatusRe
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return mc.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return mc.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -784,197 +752,36 @@ func (mc *ManagedCluster) Status(ctx context.Context, request *resource.StatusRe
 
 func (mc *ManagedCluster) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := mc.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		return mc.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return mc.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error) {
+			return resumePoller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse](mc.pipeline, token)
 		},
-	}, nil
-}
-
-func (mc *ManagedCluster) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, _ *lroRequestID, poller *runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-
-	certificateAuthority := mc.fetchCertificateAuthority(ctx, rgName, *result.Name)
-	propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, *result.Name, certificateAuthority)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+		func(ctx context.Context, result armcontainerservice.ManagedClustersClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, clusterName, err := mc.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			certificateAuthority := mc.fetchCertificateAuthority(ctx, rgName, clusterName)
+			propsJSON, err := serializeManagedClusterProperties(result.ManagedCluster, rgName, clusterName, certificateAuthority)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize AKS cluster properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
 		},
-	}, nil
+	)
 }
 
 func (mc *ManagedCluster) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := mc.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error) {
+			return resumePoller[armcontainerservice.ManagedClustersClientDeleteResponse](mc.pipeline, token)
 		},
-	}, nil
+		nil,
+	)
 }
 
 func (mc *ManagedCluster) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

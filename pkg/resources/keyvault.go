@@ -27,45 +27,36 @@ type vaultsAPI interface {
 	Delete(ctx context.Context, resourceGroupName string, vaultName string, options *armkeyvault.VaultsClientDeleteOptions) (armkeyvault.VaultsClientDeleteResponse, error)
 	NewListByResourceGroupPager(resourceGroupName string, options *armkeyvault.VaultsClientListByResourceGroupOptions) *runtime.Pager[armkeyvault.VaultsClientListByResourceGroupResponse]
 	NewListBySubscriptionPager(options *armkeyvault.VaultsClientListBySubscriptionOptions) *runtime.Pager[armkeyvault.VaultsClientListBySubscriptionResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientPurgeDeletedResponse], error)
-}
-
-// vaultsClientWrapper composes the SDK client with resume-poller helpers.
-type vaultsClientWrapper struct {
-	*armkeyvault.VaultsClient
-	pipeline runtime.Pipeline
-}
-
-func (w *vaultsClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkeyvault.VaultsClientCreateOrUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *vaultsClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armkeyvault.VaultsClientPurgeDeletedResponse], error) {
-	return runtime.NewPollerFromResumeToken[armkeyvault.VaultsClientPurgeDeletedResponse](token, w.pipeline, nil)
 }
 
 func init() {
 	registry.Register(ResourceTypeKeyVault, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &KeyVault{
-			api: &vaultsClientWrapper{
-				VaultsClient: c.VaultsClient,
-				pipeline:     c.Pipeline(),
-			},
-			config: cfg,
+			api:      c.VaultsClient,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
 
 // KeyVault is the provisioner for Azure Key Vaults.
 type KeyVault struct {
-	api    vaultsAPI
-	config *config.Config
+	api      vaultsAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
+}
+
+func (kv *KeyVault) parseNativeID(nativeID string) (rgName, vaultName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "vaults")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["vaults"], nil
 }
 
 // serializeKeyVaultProperties converts an Azure Vault to Formae property format
 func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	if result.Name != nil {
@@ -84,7 +75,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 		}
 
 		if result.Properties.SKU != nil {
-			sku := make(map[string]interface{})
+			sku := make(map[string]any)
 			if result.Properties.SKU.Family != nil {
 				sku["family"] = string(*result.Properties.SKU.Family)
 			}
@@ -128,9 +119,9 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 
 		// Serialize access policies
 		if len(result.Properties.AccessPolicies) > 0 {
-			accessPolicies := make([]map[string]interface{}, 0, len(result.Properties.AccessPolicies))
+			accessPolicies := make([]map[string]any, 0, len(result.Properties.AccessPolicies))
 			for _, ap := range result.Properties.AccessPolicies {
-				policy := make(map[string]interface{})
+				policy := make(map[string]any)
 				if ap.TenantID != nil {
 					policy["tenantId"] = *ap.TenantID
 				}
@@ -138,7 +129,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 					policy["objectId"] = *ap.ObjectID
 				}
 				if ap.Permissions != nil {
-					permissions := make(map[string]interface{})
+					permissions := make(map[string]any)
 					if ap.Permissions.Keys != nil {
 						keys := make([]string, 0, len(ap.Permissions.Keys))
 						for _, k := range ap.Permissions.Keys {
@@ -184,7 +175,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 
 		// Serialize network ACLs
 		if result.Properties.NetworkACLs != nil {
-			networkAcls := make(map[string]interface{})
+			networkAcls := make(map[string]any)
 			if result.Properties.NetworkACLs.DefaultAction != nil {
 				networkAcls["defaultAction"] = string(*result.Properties.NetworkACLs.DefaultAction)
 			}
@@ -192,19 +183,19 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 				networkAcls["bypass"] = string(*result.Properties.NetworkACLs.Bypass)
 			}
 			if len(result.Properties.NetworkACLs.IPRules) > 0 {
-				ipRules := make([]map[string]interface{}, 0, len(result.Properties.NetworkACLs.IPRules))
+				ipRules := make([]map[string]any, 0, len(result.Properties.NetworkACLs.IPRules))
 				for _, rule := range result.Properties.NetworkACLs.IPRules {
 					if rule.Value != nil {
-						ipRules = append(ipRules, map[string]interface{}{"value": *rule.Value})
+						ipRules = append(ipRules, map[string]any{"value": *rule.Value})
 					}
 				}
 				networkAcls["ipRules"] = ipRules
 			}
 			if len(result.Properties.NetworkACLs.VirtualNetworkRules) > 0 {
-				vnetRules := make([]map[string]interface{}, 0, len(result.Properties.NetworkACLs.VirtualNetworkRules))
+				vnetRules := make([]map[string]any, 0, len(result.Properties.NetworkACLs.VirtualNetworkRules))
 				for _, rule := range result.Properties.NetworkACLs.VirtualNetworkRules {
 					if rule.ID != nil {
-						vnetRules = append(vnetRules, map[string]interface{}{"id": *rule.ID})
+						vnetRules = append(vnetRules, map[string]any{"id": *rule.ID})
 					}
 				}
 				networkAcls["virtualNetworkRules"] = vnetRules
@@ -229,7 +220,7 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -259,7 +250,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	// Extract SKU (required)
-	skuMap, ok := props["sku"].(map[string]interface{})
+	skuMap, ok := props["sku"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("sku is required")
 	}
@@ -310,10 +301,10 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	// Parse access policies (Azure requires this field, even if empty)
-	if accessPoliciesRaw, ok := props["accessPolicies"].([]interface{}); ok {
+	if accessPoliciesRaw, ok := props["accessPolicies"].([]any); ok {
 		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
 		for _, apRaw := range accessPoliciesRaw {
-			apMap, ok := apRaw.(map[string]interface{})
+			apMap, ok := apRaw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -324,9 +315,9 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 			if oid, ok := apMap["objectId"].(string); ok {
 				entry.ObjectID = stringPtr(oid)
 			}
-			if permsRaw, ok := apMap["permissions"].(map[string]interface{}); ok {
+			if permsRaw, ok := apMap["permissions"].(map[string]any); ok {
 				entry.Permissions = &armkeyvault.Permissions{}
-				if keysRaw, ok := permsRaw["keys"].([]interface{}); ok {
+				if keysRaw, ok := permsRaw["keys"].([]any); ok {
 					keys := make([]*armkeyvault.KeyPermissions, 0, len(keysRaw))
 					for _, k := range keysRaw {
 						if ks, ok := k.(string); ok {
@@ -336,7 +327,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 					}
 					entry.Permissions.Keys = keys
 				}
-				if secretsRaw, ok := permsRaw["secrets"].([]interface{}); ok {
+				if secretsRaw, ok := permsRaw["secrets"].([]any); ok {
 					secrets := make([]*armkeyvault.SecretPermissions, 0, len(secretsRaw))
 					for _, s := range secretsRaw {
 						if ss, ok := s.(string); ok {
@@ -346,7 +337,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 					}
 					entry.Permissions.Secrets = secrets
 				}
-				if certsRaw, ok := permsRaw["certificates"].([]interface{}); ok {
+				if certsRaw, ok := permsRaw["certificates"].([]any); ok {
 					certs := make([]*armkeyvault.CertificatePermissions, 0, len(certsRaw))
 					for _, c := range certsRaw {
 						if cs, ok := c.(string); ok {
@@ -356,7 +347,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 					}
 					entry.Permissions.Certificates = certs
 				}
-				if storageRaw, ok := permsRaw["storage"].([]interface{}); ok {
+				if storageRaw, ok := permsRaw["storage"].([]any); ok {
 					storage := make([]*armkeyvault.StoragePermissions, 0, len(storageRaw))
 					for _, s := range storageRaw {
 						if ss, ok := s.(string); ok {
@@ -376,7 +367,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 	}
 
 	// Parse network ACLs
-	if networkAclsRaw, ok := props["networkAcls"].(map[string]interface{}); ok {
+	if networkAclsRaw, ok := props["networkAcls"].(map[string]any); ok {
 		params.Properties.NetworkACLs = &armkeyvault.NetworkRuleSet{}
 		if defaultAction, ok := networkAclsRaw["defaultAction"].(string); ok {
 			action := armkeyvault.NetworkRuleAction(defaultAction)
@@ -386,10 +377,10 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 			bypassVal := armkeyvault.NetworkRuleBypassOptions(bypass)
 			params.Properties.NetworkACLs.Bypass = &bypassVal
 		}
-		if ipRulesRaw, ok := networkAclsRaw["ipRules"].([]interface{}); ok {
+		if ipRulesRaw, ok := networkAclsRaw["ipRules"].([]any); ok {
 			ipRules := make([]*armkeyvault.IPRule, 0, len(ipRulesRaw))
 			for _, rule := range ipRulesRaw {
-				if ruleMap, ok := rule.(map[string]interface{}); ok {
+				if ruleMap, ok := rule.(map[string]any); ok {
 					if value, ok := ruleMap["value"].(string); ok {
 						ipRules = append(ipRules, &armkeyvault.IPRule{Value: stringPtr(value)})
 					}
@@ -397,10 +388,10 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 			}
 			params.Properties.NetworkACLs.IPRules = ipRules
 		}
-		if vnetRulesRaw, ok := networkAclsRaw["virtualNetworkRules"].([]interface{}); ok {
+		if vnetRulesRaw, ok := networkAclsRaw["virtualNetworkRules"].([]any); ok {
 			vnetRules := make([]*armkeyvault.VirtualNetworkRule, 0, len(vnetRulesRaw))
 			for _, rule := range vnetRulesRaw {
-				if ruleMap, ok := rule.(map[string]interface{}); ok {
+				if ruleMap, ok := rule.(map[string]any); ok {
 					if id, ok := ruleMap["id"].(string); ok {
 						vnetRules = append(vnetRules, &armkeyvault.VirtualNetworkRule{ID: stringPtr(id)})
 					}
@@ -429,7 +420,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -447,7 +438,7 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -496,17 +487,9 @@ func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest)
 }
 
 func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// Parse NativeID to extract resourceGroupName and vaultName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vaultName, ok := parts["vaults"]
-	if !ok || vaultName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract vault name from %s", request.NativeID)
+	rgName, vaultName, err := kv.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get Key Vault from Azure
@@ -514,7 +497,7 @@ func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*r
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -530,21 +513,13 @@ func (kv *KeyVault) Read(ctx context.Context, request *resource.ReadRequest) (*r
 }
 
 func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	// Parse NativeID to extract resourceGroupName and vaultName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vaultName, ok := parts["vaults"]
-	if !ok || vaultName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract vault name from %s", request.NativeID)
+	rgName, vaultName, err := kv.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -562,7 +537,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	// Extract SKU (required)
-	skuMap, ok := props["sku"].(map[string]interface{})
+	skuMap, ok := props["sku"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("sku is required")
 	}
@@ -613,10 +588,10 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	// Parse access policies (Azure requires this field, even if empty)
-	if accessPoliciesRaw, ok := props["accessPolicies"].([]interface{}); ok {
+	if accessPoliciesRaw, ok := props["accessPolicies"].([]any); ok {
 		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
 		for _, apRaw := range accessPoliciesRaw {
-			apMap, ok := apRaw.(map[string]interface{})
+			apMap, ok := apRaw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -627,9 +602,9 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 			if oid, ok := apMap["objectId"].(string); ok {
 				entry.ObjectID = stringPtr(oid)
 			}
-			if permsRaw, ok := apMap["permissions"].(map[string]interface{}); ok {
+			if permsRaw, ok := apMap["permissions"].(map[string]any); ok {
 				entry.Permissions = &armkeyvault.Permissions{}
-				if keysRaw, ok := permsRaw["keys"].([]interface{}); ok {
+				if keysRaw, ok := permsRaw["keys"].([]any); ok {
 					keys := make([]*armkeyvault.KeyPermissions, 0, len(keysRaw))
 					for _, k := range keysRaw {
 						if ks, ok := k.(string); ok {
@@ -639,7 +614,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 					}
 					entry.Permissions.Keys = keys
 				}
-				if secretsRaw, ok := permsRaw["secrets"].([]interface{}); ok {
+				if secretsRaw, ok := permsRaw["secrets"].([]any); ok {
 					secrets := make([]*armkeyvault.SecretPermissions, 0, len(secretsRaw))
 					for _, s := range secretsRaw {
 						if ss, ok := s.(string); ok {
@@ -649,7 +624,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 					}
 					entry.Permissions.Secrets = secrets
 				}
-				if certsRaw, ok := permsRaw["certificates"].([]interface{}); ok {
+				if certsRaw, ok := permsRaw["certificates"].([]any); ok {
 					certs := make([]*armkeyvault.CertificatePermissions, 0, len(certsRaw))
 					for _, c := range certsRaw {
 						if cs, ok := c.(string); ok {
@@ -659,7 +634,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 					}
 					entry.Permissions.Certificates = certs
 				}
-				if storageRaw, ok := permsRaw["storage"].([]interface{}); ok {
+				if storageRaw, ok := permsRaw["storage"].([]any); ok {
 					storage := make([]*armkeyvault.StoragePermissions, 0, len(storageRaw))
 					for _, s := range storageRaw {
 						if ss, ok := s.(string); ok {
@@ -679,7 +654,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	// Parse network ACLs (same as Create)
-	if networkAclsRaw, ok := props["networkAcls"].(map[string]interface{}); ok {
+	if networkAclsRaw, ok := props["networkAcls"].(map[string]any); ok {
 		params.Properties.NetworkACLs = &armkeyvault.NetworkRuleSet{}
 		if defaultAction, ok := networkAclsRaw["defaultAction"].(string); ok {
 			action := armkeyvault.NetworkRuleAction(defaultAction)
@@ -689,10 +664,10 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 			bypassVal := armkeyvault.NetworkRuleBypassOptions(bypass)
 			params.Properties.NetworkACLs.Bypass = &bypassVal
 		}
-		if ipRulesRaw, ok := networkAclsRaw["ipRules"].([]interface{}); ok {
+		if ipRulesRaw, ok := networkAclsRaw["ipRules"].([]any); ok {
 			ipRules := make([]*armkeyvault.IPRule, 0, len(ipRulesRaw))
 			for _, rule := range ipRulesRaw {
-				if ruleMap, ok := rule.(map[string]interface{}); ok {
+				if ruleMap, ok := rule.(map[string]any); ok {
 					if value, ok := ruleMap["value"].(string); ok {
 						ipRules = append(ipRules, &armkeyvault.IPRule{Value: stringPtr(value)})
 					}
@@ -700,10 +675,10 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 			}
 			params.Properties.NetworkACLs.IPRules = ipRules
 		}
-		if vnetRulesRaw, ok := networkAclsRaw["virtualNetworkRules"].([]interface{}); ok {
+		if vnetRulesRaw, ok := networkAclsRaw["virtualNetworkRules"].([]any); ok {
 			vnetRules := make([]*armkeyvault.VirtualNetworkRule, 0, len(vnetRulesRaw))
 			for _, rule := range vnetRulesRaw {
-				if ruleMap, ok := rule.(map[string]interface{}); ok {
+				if ruleMap, ok := rule.(map[string]any); ok {
 					if id, ok := ruleMap["id"].(string); ok {
 						vnetRules = append(vnetRules, &armkeyvault.VirtualNetworkRule{ID: stringPtr(id)})
 					}
@@ -733,7 +708,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -748,7 +723,7 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -796,24 +771,16 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 }
 
 func (kv *KeyVault) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Parse NativeID to extract resourceGroupName and vaultName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vaultName, ok := parts["vaults"]
-	if !ok || vaultName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract vault name from %s", request.NativeID)
+	rgName, vaultName, err := kv.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// First, soft-delete the vault (synchronous operation)
-	_, err := kv.api.Delete(ctx, rgName, vaultName, nil)
+	_, err = kv.api.Delete(ctx, rgName, vaultName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -828,7 +795,7 @@ func (kv *KeyVault) Delete(ctx context.Context, request *resource.DeleteRequest)
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete Key Vault: %w", err)
 	}
@@ -847,9 +814,8 @@ func (kv *KeyVault) Delete(ctx context.Context, request *resource.DeleteRequest)
 
 func (kv *KeyVault) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
 
-	// Parse the RequestID to determine operation type
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -861,9 +827,9 @@ func (kv *KeyVault) Status(ctx context.Context, request *resource.StatusRequest)
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return kv.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return kv.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -879,93 +845,26 @@ func (kv *KeyVault) Status(ctx context.Context, request *resource.StatusRequest)
 
 func (kv *KeyVault) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	// Reconstruct the poller from the resume token
-	poller, err := kv.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return kv.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if the operation completed after polling
-	if poller.Done() {
-		return kv.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armkeyvault.VaultsClientCreateOrUpdateResponse](kv.pipeline, token)
 		},
-	}, nil
-}
-
-func (kv *KeyVault) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Extract resource group name from native ID
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-
-	propsJSON, err := serializeKeyVaultProperties(result.Vault, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize Key Vault properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+		func(_ context.Context, result armkeyvault.VaultsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, vaultName, err := kv.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeKeyVaultProperties(result.Vault, rgName, vaultName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize Key Vault properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
 		},
-	}, nil
+	)
 }
 
 func (kv *KeyVault) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
@@ -973,11 +872,12 @@ func (kv *KeyVault) statusDelete(ctx context.Context, request *resource.StatusRe
 	// it means we returned InProgress but the delete should already be complete.
 	// We can verify by trying to read the vault - if it fails with NotFound, delete succeeded.
 
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-	vaultName := parts["vaults"]
+	rgName, vaultName, err := kv.parseNativeID(reqID.NativeID)
+	if err != nil {
+		return nil, err
+	}
 
-	_, err := kv.api.Get(ctx, rgName, vaultName, nil)
+	_, err = kv.api.Get(ctx, rgName, vaultName, nil)
 	if err != nil {
 		// If we get an error (likely NotFound), the vault was deleted
 		return &resource.StatusResult{

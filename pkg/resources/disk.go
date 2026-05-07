@@ -164,13 +164,7 @@ func mustMarshalJSON(v any) json.RawMessage {
 }
 
 func (d *Disk) parseNativeID(nativeID string) (rgName, diskName string, err error) {
-	parts := splitResourceID(nativeID)
-	rgName = parts["resourcegroups"]
-	diskName = parts["disks"]
-	if rgName == "" || diskName == "" {
-		return "", "", fmt.Errorf("invalid NativeID: %s", nativeID)
-	}
-	return rgName, diskName, nil
+	return diskIDParts(nativeID)
 }
 
 func (d *Disk) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -202,7 +196,7 @@ func (d *Disk) Create(ctx context.Context, request *resource.CreateRequest) (*re
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -217,7 +211,7 @@ func (d *Disk) Create(ctx context.Context, request *resource.CreateRequest) (*re
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -263,7 +257,7 @@ func (d *Disk) Read(ctx context.Context, request *resource.ReadRequest) (*resour
 	result, err := d.api.Get(ctx, rgName, diskName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -311,7 +305,7 @@ func (d *Disk) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -324,7 +318,7 @@ func (d *Disk) Update(ctx context.Context, request *resource.UpdateRequest) (*re
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -383,7 +377,7 @@ func (d *Disk) Delete(ctx context.Context, request *resource.DeleteRequest) (*re
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete Disk: %w", err)
 	}
@@ -448,217 +442,46 @@ func (d *Disk) Status(ctx context.Context, request *resource.StatusRequest) (*re
 }
 
 func (d *Disk) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armcompute.DisksClientCreateOrUpdateResponse](d.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, err
-	}
-
-	if !poller.Done() {
-		if _, err := poller.Poll(ctx); err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationCreate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, err
-		}
-		if !poller.Done() {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationCreate,
-					OperationStatus: resource.OperationStatusInProgress,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-	}
-
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, err
-	}
-
-	rgName, diskName, err := d.parseNativeID(*result.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	propsJSON, err := serializeDiskProperties(result.Disk, rgName, diskName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize Disk properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationCreate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armcompute.DisksClientCreateOrUpdateResponse], error) {
+			return resumePoller[armcompute.DisksClientCreateOrUpdateResponse](d.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcompute.DisksClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, diskName, err := d.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeDiskProperties(result.Disk, rgName, diskName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize Disk properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (d *Disk) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armcompute.DisksClientUpdateResponse](d.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, err
-	}
-
-	if !poller.Done() {
-		if _, err := poller.Poll(ctx); err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, err
-		}
-		if !poller.Done() {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusInProgress,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-	}
-
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, err
-	}
-
-	rgName, diskName, err := d.parseNativeID(*result.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	propsJSON, err := serializeDiskProperties(result.Disk, rgName, diskName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize Disk properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationUpdate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+	return statusLRO(ctx, request, reqID, resource.OperationUpdate,
+		func(token string) (*runtime.Poller[armcompute.DisksClientUpdateResponse], error) {
+			return resumePoller[armcompute.DisksClientUpdateResponse](d.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcompute.DisksClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, diskName, err := d.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeDiskProperties(result.Disk, rgName, diskName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize Disk properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (d *Disk) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armcompute.DisksClientDeleteResponse](d.pipeline, reqID.ResumeToken)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, err
-	}
-
-	if poller.Done() {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	if _, err := poller.Poll(ctx); err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, err
-	}
-
-	if poller.Done() {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armcompute.DisksClientDeleteResponse], error) {
+			return resumePoller[armcompute.DisksClientDeleteResponse](d.pipeline, token)
+		}, nil)
 }
 
 func (d *Disk) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

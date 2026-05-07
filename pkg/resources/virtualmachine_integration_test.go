@@ -33,7 +33,7 @@ func TestVirtualMachine_CRUD(t *testing.T) {
 						HardwareProfile: &armcompute.HardwareProfile{VMSize: &vmSize},
 						OSProfile: &armcompute.OSProfile{
 							AdminUsername: to.Ptr("azureuser"),
-							ComputerName: to.Ptr("my-vm"),
+							ComputerName:  to.Ptr("my-vm"),
 						},
 						ProvisioningState: to.Ptr("Succeeded"),
 					},
@@ -50,7 +50,7 @@ func TestVirtualMachine_CRUD(t *testing.T) {
 						HardwareProfile: &armcompute.HardwareProfile{VMSize: &vmSize},
 						OSProfile: &armcompute.OSProfile{
 							AdminUsername: to.Ptr("azureuser"),
-							ComputerName: to.Ptr("my-vm"),
+							ComputerName:  to.Ptr("my-vm"),
 						},
 						ProvisioningState: to.Ptr("Succeeded"),
 					},
@@ -67,7 +67,7 @@ func TestVirtualMachine_CRUD(t *testing.T) {
 						HardwareProfile: &armcompute.HardwareProfile{VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes("Standard_B2s"))},
 						OSProfile: &armcompute.OSProfile{
 							AdminUsername: to.Ptr("azureuser"),
-							ComputerName: to.Ptr("my-vm"),
+							ComputerName:  to.Ptr("my-vm"),
 						},
 						ProvisioningState: to.Ptr("Succeeded"),
 					},
@@ -96,22 +96,22 @@ func TestVirtualMachine_CRUD(t *testing.T) {
 	prov := newTestVirtualMachine(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "my-vm",
 			"vmSize":            "Standard_B1s",
 			"adminUsername":     "azureuser",
-			"networkInterfaces": []map[string]interface{}{
+			"networkInterfaces": []map[string]any{
 				{"id": "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/networkInterfaces/my-nic"},
 			},
-			"imageReference": map[string]interface{}{
+			"imageReference": map[string]any{
 				"publisher": "Canonical",
 				"offer":     "UbuntuServer",
 				"sku":       "18.04-LTS",
 				"version":   "latest",
 			},
-			"osDisk": map[string]interface{}{
+			"osDisk": map[string]any{
 				"createOption": "FromImage",
 			},
 		})
@@ -125,7 +125,7 @@ func TestVirtualMachine_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testVMNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "my-vm", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -153,22 +153,22 @@ func TestVirtualMachine_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armcompute.VirtualMachine, _ *armcompute.VirtualMachinesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "my-vm",
 			"vmSize":            "Standard_B1s",
 			"adminUsername":     "azureuser",
-			"networkInterfaces": []map[string]interface{}{
+			"networkInterfaces": []map[string]any{
 				{"id": "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/networkInterfaces/my-nic"},
 			},
-			"imageReference": map[string]interface{}{
+			"imageReference": map[string]any{
 				"publisher": "Canonical",
 				"offer":     "UbuntuServer",
 				"sku":       "18.04-LTS",
 				"version":   "latest",
 			},
-			"osDisk": map[string]interface{}{
+			"osDisk": map[string]any{
 				"createOption": "FromImage",
 			},
 		})

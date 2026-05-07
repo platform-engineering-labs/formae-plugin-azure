@@ -22,8 +22,8 @@ import (
 
 const ResourceTypeResourceGroup = "Azure::Resources::ResourceGroup"
 
-// azureTagsToFormaeTags, formaeTagsToAzureTags, mapAzureErrorToOperationErrorCode,
-// splitResourceID are defined in common.go
+// azureTagsToFormaeTags, formaeTagsToAzureTags, operationErrorCode
+// are defined in common.go.
 
 type resourceGroupsAPI interface {
 	CreateOrUpdate(ctx context.Context, resourceGroupName string, parameters armresources.ResourceGroup, options *armresources.ResourceGroupsClientCreateOrUpdateOptions) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error)
@@ -62,7 +62,7 @@ type ResourceGroup struct {
 
 // serializeResourceGroupProperties converts an Azure ResourceGroup to Formae property format
 func serializeResourceGroupProperties(result armresources.ResourceGroup, rgName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	// Add name (required field in schema)
 	props["name"] = rgName
@@ -94,7 +94,7 @@ func serializeResourceGroupProperties(result armresources.ResourceGroup, rgName 
 
 func (rg *ResourceGroup) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -140,7 +140,7 @@ func (rg *ResourceGroup) Create(ctx context.Context, request *resource.CreateReq
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -165,14 +165,13 @@ func (rg *ResourceGroup) Create(ctx context.Context, request *resource.CreateReq
 
 func (rg *ResourceGroup) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	// Extract resource group name from NativeID
-	parts := splitResourceID(request.NativeID)
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
+	rgName, _, err := armIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s: %w", request.NativeID, err)
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -211,7 +210,7 @@ func (rg *ResourceGroup) Update(ctx context.Context, request *resource.UpdateReq
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -236,17 +235,16 @@ func (rg *ResourceGroup) Update(ctx context.Context, request *resource.UpdateReq
 
 func (rg *ResourceGroup) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	// Extract resource group name from NativeID
-	parts := splitResourceID(request.NativeID)
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
+	rgName, _, err := armIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s: %w", request.NativeID, err)
 	}
 
 	// Start async deletion
 	poller, err := rg.api.BeginDelete(ctx, rgName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -261,7 +259,7 @@ func (rg *ResourceGroup) Delete(ctx context.Context, request *resource.DeleteReq
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start resource group deletion: %w", err)
 	}
@@ -271,7 +269,7 @@ func (rg *ResourceGroup) Delete(ctx context.Context, request *resource.DeleteReq
 		_, err := poller.Result(ctx)
 		if err != nil {
 			// For delete operations, NotFound means the resource is gone (success)
-			if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+			if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 				return &resource.DeleteResult{
 					ProgressResult: &resource.ProgressResult{
 						Operation:       resource.OperationDelete,
@@ -285,7 +283,7 @@ func (rg *ResourceGroup) Delete(ctx context.Context, request *resource.DeleteReq
 					Operation:       resource.OperationDelete,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, fmt.Errorf("failed to get resource group delete result: %w", err)
 		}
@@ -306,20 +304,39 @@ func (rg *ResourceGroup) Delete(ctx context.Context, request *resource.DeleteReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Return InProgress with ResumeToken as RequestID
-	// The RequestID will be used by Status to poll for completion
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return InProgress with a shared LRO RequestID that Status uses to resume polling.
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       resumeToken, // ResumeToken contains operation tracking info
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	// RequestID is the ResumeToken (serialized poller state) from the Delete operation
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err == nil {
+		if reqID.OperationType != lroOpDelete {
+			return &resource.StatusResult{
+				ProgressResult: &resource.ProgressResult{
+					OperationStatus: resource.OperationStatusFailure,
+					RequestID:       request.RequestID,
+					ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
+				},
+			}, fmt.Errorf("unexpected operation type: %s", reqID.OperationType)
+		}
+		return statusDeleteLRO(ctx, request, &reqID, rg.api.ResumeDeletePoller, nil)
+	}
+
+	// Backward compatibility: ResourceGroup historically stored the raw Azure
+	// resume token as RequestID, before shared JSON LRO request IDs existed.
 	resumeToken := request.RequestID
 
 	// Reconstruct the poller from the resume token
@@ -342,7 +359,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 		_, err := poller.Result(ctx)
 		if err != nil {
 			// For delete operations, NotFound means the resource is gone (success)
-			if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+			if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 				return &resource.StatusResult{
 					ProgressResult: &resource.ProgressResult{
 						Operation:       resource.OperationDelete,
@@ -358,7 +375,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 					OperationStatus: resource.OperationStatusFailure,
 					RequestID:       request.RequestID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -376,7 +393,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 	_, err = poller.Poll(ctx)
 	if err != nil {
 		// For delete operations, NotFound means the resource is gone (success)
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.StatusResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -391,7 +408,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -400,7 +417,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 	if poller.Done() {
 		_, err := poller.Result(ctx)
 		if err != nil {
-			if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+			if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 				return &resource.StatusResult{
 					ProgressResult: &resource.ProgressResult{
 						Operation:       resource.OperationDelete,
@@ -414,7 +431,7 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 					Operation:       resource.OperationDelete,
 					OperationStatus: resource.OperationStatusFailure,
 					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -440,10 +457,9 @@ func (rg *ResourceGroup) Status(ctx context.Context, request *resource.StatusReq
 func (rg *ResourceGroup) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
 	// Extract resource group name from NativeID
 	// NativeID format: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}
-	parts := splitResourceID(request.NativeID)
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
+	rgName, _, err := armIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s: %w", request.NativeID, err)
 	}
 
 	// Get resource group from Azure
@@ -451,7 +467,7 @@ func (rg *ResourceGroup) Read(ctx context.Context, request *resource.ReadRequest
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 

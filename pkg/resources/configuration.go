@@ -26,22 +26,16 @@ type configurationsAPI interface {
 	Get(ctx context.Context, resourceGroupName string, serverName string, configurationName string, options *armpostgresqlflexibleservers.ConfigurationsClientGetOptions) (armpostgresqlflexibleservers.ConfigurationsClientGetResponse, error)
 	NewListByServerPager(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ConfigurationsClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.ConfigurationsClientListByServerResponse]
 	NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
 }
 
-// configurationsClientWrapper composes the SDK client with FlexibleServers discovery and resume-poller methods from client.Client.
+// configurationsClientWrapper composes the SDK client with FlexibleServers discovery.
 type configurationsClientWrapper struct {
 	*armpostgresqlflexibleservers.ConfigurationsClient
 	serversClient *armpostgresqlflexibleservers.ServersClient
-	resumeUpdate  func(string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
 }
 
 func (w *configurationsClientWrapper) NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
 	return w.serversClient.NewListPager(options)
-}
-
-func (w *configurationsClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
-	return w.resumeUpdate(token)
 }
 
 func init() {
@@ -50,9 +44,9 @@ func init() {
 			api: &configurationsClientWrapper{
 				ConfigurationsClient: c.ConfigurationsClient,
 				serversClient:        c.FlexibleServersClient,
-				resumeUpdate:         c.ResumeUpdateConfigurationPoller,
 			},
-			config: cfg,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
@@ -61,12 +55,21 @@ func init() {
 // Configurations are server parameters (e.g. azure.extensions, shared_preload_libraries).
 // They always exist on the server — Create sets a value, Delete resets to default.
 type Configuration struct {
-	api    configurationsAPI
-	config *config.Config
+	api      configurationsAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
 }
 
-func (c *Configuration) buildPropertiesFromResult(cfg *armpostgresqlflexibleservers.Configuration, rgName, serverName string) map[string]interface{} {
-	props := make(map[string]interface{})
+func configurationIDParts(resourceID string) (rgName, parentName, name string, err error) {
+	rgName, names, err := armIDParts(resourceID, "flexibleservers", "configurations")
+	if err != nil {
+		return "", "", "", err
+	}
+	return rgName, names["flexibleservers"], names["configurations"], nil
+}
+
+func (c *Configuration) buildPropertiesFromResult(cfg *armpostgresqlflexibleservers.Configuration, rgName, serverName string) map[string]any {
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	props["serverName"] = serverName
@@ -92,7 +95,7 @@ func (c *Configuration) buildPropertiesFromResult(cfg *armpostgresqlflexibleserv
 }
 
 func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -130,7 +133,7 @@ func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequ
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -145,7 +148,7 @@ func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequ
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -171,12 +174,7 @@ func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequ
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
 	}
@@ -192,20 +190,15 @@ func (c *Configuration) Create(ctx context.Context, request *resource.CreateRequ
 }
 
 func (c *Configuration) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-	configName := parts["configurations"]
-
-	if rgName == "" || serverName == "" || configName == "" {
+	rgName, serverName, configName, err := configurationIDParts(request.NativeID)
+	if err != nil {
 		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or configuration name from %s", request.NativeID)
 	}
 
 	result, err := c.api.Get(ctx, rgName, serverName, configName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -222,17 +215,12 @@ func (c *Configuration) Read(ctx context.Context, request *resource.ReadRequest)
 }
 
 func (c *Configuration) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-	configName := parts["configurations"]
-
-	if rgName == "" || serverName == "" || configName == "" {
+	rgName, serverName, configName, err := configurationIDParts(request.NativeID)
+	if err != nil {
 		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or configuration name from %s", request.NativeID)
 	}
 
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -256,7 +244,7 @@ func (c *Configuration) Update(ctx context.Context, request *resource.UpdateRequ
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -269,7 +257,7 @@ func (c *Configuration) Update(ctx context.Context, request *resource.UpdateRequ
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -295,12 +283,7 @@ func (c *Configuration) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
 	}
@@ -317,20 +300,15 @@ func (c *Configuration) Update(ctx context.Context, request *resource.UpdateRequ
 
 func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	// Configurations can't be deleted — reset to default by setting source to "system-default"
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-	configName := parts["configurations"]
-
-	if rgName == "" || serverName == "" || configName == "" {
+	rgName, serverName, configName, err := configurationIDParts(request.NativeID)
+	if err != nil {
 		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or configuration name from %s", request.NativeID)
 	}
 
 	// Read current config to get the default value
 	current, err := c.api.Get(ctx, rgName, serverName, configName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -344,7 +322,7 @@ func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequ
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -369,7 +347,7 @@ func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequ
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -379,12 +357,7 @@ func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequ
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
 	}
@@ -400,100 +373,71 @@ func (c *Configuration) Delete(ctx context.Context, request *resource.DeleteRequ
 }
 
 func (c *Configuration) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
-	// All operations (create, update, delete) use BeginUpdate, same poller type
-	operation := resource.OperationCreate
 	switch reqID.OperationType {
-	case "update":
-		operation = resource.OperationUpdate
-	case "delete":
-		operation = resource.OperationDelete
-	}
-
-	poller, err := c.api.ResumeUpdatePoller(reqID.ResumeToken)
-	if err != nil {
+	case lroOpCreate:
+		return c.statusCreate(ctx, request, &reqID)
+	case lroOpUpdate:
+		return c.statusUpdate(ctx, request, &reqID)
+	case lroOpDelete:
+		return c.statusDelete(ctx, request, &reqID)
+	default:
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
+		}, fmt.Errorf("unknown LRO operation type: %s", reqID.OperationType)
 	}
-
-	if poller.Done() {
-		return c.handleComplete(ctx, request, &reqID, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return c.handleComplete(ctx, request, &reqID, poller, operation)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
 }
 
-func (c *Configuration) handleComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
+func (c *Configuration) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return c.statusUpdateLRO(ctx, request, reqID, resource.OperationCreate)
+}
 
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
+func (c *Configuration) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return c.statusUpdateLRO(ctx, request, reqID, resource.OperationUpdate)
+}
 
-	responseProps := c.buildPropertiesFromResult(&result.Configuration, rgName, serverName)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+func (c *Configuration) statusUpdateLRO(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, operation resource.Operation) (*resource.StatusResult, error) {
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse](c.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			nativeID := reqID.NativeID
+			if result.ID != nil {
+				nativeID = *result.ID
+			}
+			rgName, serverName, _, err := configurationIDParts(nativeID)
+			if err != nil {
+				return "", nil, err
+			}
+			responseProps := c.buildPropertiesFromResult(&result.Configuration, rgName, serverName)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return nativeID, propsJSON, nil
+		})
+}
+
+func (c *Configuration) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse](c.pipeline, token)
+		}, nil)
 }
 
 func (c *Configuration) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -519,12 +463,11 @@ func (c *Configuration) List(ctx context.Context, request *resource.ListRequest)
 				if server.ID == nil {
 					continue
 				}
-				parts := splitResourceID(*server.ID)
-				rgName := parts["resourcegroups"]
-				srvName := parts["flexibleservers"]
-				if rgName == "" || srvName == "" {
+				rgName, names, err := armIDParts(*server.ID, "flexibleservers")
+				if err != nil {
 					continue
 				}
+				srvName := names["flexibleservers"]
 				ids, err := c.listByServer(ctx, rgName, srvName)
 				if err != nil {
 					return nil, err

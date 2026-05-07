@@ -101,9 +101,9 @@ func TestContainerRegistry_CRUD(t *testing.T) {
 	prov := newTestContainerRegistry(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "name": "myregistry",
-			"location": "eastus", "sku": map[string]interface{}{"name": "Basic"},
+			"location": "eastus", "sku": map[string]any{"name": "Basic"},
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "myregistry", Properties: props})
 		require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestContainerRegistry_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "myregistry", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -144,9 +144,9 @@ func TestContainerRegistry_CRUD(t *testing.T) {
 		fake.beginCreateFn = func(_ context.Context, _, _ string, _ armcontainerregistry.Registry, _ *armcontainerregistry.RegistriesClientBeginCreateOptions) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 409}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "name": "myregistry",
-			"location": "eastus", "sku": map[string]interface{}{"name": "Basic"},
+			"location": "eastus", "sku": map[string]any{"name": "Basic"},
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)

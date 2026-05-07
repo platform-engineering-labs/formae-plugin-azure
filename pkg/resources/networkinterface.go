@@ -26,45 +26,28 @@ type networkInterfacesAPI interface {
 	Get(ctx context.Context, resourceGroupName string, networkInterfaceName string, options *armnetwork.InterfacesClientGetOptions) (armnetwork.InterfacesClientGetResponse, error)
 	BeginDelete(ctx context.Context, resourceGroupName string, networkInterfaceName string, options *armnetwork.InterfacesClientBeginDeleteOptions) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, options *armnetwork.InterfacesClientListOptions) *runtime.Pager[armnetwork.InterfacesClientListResponse]
-	ResumeCreateOrUpdatePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error)
-}
-
-// networkInterfacesClientWrapper composes the SDK client with resume-poller helpers.
-type networkInterfacesClientWrapper struct {
-	*armnetwork.InterfacesClient
-	pipeline runtime.Pipeline
-}
-
-func (w *networkInterfacesClientWrapper) ResumeCreateOrUpdatePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armnetwork.InterfacesClientCreateOrUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *networkInterfacesClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error) {
-	return runtime.NewPollerFromResumeToken[armnetwork.InterfacesClientDeleteResponse](token, w.pipeline, nil)
 }
 
 func init() {
 	registry.Register(ResourceTypeNetworkInterface, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &NetworkInterface{
-			api: &networkInterfacesClientWrapper{
-				InterfacesClient: c.InterfacesClient,
-				pipeline:         c.Pipeline(),
-			},
-			config: cfg,
+			api:      c.InterfacesClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 // NetworkInterface is the provisioner for Azure Network Interfaces.
 type NetworkInterface struct {
-	api    networkInterfacesAPI
-	config *config.Config
+	api      networkInterfacesAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 // serializeNetworkInterfaceProperties converts an Azure Interface to Formae property format
 func serializeNetworkInterfaceProperties(result armnetwork.Interface, rgName, nicName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	if result.Name != nil {
@@ -80,9 +63,9 @@ func serializeNetworkInterfaceProperties(result armnetwork.Interface, rgName, ni
 	if result.Properties != nil {
 		// Serialize IP configurations
 		if result.Properties.IPConfigurations != nil {
-			ipConfigs := make([]map[string]interface{}, 0, len(result.Properties.IPConfigurations))
+			ipConfigs := make([]map[string]any, 0, len(result.Properties.IPConfigurations))
 			for _, ipConfig := range result.Properties.IPConfigurations {
-				config := make(map[string]interface{})
+				config := make(map[string]any)
 				if ipConfig.Name != nil {
 					config["name"] = *ipConfig.Name
 				}
@@ -145,9 +128,17 @@ func serializeNetworkInterfaceProperties(result armnetwork.Interface, rgName, ni
 	return json.Marshal(props)
 }
 
+func parseNetworkInterfaceNativeID(nativeID string) (rgName, nicName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "networkinterfaces")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["networkinterfaces"], nil
+}
+
 func (nic *NetworkInterface) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -171,14 +162,14 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 	}
 
 	// Extract IP configurations (required)
-	ipConfigsRaw, ok := props["ipConfigurations"].([]interface{})
+	ipConfigsRaw, ok := props["ipConfigurations"].([]any)
 	if !ok || len(ipConfigsRaw) == 0 {
 		return nil, fmt.Errorf("ipConfigurations is required")
 	}
 
 	ipConfigs := make([]*armnetwork.InterfaceIPConfiguration, 0, len(ipConfigsRaw))
 	for i, ipConfigRaw := range ipConfigsRaw {
-		ipConfigMap, ok := ipConfigRaw.(map[string]interface{})
+		ipConfigMap, ok := ipConfigRaw.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("ipConfigurations[%d] must be an object", i)
 		}
@@ -262,7 +253,7 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -280,7 +271,7 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -307,39 +298,25 @@ func (nic *NetworkInterface) Create(ctx context.Context, request *resource.Creat
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
 }
 
 func (nic *NetworkInterface) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// Parse NativeID to extract resourceGroupName and nicName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	nicName, ok := parts["networkinterfaces"]
-	if !ok || nicName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract network interface name from %s", request.NativeID)
+	rgName, nicName, err := parseNetworkInterfaceNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get NetworkInterface from Azure
@@ -347,7 +324,7 @@ func (nic *NetworkInterface) Read(ctx context.Context, request *resource.ReadReq
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -363,21 +340,13 @@ func (nic *NetworkInterface) Read(ctx context.Context, request *resource.ReadReq
 }
 
 func (nic *NetworkInterface) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	// Parse NativeID to extract resourceGroupName and nicName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	nicName, ok := parts["networkinterfaces"]
-	if !ok || nicName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract network interface name from %s", request.NativeID)
+	rgName, nicName, err := parseNetworkInterfaceNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -389,14 +358,14 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 	}
 
 	// Extract IP configurations (required)
-	ipConfigsRaw, ok := props["ipConfigurations"].([]interface{})
+	ipConfigsRaw, ok := props["ipConfigurations"].([]any)
 	if !ok || len(ipConfigsRaw) == 0 {
 		return nil, fmt.Errorf("ipConfigurations is required")
 	}
 
 	ipConfigs := make([]*armnetwork.InterfaceIPConfiguration, 0, len(ipConfigsRaw))
 	for i, ipConfigRaw := range ipConfigsRaw {
-		ipConfigMap, ok := ipConfigRaw.(map[string]interface{})
+		ipConfigMap, ok := ipConfigRaw.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("ipConfigurations[%d] must be an object", i)
 		}
@@ -481,7 +450,7 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -496,7 +465,7 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -523,45 +492,32 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (nic *NetworkInterface) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Parse NativeID to extract resourceGroupName and nicName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	nicName, ok := parts["networkinterfaces"]
-	if !ok || nicName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract network interface name from %s", request.NativeID)
+	rgName, nicName, err := parseNetworkInterfaceNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Start async deletion
 	poller, err := nic.api.BeginDelete(ctx, rgName, nicName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -576,7 +532,7 @@ func (nic *NetworkInterface) Delete(ctx context.Context, request *resource.Delet
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start NetworkInterface deletion: %w", err)
 	}
@@ -591,7 +547,7 @@ func (nic *NetworkInterface) Delete(ctx context.Context, request *resource.Delet
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, fmt.Errorf("failed to get NetworkInterface delete result: %w", err)
 		}
@@ -611,31 +567,24 @@ func (nic *NetworkInterface) Delete(ctx context.Context, request *resource.Delet
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (nic *NetworkInterface) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-
-	// Parse the RequestID to determine operation type
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -643,13 +592,13 @@ func (nic *NetworkInterface) Status(ctx context.Context, request *resource.Statu
 
 				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return nic.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return nic.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -665,212 +614,32 @@ func (nic *NetworkInterface) Status(ctx context.Context, request *resource.Statu
 
 func (nic *NetworkInterface) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	// Reconstruct the poller from the resume token
-	poller, err := nic.api.ResumeCreateOrUpdatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return nic.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if done after polling
-	if poller.Done() {
-		return nic.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.InterfacesClientCreateOrUpdateResponse](nic.pipeline, token)
 		},
-	}, nil
-}
-
-func (nic *NetworkInterface) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Extract resource group name from native ID
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-
-	propsJSON, err := serializeNetworkInterfaceProperties(result.Interface, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize NetworkInterface properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.InterfacesClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, nicName, err := parseNetworkInterfaceNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeNetworkInterfaceProperties(result.Interface, rgName, nicName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize NetworkInterface properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (nic *NetworkInterface) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := nic.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if done after polling
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.InterfacesClientDeleteResponse], error) {
+			return resumePoller[armnetwork.InterfacesClientDeleteResponse](nic.pipeline, token)
+		}, nil)
 }
 
 func (nic *NetworkInterface) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

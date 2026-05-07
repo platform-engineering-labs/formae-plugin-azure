@@ -90,7 +90,7 @@ func TestNetworkSecurityGroup_CRUD(t *testing.T) {
 	prov := newTestNetworkSecurityGroup(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "location": "eastus", "name": "nsg-1",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "test-nsg", Properties: props})
@@ -104,7 +104,7 @@ func TestNetworkSecurityGroup_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "nsg-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -130,7 +130,7 @@ func TestNetworkSecurityGroup_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armnetwork.SecurityGroup, _ *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "location": "eastus", "name": "nsg-1",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})

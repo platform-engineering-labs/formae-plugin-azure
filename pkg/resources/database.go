@@ -27,27 +27,16 @@ type databasesAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, serverName string, databaseName string, options *armpostgresqlflexibleservers.DatabasesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error)
 	NewListByServerPager(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.DatabasesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.DatabasesClientListByServerResponse]
 	NewListServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error)
 }
 
-// databasesClientWrapper composes the SDK client with resume-poller helpers and server discovery.
+// databasesClientWrapper composes the SDK client with server discovery.
 type databasesClientWrapper struct {
 	*armpostgresqlflexibleservers.DatabasesClient
 	serversClient *armpostgresqlflexibleservers.ServersClient
-	pipeline      runtime.Pipeline
 }
 
 func (w *databasesClientWrapper) NewListServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
 	return w.serversClient.NewListPager(options)
-}
-
-func (w *databasesClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.DatabasesClientCreateResponse](token, w.pipeline, nil)
-}
-
-func (w *databasesClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error) {
-	return runtime.NewPollerFromResumeToken[armpostgresqlflexibleservers.DatabasesClientDeleteResponse](token, w.pipeline, nil)
 }
 
 func init() {
@@ -56,22 +45,31 @@ func init() {
 			api: &databasesClientWrapper{
 				DatabasesClient: c.DatabasesClient,
 				serversClient:   c.FlexibleServersClient,
-				pipeline:        c.Pipeline(),
 			},
-			config: cfg,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 // Database is the provisioner for Azure Database for PostgreSQL Flexible Server Databases.
 type Database struct {
-	api    databasesAPI
-	config *config.Config
+	api      databasesAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
+}
+
+func databaseIDParts(resourceID string) (rgName, parentName, name string, err error) {
+	rgName, names, err := armIDParts(resourceID, "flexibleservers", "databases")
+	if err != nil {
+		return "", "", "", err
+	}
+	return rgName, names["flexibleservers"], names["databases"], nil
 }
 
 // buildPropertiesFromResult extracts properties from a Database Azure response.
-func (d *Database) buildPropertiesFromResult(db *armpostgresqlflexibleservers.Database, rgName, serverName string) map[string]interface{} {
-	props := make(map[string]interface{})
+func (d *Database) buildPropertiesFromResult(db *armpostgresqlflexibleservers.Database, rgName, serverName string) map[string]any {
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	props["serverName"] = serverName
@@ -97,7 +95,7 @@ func (d *Database) buildPropertiesFromResult(db *armpostgresqlflexibleservers.Da
 }
 
 func (d *Database) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -134,7 +132,7 @@ func (d *Database) Create(ctx context.Context, request *resource.CreateRequest) 
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -149,7 +147,7 @@ func (d *Database) Create(ctx context.Context, request *resource.CreateRequest) 
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -196,20 +194,15 @@ func (d *Database) Create(ctx context.Context, request *resource.CreateRequest) 
 }
 
 func (d *Database) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-	dbName := parts["databases"]
-
-	if rgName == "" || serverName == "" || dbName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s", request.NativeID)
+	rgName, serverName, dbName, err := databaseIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s: %w", request.NativeID, err)
 	}
 
 	result, err := d.api.Get(ctx, rgName, serverName, dbName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -229,17 +222,12 @@ func (d *Database) Update(ctx context.Context, request *resource.UpdateRequest) 
 	// Database properties (charset, collation) are create-only in Azure.
 	// An update is effectively a no-op or requires recreate.
 	// We use BeginCreate which is CreateOrUpdate (idempotent).
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-	dbName := parts["databases"]
-
-	if rgName == "" || serverName == "" || dbName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s", request.NativeID)
+	rgName, serverName, dbName, err := databaseIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s: %w", request.NativeID, err)
 	}
 
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -262,7 +250,7 @@ func (d *Database) Update(ctx context.Context, request *resource.UpdateRequest) 
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -275,7 +263,7 @@ func (d *Database) Update(ctx context.Context, request *resource.UpdateRequest) 
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -322,19 +310,14 @@ func (d *Database) Update(ctx context.Context, request *resource.UpdateRequest) 
 }
 
 func (d *Database) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-	dbName := parts["databases"]
-
-	if rgName == "" || serverName == "" || dbName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s", request.NativeID)
+	rgName, serverName, dbName, err := databaseIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: could not extract resource group, server, or database name from %s: %w", request.NativeID, err)
 	}
 
 	poller, err := d.api.BeginDelete(ctx, rgName, serverName, dbName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -348,7 +331,7 @@ func (d *Database) Delete(ctx context.Context, request *resource.DeleteRequest) 
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start Database deletion: %w", err)
 	}
@@ -379,21 +362,22 @@ func (d *Database) Delete(ctx context.Context, request *resource.DeleteRequest) 
 }
 
 func (d *Database) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
+				StatusMessage:   err.Error(),
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return d.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return d.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -401,6 +385,7 @@ func (d *Database) Status(ctx context.Context, request *resource.StatusRequest) 
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
+				StatusMessage:   fmt.Sprintf("unknown operation type: %s", reqID.OperationType),
 			},
 		}, fmt.Errorf("unknown operation type: %s", reqID.OperationType)
 	}
@@ -408,173 +393,33 @@ func (d *Database) Status(ctx context.Context, request *resource.StatusRequest) 
 
 func (d *Database) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := d.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		return d.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return d.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.DatabasesClientCreateResponse](d.pipeline, token)
 		},
-	}, nil
-}
-
-func (d *Database) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-
-	responseProps := d.buildPropertiesFromResult(&result.Database, rgName, serverName)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armpostgresqlflexibleservers.DatabasesClientCreateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, serverName, _, err := databaseIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			responseProps := d.buildPropertiesFromResult(&result.Database, rgName, serverName)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (d *Database) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := d.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse](d.pipeline, token)
+		}, nil)
 }
 
 func (d *Database) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -600,10 +445,8 @@ func (d *Database) List(ctx context.Context, request *resource.ListRequest) (*re
 				if server.ID == nil {
 					continue
 				}
-				parts := splitResourceID(*server.ID)
-				rgName := parts["resourcegroups"]
-				srvName := parts["flexibleservers"]
-				if rgName == "" || srvName == "" {
+				rgName, srvName, err := flexibleServerIDParts(*server.ID)
+				if err != nil {
 					continue
 				}
 				ids, err := d.listByServer(ctx, rgName, srvName)

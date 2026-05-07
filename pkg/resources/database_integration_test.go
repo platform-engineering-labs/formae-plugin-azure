@@ -79,7 +79,7 @@ func TestDatabase_CRUD(t *testing.T) {
 	prov := newTestDatabase(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "serverName": "pg-srv-1", "name": "mydb",
 			"charset": "UTF8", "collation": "en_US.utf8",
 		})
@@ -94,7 +94,7 @@ func TestDatabase_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "mydb", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -122,7 +122,7 @@ func TestDatabase_CRUD(t *testing.T) {
 		fake.beginCreateFn = func(_ context.Context, _, _, _ string, _ armpostgresqlflexibleservers.Database, _ *armpostgresqlflexibleservers.DatabasesClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "serverName": "pg-srv-1", "name": "mydb",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "mydb", Properties: props})
@@ -143,8 +143,6 @@ type fakeDatabasesAPI struct {
 	beginDeleteFn          func(ctx context.Context, resourceGroupName string, serverName string, databaseName string, options *armpostgresqlflexibleservers.DatabasesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error)
 	newListByServerPagerFn func(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.DatabasesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.DatabasesClientListByServerResponse]
 	newListServersPagerFn  func(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	resumeCreateFn         func(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error)
-	resumeDeleteFn         func(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error)
 }
 
 func (f *fakeDatabasesAPI) BeginCreate(ctx context.Context, resourceGroupName string, serverName string, databaseName string, parameters armpostgresqlflexibleservers.Database, options *armpostgresqlflexibleservers.DatabasesClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
@@ -165,12 +163,4 @@ func (f *fakeDatabasesAPI) NewListByServerPager(resourceGroupName string, server
 
 func (f *fakeDatabasesAPI) NewListServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
 	return f.newListServersPagerFn(options)
-}
-
-func (f *fakeDatabasesAPI) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error) {
-	return f.resumeCreateFn(token)
-}
-
-func (f *fakeDatabasesAPI) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientDeleteResponse], error) {
-	return f.resumeDeleteFn(token)
 }

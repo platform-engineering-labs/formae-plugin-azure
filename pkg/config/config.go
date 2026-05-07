@@ -7,6 +7,8 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -18,20 +20,24 @@ type Config struct {
 }
 
 // FromTargetConfig extracts Azure configuration from target config JSON.
-func FromTargetConfig(targetConfig json.RawMessage) *Config {
+func FromTargetConfig(targetConfig json.RawMessage) (*Config, error) {
 	if targetConfig == nil {
-		return &Config{}
+		return nil, fmt.Errorf("azure target config is required")
 	}
 
-	var cfg map[string]interface{}
+	var cfg map[string]any
 	if err := json.Unmarshal(targetConfig, &cfg); err != nil {
-		return &Config{}
+		return nil, fmt.Errorf("failed to parse Azure target config: %w", err)
 	}
 
 	subscriptionID, _ := cfg["SubscriptionId"].(string)
+	subscriptionID = strings.TrimSpace(subscriptionID)
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("azure target config requires non-empty SubscriptionId")
+	}
 	return &Config{
 		SubscriptionId: subscriptionID,
-	}
+	}, nil
 }
 
 // ToAzureCredential creates Azure credentials using the default credential chain.

@@ -123,14 +123,11 @@ func blobContainerParamsFromProperties(props map[string]any) armstorage.BlobCont
 }
 
 func (b *BlobContainer) parseNativeID(nativeID string) (rgName, accountName, containerName string, err error) {
-	parts := splitResourceID(nativeID)
-	rgName = parts["resourcegroups"]
-	accountName = parts["storageaccounts"]
-	containerName = parts["containers"]
-	if rgName == "" || accountName == "" || containerName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: %s", nativeID)
+	rgName, names, err := armIDParts(nativeID, "storageaccounts", "containers")
+	if err != nil {
+		return "", "", "", err
 	}
-	return rgName, accountName, containerName, nil
+	return rgName, names["storageaccounts"], names["containers"], nil
 }
 
 func (b *BlobContainer) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -163,7 +160,7 @@ func (b *BlobContainer) Create(ctx context.Context, request *resource.CreateRequ
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -192,7 +189,7 @@ func (b *BlobContainer) Read(ctx context.Context, request *resource.ReadRequest)
 	result, err := b.api.Get(ctx, rgName, accountName, containerName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -227,7 +224,7 @@ func (b *BlobContainer) Update(ctx context.Context, request *resource.UpdateRequ
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -254,7 +251,7 @@ func (b *BlobContainer) Delete(ctx context.Context, request *resource.DeleteRequ
 	}
 
 	if _, err := b.api.Delete(ctx, rgName, accountName, containerName, nil); err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -268,7 +265,7 @@ func (b *BlobContainer) Delete(ctx context.Context, request *resource.DeleteRequ
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete BlobContainer: %w", err)
 	}
@@ -300,7 +297,7 @@ func (b *BlobContainer) Status(ctx context.Context, request *resource.StatusRequ
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to get BlobContainer status: %w", err)
 	}

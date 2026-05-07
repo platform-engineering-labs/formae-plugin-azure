@@ -36,7 +36,7 @@ func TestNetworkInterface_CRUD(t *testing.T) {
 								Name: to.Ptr("ipconfig1"),
 								Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 									PrivateIPAllocationMethod: &allocMethod,
-									Primary:                  to.Ptr(true),
+									Primary:                   to.Ptr(true),
 									Subnet: &armnetwork.Subnet{
 										ID: to.Ptr("/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/default"),
 									},
@@ -61,7 +61,7 @@ func TestNetworkInterface_CRUD(t *testing.T) {
 								Name: to.Ptr("ipconfig1"),
 								Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 									PrivateIPAllocationMethod: &allocMethod,
-									Primary:                  to.Ptr(true),
+									Primary:                   to.Ptr(true),
 									Subnet: &armnetwork.Subnet{
 										ID: to.Ptr("/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/default"),
 									},
@@ -93,9 +93,9 @@ func TestNetworkInterface_CRUD(t *testing.T) {
 	prov := newTestNetworkInterface(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "location": "eastus", "name": "my-nic",
-			"ipConfigurations": []map[string]interface{}{
+			"ipConfigurations": []map[string]any{
 				{"name": "ipconfig1", "subnet": "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/default"},
 			},
 		})
@@ -109,7 +109,7 @@ func TestNetworkInterface_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testNICNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "my-nic", props["name"])
 	})
@@ -141,9 +141,9 @@ func TestNetworkInterface_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armnetwork.Interface, _ *armnetwork.InterfacesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "location": "eastus", "name": "x",
-			"ipConfigurations": []map[string]interface{}{
+			"ipConfigurations": []map[string]any{
 				{"name": "ipconfig1", "subnet": "/subs/sub-1/rg/rg-1/vnet/v/subnets/s"},
 			},
 		})

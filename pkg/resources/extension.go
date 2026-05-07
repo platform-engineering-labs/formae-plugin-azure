@@ -52,7 +52,7 @@ type Extension struct {
 }
 
 func serializeExtensionProperties(result armkubernetesconfiguration.Extension, rgName, clusterName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	if result.ID != nil {
 		props["id"] = *result.ID
@@ -91,8 +91,8 @@ func serializeExtensionProperties(result armkubernetesconfiguration.Extension, r
 	return json.Marshal(props)
 }
 
-func parseStringMap(raw interface{}) map[string]*string {
-	m, ok := raw.(map[string]interface{})
+func parseStringMap(raw any) map[string]*string {
+	m, ok := raw.(map[string]any)
 	if !ok {
 		return nil
 	}
@@ -106,7 +106,7 @@ func parseStringMap(raw interface{}) map[string]*string {
 }
 
 func (e *Extension) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -155,7 +155,7 @@ func (e *Extension) Create(ctx context.Context, request *resource.CreateRequest)
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -170,7 +170,7 @@ func (e *Extension) Create(ctx context.Context, request *resource.CreateRequest)
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -219,7 +219,7 @@ func (e *Extension) Read(ctx context.Context, request *resource.ReadRequest) (*r
 	result, err := e.api.Get(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -239,7 +239,7 @@ func (e *Extension) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, err
 	}
 
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -271,7 +271,7 @@ func (e *Extension) Update(ctx context.Context, request *resource.UpdateRequest)
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -284,7 +284,7 @@ func (e *Extension) Update(ctx context.Context, request *resource.UpdateRequest)
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -332,7 +332,7 @@ func (e *Extension) Delete(ctx context.Context, request *resource.DeleteRequest)
 
 	poller, err := e.api.BeginDelete(ctx, rgName, aksClusterRP, aksClusterResourceName, clusterName, extensionName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -346,7 +346,7 @@ func (e *Extension) Delete(ctx context.Context, request *resource.DeleteRequest)
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start extension deletion: %w", err)
 	}
@@ -402,263 +402,46 @@ func (e *Extension) Status(ctx context.Context, request *resource.StatusRequest)
 }
 
 func (e *Extension) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armkubernetesconfiguration.ExtensionsClientCreateResponse](e.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		return e.handleCreateComplete(ctx, request, poller)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return e.handleCreateComplete(ctx, request, poller)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
+			return resumePoller[armkubernetesconfiguration.ExtensionsClientCreateResponse](e.pipeline, token)
 		},
-	}, nil
-}
-
-func (e *Extension) handleCreateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse]) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	clusterName := parts["managedclusters"]
-
-	propsJSON, err := serializeExtensionProperties(result.Extension, rgName, clusterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize extension properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationCreate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armkubernetesconfiguration.ExtensionsClientCreateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, clusterName, _, err := parseExtensionNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeExtensionProperties(result.Extension, rgName, clusterName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize extension properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (e *Extension) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armkubernetesconfiguration.ExtensionsClientUpdateResponse](e.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		clusterName := parts["managedclusters"]
-		propsJSON, err := serializeExtensionProperties(result.Extension, rgName, clusterName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize extension properties: %w", err)
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationUpdate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		clusterName := parts["managedclusters"]
-		propsJSON, err := serializeExtensionProperties(result.Extension, rgName, clusterName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize extension properties: %w", err)
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationUpdate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationUpdate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, resource.OperationUpdate,
+		func(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientUpdateResponse], error) {
+			return resumePoller[armkubernetesconfiguration.ExtensionsClientUpdateResponse](e.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armkubernetesconfiguration.ExtensionsClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, clusterName, _, err := parseExtensionNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeExtensionProperties(result.Extension, rgName, clusterName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize extension properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (e *Extension) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armkubernetesconfiguration.ExtensionsClientDeleteResponse](e.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientDeleteResponse], error) {
+			return resumePoller[armkubernetesconfiguration.ExtensionsClientDeleteResponse](e.pipeline, token)
+		}, nil)
 }
 
 func (e *Extension) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -697,22 +480,9 @@ func (e *Extension) List(ctx context.Context, request *resource.ListRequest) (*r
 
 // parseExtensionNativeID extracts resourceGroupName, clusterName, and extensionName from a native ID.
 func parseExtensionNativeID(nativeID string) (rgName, clusterName, extensionName string, err error) {
-	parts := splitResourceID(nativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract resource group name from %s", nativeID)
+	rgName, names, err := armIDParts(nativeID, "managedclusters", "extensions")
+	if err != nil {
+		return "", "", "", err
 	}
-
-	clusterName, ok = parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract cluster name from %s", nativeID)
-	}
-
-	extensionName, ok = parts["extensions"]
-	if !ok || extensionName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract extension name from %s", nativeID)
-	}
-
-	return rgName, clusterName, extensionName, nil
+	return rgName, names["managedclusters"], names["extensions"], nil
 }

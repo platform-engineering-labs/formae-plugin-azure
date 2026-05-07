@@ -84,7 +84,7 @@ func TestRoleAssignment_CRUD(t *testing.T) {
 	prov := newTestRoleAssignment(fake, nil)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"scope":            "/subscriptions/sub-1",
 			"name":             "00000000-0000-0000-0000-000000000001",
 			"principalId":      "principal-1",
@@ -101,7 +101,7 @@ func TestRoleAssignment_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testRANativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "00000000-0000-0000-0000-000000000001", props["name"])
 		require.Equal(t, "/subscriptions/sub-1", props["scope"])
@@ -130,7 +130,7 @@ func TestRoleAssignment_CRUD(t *testing.T) {
 		fake.createFn = func(_ context.Context, _, _ string, _ armauthorization.RoleAssignmentCreateParameters, _ *armauthorization.RoleAssignmentsClientCreateOptions) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
 			return armauthorization.RoleAssignmentsClientCreateResponse{}, &azcore.ResponseError{StatusCode: 409}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"scope":            "/subscriptions/sub-1",
 			"name":             "00000000-0000-0000-0000-000000000001",
 			"principalId":      "principal-1",

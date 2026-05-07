@@ -41,6 +41,14 @@ type UserAssignedIdentity struct {
 	config *config.Config
 }
 
+func userAssignedIdentityIDParts(nativeID string) (rgName, identityName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "userAssignedIdentities")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["userAssignedIdentities"], nil
+}
+
 // serializeUserAssignedIdentityProperties converts an Azure UserAssignedIdentity to Formae property format
 func serializeUserAssignedIdentityProperties(result armmsi.Identity, rgName, identityName string) (json.RawMessage, error) {
 	props := make(map[string]any)
@@ -118,7 +126,7 @@ func (u *UserAssignedIdentity) Create(ctx context.Context, request *resource.Cre
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -139,22 +147,15 @@ func (u *UserAssignedIdentity) Create(ctx context.Context, request *resource.Cre
 }
 
 func (u *UserAssignedIdentity) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	identityName, ok := parts["userassignedidentities"]
-	if !ok || identityName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract UserAssignedIdentity name from %s", request.NativeID)
+	rgName, identityName, err := userAssignedIdentityIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: %w", err)
 	}
 
 	result, err := u.api.Get(ctx, rgName, identityName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -170,16 +171,9 @@ func (u *UserAssignedIdentity) Read(ctx context.Context, request *resource.ReadR
 }
 
 func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	identityName, ok := parts["userassignedidentities"]
-	if !ok || identityName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract UserAssignedIdentity name from %s", request.NativeID)
+	rgName, identityName, err := userAssignedIdentityIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: %w", err)
 	}
 
 	// Only tags can be updated for user assigned identities
@@ -197,7 +191,7 @@ func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.Upd
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -219,23 +213,16 @@ func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.Upd
 }
 
 func (u *UserAssignedIdentity) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	identityName, ok := parts["userassignedidentities"]
-	if !ok || identityName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract UserAssignedIdentity name from %s", request.NativeID)
+	rgName, identityName, err := userAssignedIdentityIDParts(request.NativeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NativeID: %w", err)
 	}
 
 	// User assigned identity deletion is synchronous
-	_, err := u.api.Delete(ctx, rgName, identityName, nil)
+	_, err = u.api.Delete(ctx, rgName, identityName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -249,7 +236,7 @@ func (u *UserAssignedIdentity) Delete(ctx context.Context, request *resource.Del
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete UserAssignedIdentity: %w", err)
 	}
@@ -266,19 +253,15 @@ func (u *UserAssignedIdentity) Delete(ctx context.Context, request *resource.Del
 func (u *UserAssignedIdentity) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
 	// User assigned identity operations are synchronous, so Status should not be called
 	// If it is called, do a Read to get current state
-	parts := splitResourceID(request.NativeID)
-
-	rgName := parts["resourcegroups"]
-	identityName := parts["userassignedidentities"]
-
-	if rgName == "" || identityName == "" {
+	rgName, identityName, err := userAssignedIdentityIDParts(request.NativeID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("invalid NativeID: could not extract resource group or identity name")
+		}, fmt.Errorf("invalid NativeID: %w", err)
 	}
 
 	result, err := u.api.Get(ctx, rgName, identityName, nil)
@@ -287,7 +270,7 @@ func (u *UserAssignedIdentity) Status(ctx context.Context, request *resource.Sta
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to get UserAssignedIdentity status: %w", err)
 	}

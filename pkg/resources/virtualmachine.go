@@ -27,50 +27,36 @@ type virtualMachinesAPI interface {
 	BeginUpdate(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachineUpdate, options *armcompute.VirtualMachinesClientBeginUpdateOptions) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error)
 	BeginDelete(ctx context.Context, resourceGroupName string, vmName string, options *armcompute.VirtualMachinesClientBeginDeleteOptions) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, options *armcompute.VirtualMachinesClientListOptions) *runtime.Pager[armcompute.VirtualMachinesClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error)
-	ResumeUpdatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error)
-}
-
-// virtualMachinesClientWrapper composes the SDK client with resume-poller helpers.
-type virtualMachinesClientWrapper struct {
-	*armcompute.VirtualMachinesClient
-	pipeline runtime.Pipeline
-}
-
-func (w *virtualMachinesClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armcompute.VirtualMachinesClientCreateOrUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *virtualMachinesClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armcompute.VirtualMachinesClientUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *virtualMachinesClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error) {
-	return runtime.NewPollerFromResumeToken[armcompute.VirtualMachinesClientDeleteResponse](token, w.pipeline, nil)
 }
 
 func init() {
 	registry.Register(ResourceTypeVirtualMachine, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &VirtualMachine{
-			api: &virtualMachinesClientWrapper{
-				VirtualMachinesClient: c.VirtualMachinesClient,
-				pipeline:              c.Pipeline(),
-			},
-			config: cfg,
+			api:      c.VirtualMachinesClient,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
 
 // VirtualMachine is the provisioner for Azure Virtual Machines.
 type VirtualMachine struct {
-	api    virtualMachinesAPI
-	config *config.Config
+	api      virtualMachinesAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
+}
+
+func (vm *VirtualMachine) parseNativeID(nativeID string) (rgName, vmName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "virtualmachines")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["virtualmachines"], nil
 }
 
 // serializeVirtualMachineProperties converts an Azure VirtualMachine to Formae property format
 func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName, vmName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	if result.Name != nil {
@@ -91,9 +77,9 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 
 		// Network interfaces
 		if result.Properties.NetworkProfile != nil && result.Properties.NetworkProfile.NetworkInterfaces != nil {
-			nics := make([]map[string]interface{}, 0, len(result.Properties.NetworkProfile.NetworkInterfaces))
+			nics := make([]map[string]any, 0, len(result.Properties.NetworkProfile.NetworkInterfaces))
 			for _, nic := range result.Properties.NetworkProfile.NetworkInterfaces {
-				nicMap := make(map[string]interface{})
+				nicMap := make(map[string]any)
 				if nic.ID != nil {
 					nicMap["id"] = *nic.ID
 				}
@@ -110,7 +96,7 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 			// Image reference
 			if result.Properties.StorageProfile.ImageReference != nil {
 				imgRef := result.Properties.StorageProfile.ImageReference
-				imageRef := make(map[string]interface{})
+				imageRef := make(map[string]any)
 				if imgRef.Publisher != nil {
 					imageRef["publisher"] = *imgRef.Publisher
 				}
@@ -129,7 +115,7 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 			// OS disk
 			if result.Properties.StorageProfile.OSDisk != nil {
 				osDiskData := result.Properties.StorageProfile.OSDisk
-				osDisk := make(map[string]interface{})
+				osDisk := make(map[string]any)
 				if osDiskData.Name != nil {
 					osDisk["name"] = *osDiskData.Name
 				}
@@ -143,7 +129,7 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 					osDisk["caching"] = string(*osDiskData.Caching)
 				}
 				if osDiskData.ManagedDisk != nil && osDiskData.ManagedDisk.StorageAccountType != nil {
-					osDisk["managedDisk"] = map[string]interface{}{
+					osDisk["managedDisk"] = map[string]any{
 						"storageAccountType": string(*osDiskData.ManagedDisk.StorageAccountType),
 					}
 				}
@@ -163,7 +149,7 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 			// Linux configuration
 			if result.Properties.OSProfile.LinuxConfiguration != nil {
 				linuxConfig := result.Properties.OSProfile.LinuxConfiguration
-				lc := make(map[string]interface{})
+				lc := make(map[string]any)
 				if linuxConfig.DisablePasswordAuthentication != nil {
 					lc["disablePasswordAuthentication"] = *linuxConfig.DisablePasswordAuthentication
 				}
@@ -177,7 +163,7 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 			// Windows configuration
 			if result.Properties.OSProfile.WindowsConfiguration != nil {
 				winConfig := result.Properties.OSProfile.WindowsConfiguration
-				wc := make(map[string]interface{})
+				wc := make(map[string]any)
 				if winConfig.ProvisionVMAgent != nil {
 					wc["provisionVMAgent"] = *winConfig.ProvisionVMAgent
 				}
@@ -218,7 +204,7 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -248,14 +234,14 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Extract networkInterfaces (required)
-	nicsRaw, ok := props["networkInterfaces"].([]interface{})
+	nicsRaw, ok := props["networkInterfaces"].([]any)
 	if !ok || len(nicsRaw) == 0 {
 		return nil, fmt.Errorf("networkInterfaces is required")
 	}
 
 	networkInterfaces := make([]*armcompute.NetworkInterfaceReference, 0, len(nicsRaw))
 	for i, nicRaw := range nicsRaw {
-		nicMap, ok := nicRaw.(map[string]interface{})
+		nicMap, ok := nicRaw.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("networkInterfaces[%d] must be an object", i)
 		}
@@ -275,7 +261,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Extract imageReference (required)
-	imageRefRaw, ok := props["imageReference"].(map[string]interface{})
+	imageRefRaw, ok := props["imageReference"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("imageReference is required")
 	}
@@ -294,7 +280,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Extract osDisk (required)
-	osDiskRaw, ok := props["osDisk"].(map[string]interface{})
+	osDiskRaw, ok := props["osDisk"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("osDisk is required")
 	}
@@ -313,7 +299,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 		c := armcompute.CachingTypes(caching)
 		osDisk.Caching = &c
 	}
-	if managedDiskRaw, ok := osDiskRaw["managedDisk"].(map[string]interface{}); ok {
+	if managedDiskRaw, ok := osDiskRaw["managedDisk"].(map[string]any); ok {
 		osDisk.ManagedDisk = &armcompute.ManagedDiskParameters{}
 		if storageAccountType, ok := managedDiskRaw["storageAccountType"].(string); ok {
 			sat := armcompute.StorageAccountTypes(storageAccountType)
@@ -359,7 +345,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Add Linux configuration if provided
-	if linuxConfigRaw, ok := props["linuxConfiguration"].(map[string]interface{}); ok {
+	if linuxConfigRaw, ok := props["linuxConfiguration"].(map[string]any); ok {
 		linuxConfig := &armcompute.LinuxConfiguration{}
 		if disablePassword, ok := linuxConfigRaw["disablePasswordAuthentication"].(bool); ok {
 			linuxConfig.DisablePasswordAuthentication = to.Ptr(disablePassword)
@@ -368,11 +354,11 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 			linuxConfig.ProvisionVMAgent = to.Ptr(provisionVMAgent)
 		}
 		// Parse SSH configuration
-		if sshRaw, ok := linuxConfigRaw["ssh"].(map[string]interface{}); ok {
-			if publicKeysRaw, ok := sshRaw["publicKeys"].([]interface{}); ok {
+		if sshRaw, ok := linuxConfigRaw["ssh"].(map[string]any); ok {
+			if publicKeysRaw, ok := sshRaw["publicKeys"].([]any); ok {
 				publicKeys := make([]*armcompute.SSHPublicKey, 0, len(publicKeysRaw))
 				for _, pkRaw := range publicKeysRaw {
-					if pkMap, ok := pkRaw.(map[string]interface{}); ok {
+					if pkMap, ok := pkRaw.(map[string]any); ok {
 						pk := &armcompute.SSHPublicKey{}
 						if path, ok := pkMap["path"].(string); ok {
 							pk.Path = stringPtr(path)
@@ -392,7 +378,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 	}
 
 	// Add Windows configuration if provided
-	if windowsConfigRaw, ok := props["windowsConfiguration"].(map[string]interface{}); ok {
+	if windowsConfigRaw, ok := props["windowsConfiguration"].(map[string]any); ok {
 		windowsConfig := &armcompute.WindowsConfiguration{}
 		if provisionVMAgent, ok := windowsConfigRaw["provisionVMAgent"].(bool); ok {
 			windowsConfig.ProvisionVMAgent = to.Ptr(provisionVMAgent)
@@ -425,7 +411,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -443,7 +429,7 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -492,17 +478,9 @@ func (vm *VirtualMachine) Create(ctx context.Context, request *resource.CreateRe
 }
 
 func (vm *VirtualMachine) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// Parse NativeID to extract resourceGroupName and vmName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vmName, ok := parts["virtualmachines"]
-	if !ok || vmName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract virtual machine name from %s", request.NativeID)
+	rgName, vmName, err := vm.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get VM from Azure
@@ -510,7 +488,7 @@ func (vm *VirtualMachine) Read(ctx context.Context, request *resource.ReadReques
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -526,21 +504,13 @@ func (vm *VirtualMachine) Read(ctx context.Context, request *resource.ReadReques
 }
 
 func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	// Parse NativeID to extract resourceGroupName and vmName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vmName, ok := parts["virtualmachines"]
-	if !ok || vmName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract virtual machine name from %s", request.NativeID)
+	rgName, vmName, err := vm.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -578,7 +548,7 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -593,7 +563,7 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -641,24 +611,16 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 }
 
 func (vm *VirtualMachine) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Parse NativeID to extract resourceGroupName and vmName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vmName, ok := parts["virtualmachines"]
-	if !ok || vmName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract virtual machine name from %s", request.NativeID)
+	rgName, vmName, err := vm.parseNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Start async deletion
 	poller, err := vm.api.BeginDelete(ctx, rgName, vmName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -673,7 +635,7 @@ func (vm *VirtualMachine) Delete(ctx context.Context, request *resource.DeleteRe
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start VirtualMachine deletion: %w", err)
 	}
@@ -688,7 +650,7 @@ func (vm *VirtualMachine) Delete(ctx context.Context, request *resource.DeleteRe
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, fmt.Errorf("failed to get VirtualMachine delete result: %w", err)
 		}
@@ -729,8 +691,8 @@ func (vm *VirtualMachine) Delete(ctx context.Context, request *resource.DeleteRe
 }
 
 func (vm *VirtualMachine) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -741,11 +703,11 @@ func (vm *VirtualMachine) Status(ctx context.Context, request *resource.StatusRe
 	}
 
 	switch reqID.OperationType {
-	case "create":
+	case lroOpCreate:
 		return vm.statusCreate(ctx, request, &reqID)
-	case "update":
+	case lroOpUpdate:
 		return vm.statusUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return vm.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -759,260 +721,50 @@ func (vm *VirtualMachine) Status(ctx context.Context, request *resource.StatusRe
 }
 
 func (vm *VirtualMachine) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := vm.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		return vm.handleCreateComplete(ctx, request, poller)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return vm.handleCreateComplete(ctx, request, poller)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse], error) {
+			return resumePoller[armcompute.VirtualMachinesClientCreateOrUpdateResponse](vm.pipeline, token)
 		},
-	}, nil
-}
-
-func (vm *VirtualMachine) handleCreateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armcompute.VirtualMachinesClientCreateOrUpdateResponse]) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-
-	propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationCreate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+		func(_ context.Context, result armcompute.VirtualMachinesClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, vmName, err := vm.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, vmName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
 		},
-	}, nil
+	)
 }
 
 func (vm *VirtualMachine) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := vm.api.ResumeUpdatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, *result.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationUpdate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, *result.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationUpdate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationUpdate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, resource.OperationUpdate,
+		func(token string) (*runtime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error) {
+			return resumePoller[armcompute.VirtualMachinesClientUpdateResponse](vm.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcompute.VirtualMachinesClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, vmName, err := vm.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeVirtualMachineProperties(result.VirtualMachine, rgName, vmName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize VirtualMachine properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		},
+	)
 }
 
 func (vm *VirtualMachine) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := vm.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error) {
+			return resumePoller[armcompute.VirtualMachinesClientDeleteResponse](vm.pipeline, token)
 		},
-	}, nil
+		nil,
+	)
 }
 
 func (vm *VirtualMachine) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

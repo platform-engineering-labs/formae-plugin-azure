@@ -95,7 +95,7 @@ func TestUserAssignedIdentity_CRUD(t *testing.T) {
 	prov := newTestUserAssignedIdentity(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "name": "my-identity", "location": "eastus",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "test-uai", Properties: props})
@@ -109,7 +109,7 @@ func TestUserAssignedIdentity_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
-		var serialized map[string]interface{}
+		var serialized map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &serialized))
 		require.Equal(t, "my-identity", serialized["name"])
 		require.Equal(t, "rg-1", serialized["resourceGroupName"])
@@ -138,7 +138,7 @@ func TestUserAssignedIdentity_CRUD(t *testing.T) {
 		fake.createOrUpdateFn = func(_ context.Context, _, _ string, _ armmsi.Identity, _ *armmsi.UserAssignedIdentitiesClientCreateOrUpdateOptions) (armmsi.UserAssignedIdentitiesClientCreateOrUpdateResponse, error) {
 			return armmsi.UserAssignedIdentitiesClientCreateOrUpdateResponse{}, &azcore.ResponseError{StatusCode: 409}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "name": "my-identity", "location": "eastus",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})

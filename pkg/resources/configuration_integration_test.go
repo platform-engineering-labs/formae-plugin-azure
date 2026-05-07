@@ -83,7 +83,7 @@ func TestConfiguration_CRUD(t *testing.T) {
 	prov := newTestConfiguration(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"serverName":        "pg-1",
 			"name":              "azure.extensions",
@@ -100,7 +100,7 @@ func TestConfiguration_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "azure.extensions", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -132,7 +132,7 @@ func TestConfiguration_CRUD(t *testing.T) {
 		fake.beginUpdateFn = func(_ context.Context, _, _, _ string, _ armpostgresqlflexibleservers.ConfigurationForUpdate, _ *armpostgresqlflexibleservers.ConfigurationsClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"serverName":        "pg-1",
 			"name":              "azure.extensions",
@@ -151,11 +151,10 @@ func newTestConfiguration(api configurationsAPI) *Configuration {
 }
 
 type fakeConfigurationsAPI struct {
-	beginUpdateFn                func(ctx context.Context, resourceGroupName string, serverName string, configurationName string, parameters armpostgresqlflexibleservers.ConfigurationForUpdate, options *armpostgresqlflexibleservers.ConfigurationsClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
-	getFn                        func(ctx context.Context, resourceGroupName string, serverName string, configurationName string, options *armpostgresqlflexibleservers.ConfigurationsClientGetOptions) (armpostgresqlflexibleservers.ConfigurationsClientGetResponse, error)
-	newListByServerPagerFn       func(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ConfigurationsClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.ConfigurationsClientListByServerResponse]
+	beginUpdateFn                 func(ctx context.Context, resourceGroupName string, serverName string, configurationName string, parameters armpostgresqlflexibleservers.ConfigurationForUpdate, options *armpostgresqlflexibleservers.ConfigurationsClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
+	getFn                         func(ctx context.Context, resourceGroupName string, serverName string, configurationName string, options *armpostgresqlflexibleservers.ConfigurationsClientGetOptions) (armpostgresqlflexibleservers.ConfigurationsClientGetResponse, error)
+	newListByServerPagerFn        func(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.ConfigurationsClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.ConfigurationsClientListByServerResponse]
 	newListFlexibleServersPagerFn func(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	resumeUpdatePollerFn         func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)
 }
 
 func (f *fakeConfigurationsAPI) BeginUpdate(ctx context.Context, resourceGroupName string, serverName string, configurationName string, parameters armpostgresqlflexibleservers.ConfigurationForUpdate, options *armpostgresqlflexibleservers.ConfigurationsClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
@@ -172,8 +171,4 @@ func (f *fakeConfigurationsAPI) NewListByServerPager(resourceGroupName string, s
 
 func (f *fakeConfigurationsAPI) NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
 	return f.newListFlexibleServersPagerFn(options)
-}
-
-func (f *fakeConfigurationsAPI) ResumeUpdatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error) {
-	return f.resumeUpdatePollerFn(token)
 }

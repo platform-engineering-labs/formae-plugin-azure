@@ -69,7 +69,7 @@ func TestManagedCluster_CRUD(t *testing.T) {
 	prov := newTestManagedCluster(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "aks-1",
@@ -84,7 +84,7 @@ func TestManagedCluster_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testMCClusterNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "aks-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -112,7 +112,7 @@ func TestManagedCluster_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armcontainerservice.ManagedCluster, _ *armcontainerservice.ManagedClustersClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{"resourceGroupName": "rg-1", "location": "eastus", "name": "x"})
+		props, _ := json.Marshal(map[string]any{"resourceGroupName": "rg-1", "location": "eastus", "name": "x"})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)
