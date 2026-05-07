@@ -65,7 +65,7 @@ func TestFluxConfiguration_CRUD(t *testing.T) {
 	prov := newTestFluxConfiguration(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "flux-app",
 			"sourceKind": "GitRepository",
 		})
@@ -79,7 +79,7 @@ func TestFluxConfiguration_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testFluxNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "flux-app", props["name"])
 	})
@@ -111,7 +111,7 @@ func TestFluxConfiguration_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _, _, _, _ string, _ armkubernetesconfiguration.FluxConfiguration, _ *armkubernetesconfiguration.FluxConfigurationsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armkubernetesconfiguration.FluxConfigurationsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "x", "sourceKind": "GitRepository"})
+		props, _ := json.Marshal(map[string]any{"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "x", "sourceKind": "GitRepository"})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)

@@ -32,7 +32,7 @@ func TestPublicIPAddress_CRUD(t *testing.T) {
 					Location: to.Ptr("eastus"),
 					Properties: &armnetwork.PublicIPAddressPropertiesFormat{
 						PublicIPAllocationMethod: &allocationMethod,
-						IPAddress:               to.Ptr("20.1.2.3"),
+						IPAddress:                to.Ptr("20.1.2.3"),
 					},
 				},
 			}), nil
@@ -45,7 +45,7 @@ func TestPublicIPAddress_CRUD(t *testing.T) {
 					Location: to.Ptr("eastus"),
 					Properties: &armnetwork.PublicIPAddressPropertiesFormat{
 						PublicIPAllocationMethod: &allocationMethod,
-						IPAddress:               to.Ptr("20.1.2.3"),
+						IPAddress:                to.Ptr("20.1.2.3"),
 					},
 				},
 			}, nil
@@ -86,7 +86,7 @@ func TestPublicIPAddress_CRUD(t *testing.T) {
 	prov := newTestPublicIPAddress(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"name":              "pip-1",
 			"location":          "eastus",
@@ -101,7 +101,7 @@ func TestPublicIPAddress_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testPIPNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "pip-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -125,7 +125,7 @@ func TestPublicIPAddress_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armnetwork.PublicIPAddress, _ *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"name":              "pip-1",
 			"location":          "eastus",
@@ -148,8 +148,6 @@ type fakePublicIPAddressesAPI struct {
 	beginDeleteFn         func(ctx context.Context, rgName, pipName string, opts *armnetwork.PublicIPAddressesClientBeginDeleteOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
 	newListPagerFn        func(rgName string, opts *armnetwork.PublicIPAddressesClientListOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListResponse]
 	newListAllPagerFn     func(opts *armnetwork.PublicIPAddressesClientListAllOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListAllResponse]
-	resumeCreatePollerFn  func(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
-	resumeDeletePollerFn  func(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
 }
 
 func (f *fakePublicIPAddressesAPI) BeginCreateOrUpdate(ctx context.Context, rgName, pipName string, params armnetwork.PublicIPAddress, opts *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
@@ -170,12 +168,4 @@ func (f *fakePublicIPAddressesAPI) NewListPager(rgName string, opts *armnetwork.
 
 func (f *fakePublicIPAddressesAPI) NewListAllPager(opts *armnetwork.PublicIPAddressesClientListAllOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListAllResponse] {
 	return f.newListAllPagerFn(opts)
-}
-
-func (f *fakePublicIPAddressesAPI) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
-	return f.resumeCreatePollerFn(token)
-}
-
-func (f *fakePublicIPAddressesAPI) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error) {
-	return f.resumeDeletePollerFn(token)
 }

@@ -113,14 +113,14 @@ func TestFlexibleServer_CRUD(t *testing.T) {
 	prov := newTestFlexibleServer(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName":          "rg-1",
 			"name":                       "pg-1",
 			"location":                   "eastus",
 			"version":                    "16",
 			"administratorLogin":         "pgadmin",
 			"administratorLoginPassword": "secret123!",
-			"sku": map[string]interface{}{
+			"sku": map[string]any{
 				"name": "Standard_D2s_v3",
 				"tier": "GeneralPurpose",
 			},
@@ -135,7 +135,7 @@ func TestFlexibleServer_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testFSNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "pg-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -163,14 +163,14 @@ func TestFlexibleServer_CRUD(t *testing.T) {
 		fake.beginCreateFn = func(_ context.Context, _, _ string, _ armpostgresqlflexibleservers.Server, _ *armpostgresqlflexibleservers.ServersClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName":          "rg-1",
 			"name":                       "pg-1",
 			"location":                   "eastus",
 			"version":                    "16",
 			"administratorLogin":         "pgadmin",
 			"administratorLoginPassword": "secret123!",
-			"sku":                        map[string]interface{}{"name": "Standard_D2s_v3", "tier": "GeneralPurpose"},
+			"sku":                        map[string]any{"name": "Standard_D2s_v3", "tier": "GeneralPurpose"},
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "pg-1", Properties: props})
 		require.NoError(t, err)

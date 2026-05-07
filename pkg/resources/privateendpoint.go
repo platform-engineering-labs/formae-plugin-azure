@@ -192,7 +192,7 @@ func (p *PrivateEndpoint) Create(ctx context.Context, request *resource.CreateRe
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -206,7 +206,7 @@ func (p *PrivateEndpoint) Create(ctx context.Context, request *resource.CreateRe
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -243,15 +243,13 @@ func (p *PrivateEndpoint) Create(ctx context.Context, request *resource.CreateRe
 }
 
 func (p *PrivateEndpoint) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	peName := parts["privateendpoints"]
-	if rgName == "" || peName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or privateEndpoint name from %s", request.NativeID)
+	rgName, peName, err := privateEndpointIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 	result, err := p.api.Get(ctx, rgName, peName, nil)
 	if err != nil {
-		return &resource.ReadResult{ErrorCode: mapAzureErrorToOperationErrorCode(err)}, nil
+		return &resource.ReadResult{ErrorCode: operationErrorCode(err)}, nil
 	}
 	propsJSON, err := serializePrivateEndpointProperties(result.PrivateEndpoint, rgName, peName)
 	if err != nil {
@@ -264,15 +262,13 @@ func (p *PrivateEndpoint) Read(ctx context.Context, request *resource.ReadReques
 }
 
 func (p *PrivateEndpoint) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	peName := parts["privateendpoints"]
-	if rgName == "" || peName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or privateEndpoint name from %s", request.NativeID)
+	rgName, peName, err := privateEndpointIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	var props map[string]any
-	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
+	if err = json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
 	location, ok := props["location"].(string)
@@ -295,7 +291,7 @@ func (p *PrivateEndpoint) Update(ctx context.Context, request *resource.UpdateRe
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -308,7 +304,7 @@ func (p *PrivateEndpoint) Update(ctx context.Context, request *resource.UpdateRe
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -345,16 +341,14 @@ func (p *PrivateEndpoint) Update(ctx context.Context, request *resource.UpdateRe
 }
 
 func (p *PrivateEndpoint) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	peName := parts["privateendpoints"]
-	if rgName == "" || peName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or privateEndpoint name from %s", request.NativeID)
+	rgName, peName, err := privateEndpointIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	poller, err := p.api.BeginDelete(ctx, rgName, peName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -368,7 +362,7 @@ func (p *PrivateEndpoint) Delete(ctx context.Context, request *resource.DeleteRe
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start PrivateEndpoint deletion: %w", err)
 	}
@@ -424,132 +418,28 @@ func (p *PrivateEndpoint) statusCreateOrUpdate(ctx context.Context, request *res
 	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
-	poller, err := resumePoller[armnetwork.PrivateEndpointsClientCreateOrUpdateResponse](p.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-	if poller.Done() {
-		return p.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-	if _, err = poller.Poll(ctx); err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	if poller.Done() {
-		return p.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.PrivateEndpointsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.PrivateEndpointsClientCreateOrUpdateResponse](p.pipeline, token)
 		},
-	}, nil
-}
-
-func (p *PrivateEndpoint) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armnetwork.PrivateEndpointsClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	propsJSON, err := serializePrivateEndpointProperties(result.PrivateEndpoint, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize PrivateEndpoint properties: %w", err)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.PrivateEndpointsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, peName, err := privateEndpointIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializePrivateEndpointProperties(result.PrivateEndpoint, rgName, peName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize PrivateEndpoint properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (p *PrivateEndpoint) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armnetwork.PrivateEndpointsClientDeleteResponse](p.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-	success := func() *resource.StatusResult {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}
-	}
-	failure := func(err error) *resource.StatusResult {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}
-	}
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return failure(err), nil
-		}
-		return success(), nil
-	}
-	if _, err = poller.Poll(ctx); err != nil {
-		if isDeleteSuccessError(err) {
-			return success(), nil
-		}
-		return failure(err), nil
-	}
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return failure(err), nil
-		}
-		return success(), nil
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.PrivateEndpointsClientDeleteResponse], error) {
+			return resumePoller[armnetwork.PrivateEndpointsClientDeleteResponse](p.pipeline, token)
+		}, nil)
 }
 
 func (p *PrivateEndpoint) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

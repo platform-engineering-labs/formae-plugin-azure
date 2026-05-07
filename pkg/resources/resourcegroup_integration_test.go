@@ -59,7 +59,7 @@ func TestResourceGroup_CRUD(t *testing.T) {
 	prov := newTestResourceGroup(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"name": "rg-1", "location": "eastus",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
@@ -72,7 +72,7 @@ func TestResourceGroup_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testRGNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "rg-1", props["name"])
 	})
@@ -92,6 +92,47 @@ func TestResourceGroup_CRUD(t *testing.T) {
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 	})
 
+	t.Run("Delete_in_progress_returns_json_lro_request_id", func(t *testing.T) {
+		fake.beginDeleteFn = func(_ context.Context, _ string, _ *armresources.ResourceGroupsClientBeginDeleteOptions) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error) {
+			return newInProgressPoller[armresources.ResourceGroupsClientDeleteResponse](), nil
+		}
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testRGNativeID})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusInProgress, got.ProgressResult.OperationStatus)
+		require.Equal(t, testRGNativeID, got.ProgressResult.NativeID)
+
+		reqID, err := decodeLROStatus(got.ProgressResult.RequestID)
+		require.NoError(t, err)
+		require.Equal(t, lroOpDelete, reqID.OperationType)
+		require.Equal(t, testRGNativeID, reqID.NativeID)
+		require.NotEmpty(t, reqID.ResumeToken)
+	})
+
+	t.Run("Status_accepts_json_lro_request_id", func(t *testing.T) {
+		reqID, err := encodeLROStart(lroOpDelete, "json-token", testRGNativeID)
+		require.NoError(t, err)
+		fake.resumeDeletePollerFn = func(token string) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error) {
+			require.Equal(t, "json-token", token)
+			return newDonePoller(armresources.ResourceGroupsClientDeleteResponse{}), nil
+		}
+
+		got, err := prov.Status(context.Background(), &resource.StatusRequest{RequestID: reqID})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+		require.Equal(t, testRGNativeID, got.ProgressResult.NativeID)
+	})
+
+	t.Run("Status_accepts_legacy_plain_resume_token", func(t *testing.T) {
+		fake.resumeDeletePollerFn = func(token string) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error) {
+			require.Equal(t, "legacy-token", token)
+			return newDonePoller(armresources.ResourceGroupsClientDeleteResponse{}), nil
+		}
+
+		got, err := prov.Status(context.Background(), &resource.StatusRequest{RequestID: "legacy-token"})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+	})
+
 	t.Run("List", func(t *testing.T) {
 		got, err := prov.List(context.Background(), &resource.ListRequest{})
 		require.NoError(t, err)
@@ -102,7 +143,7 @@ func TestResourceGroup_CRUD(t *testing.T) {
 		fake.createOrUpdateFn = func(_ context.Context, _ string, _ armresources.ResourceGroup, _ *armresources.ResourceGroupsClientCreateOrUpdateOptions) (armresources.ResourceGroupsClientCreateOrUpdateResponse, error) {
 			return armresources.ResourceGroupsClientCreateOrUpdateResponse{}, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{"name": "rg-1", "location": "eastus"})
+		props, _ := json.Marshal(map[string]any{"name": "rg-1", "location": "eastus"})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)

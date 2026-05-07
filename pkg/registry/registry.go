@@ -20,7 +20,9 @@ var registry = make(map[string]ProvisionerFactory)
 // Register registers a provisioner factory for a resource type.
 // Schema information is extracted from Pkl schemas; only the provisioner factory is registered here.
 func Register(resourceType string, factory ProvisionerFactory) {
-	registry[resourceType] = factory
+	registry[resourceType] = func(client *client.Client, cfg *config.Config) prov.Provisioner {
+		return prov.Wrap(factory(client, cfg))
+	}
 }
 
 // Get returns a Provisioner instance for the given resource type.

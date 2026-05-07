@@ -27,45 +27,31 @@ type containerRegistryAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, registryName string, options *armcontainerregistry.RegistriesClientBeginDeleteOptions) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error)
 	NewListPager(options *armcontainerregistry.RegistriesClientListOptions) *runtime.Pager[armcontainerregistry.RegistriesClientListResponse]
 	NewListByResourceGroupPager(resourceGroupName string, options *armcontainerregistry.RegistriesClientListByResourceGroupOptions) *runtime.Pager[armcontainerregistry.RegistriesClientListByResourceGroupResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error)
-	ResumeUpdatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error)
-}
-
-// containerRegistryClientWrapper composes the SDK client with resume-poller helpers.
-type containerRegistryClientWrapper struct {
-	*armcontainerregistry.RegistriesClient
-	pipeline runtime.Pipeline
-}
-
-func (w *containerRegistryClientWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armcontainerregistry.RegistriesClientCreateResponse](token, w.pipeline, nil)
-}
-
-func (w *containerRegistryClientWrapper) ResumeUpdatePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientUpdateResponse], error) {
-	return runtime.NewPollerFromResumeToken[armcontainerregistry.RegistriesClientUpdateResponse](token, w.pipeline, nil)
-}
-
-func (w *containerRegistryClientWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error) {
-	return runtime.NewPollerFromResumeToken[armcontainerregistry.RegistriesClientDeleteResponse](token, w.pipeline, nil)
 }
 
 func init() {
 	registry.Register(ResourceTypeContainerRegistry, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &ContainerRegistry{
-			api: &containerRegistryClientWrapper{
-				RegistriesClient: c.RegistriesClient,
-				pipeline:         c.Pipeline(),
-			},
-			config: cfg,
+			api:      c.RegistriesClient,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
 
 // ContainerRegistry is the provisioner for Azure Container Registries.
 type ContainerRegistry struct {
-	api    containerRegistryAPI
-	config *config.Config
+	api      containerRegistryAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
+}
+
+func containerRegistryIDParts(resourceID string) (rgName, registryName string, err error) {
+	rgName, names, err := armIDParts(resourceID, "registries")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["registries"], nil
 }
 
 // serializeContainerRegistryProperties converts an Azure Registry to Formae property format
@@ -187,7 +173,7 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -202,7 +188,7 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -227,14 +213,9 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
@@ -248,22 +229,15 @@ func (cr *ContainerRegistry) Create(ctx context.Context, request *resource.Creat
 }
 
 func (cr *ContainerRegistry) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	registryName, ok := parts["registries"]
-	if !ok || registryName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract registry name from %s", request.NativeID)
+	rgName, registryName, err := containerRegistryIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := cr.api.Get(ctx, rgName, registryName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -279,16 +253,9 @@ func (cr *ContainerRegistry) Read(ctx context.Context, request *resource.ReadReq
 }
 
 func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	registryName, ok := parts["registries"]
-	if !ok || registryName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract registry name from %s", request.NativeID)
+	rgName, registryName, err := containerRegistryIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	var props map[string]any
@@ -331,7 +298,7 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -344,7 +311,7 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -369,14 +336,9 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
@@ -390,23 +352,16 @@ func (cr *ContainerRegistry) Update(ctx context.Context, request *resource.Updat
 }
 
 func (cr *ContainerRegistry) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	registryName, ok := parts["registries"]
-	if !ok || registryName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract registry name from %s", request.NativeID)
+	rgName, registryName, err := containerRegistryIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Container Registry deletion is async (LRO)
 	poller, err := cr.api.BeginDelete(ctx, rgName, registryName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -420,7 +375,7 @@ func (cr *ContainerRegistry) Delete(ctx context.Context, request *resource.Delet
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start Container Registry deletion: %w", err)
 	}
@@ -433,7 +388,7 @@ func (cr *ContainerRegistry) Delete(ctx context.Context, request *resource.Delet
 					Operation:       resource.OperationDelete,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, fmt.Errorf("failed to get Container Registry delete result: %w", err)
 		}
@@ -452,14 +407,9 @@ func (cr *ContainerRegistry) Delete(ctx context.Context, request *resource.Delet
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
@@ -473,24 +423,24 @@ func (cr *ContainerRegistry) Delete(ctx context.Context, request *resource.Delet
 }
 
 func (cr *ContainerRegistry) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create":
-		return cr.statusCreate(ctx, request, reqID)
-	case "update":
-		return cr.statusUpdate(ctx, request, reqID)
-	case "delete":
-		return cr.statusDelete(ctx, request, reqID)
+	case lroOpCreate:
+		return cr.statusCreate(ctx, request, &reqID)
+	case lroOpUpdate:
+		return cr.statusUpdate(ctx, request, &reqID)
+	case lroOpDelete:
+		return cr.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
@@ -502,325 +452,47 @@ func (cr *ContainerRegistry) Status(ctx context.Context, request *resource.Statu
 	}
 }
 
-func (cr *ContainerRegistry) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID lroRequestID) (*resource.StatusResult, error) {
-	poller, err := cr.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationCreate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		registryName := parts["registries"]
-
-		propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize Container Registry properties: %w", err)
-		}
-
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationCreate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationCreate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		registryName := parts["registries"]
-
-		propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize Container Registry properties: %w", err)
-		}
-
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationCreate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
+func (cr *ContainerRegistry) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error) {
+			return resumePoller[armcontainerregistry.RegistriesClientCreateResponse](cr.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcontainerregistry.RegistriesClientCreateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, registryName, err := containerRegistryIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize Container Registry properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
-func (cr *ContainerRegistry) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID lroRequestID) (*resource.StatusResult, error) {
-	poller, err := cr.api.ResumeUpdatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		registryName := parts["registries"]
-
-		propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize Container Registry properties: %w", err)
-		}
-
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationUpdate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		result, err := poller.Result(ctx)
-		if err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-
-		parts := splitResourceID(*result.ID)
-		rgName := parts["resourcegroups"]
-		registryName := parts["registries"]
-
-		propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize Container Registry properties: %w", err)
-		}
-
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:          resource.OperationUpdate,
-				OperationStatus:    resource.OperationStatusSuccess,
-				RequestID:          request.RequestID,
-				NativeID:           *result.ID,
-				ResourceProperties: propsJSON,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationUpdate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+func (cr *ContainerRegistry) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return statusLRO(ctx, request, reqID, resource.OperationUpdate,
+		func(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientUpdateResponse], error) {
+			return resumePoller[armcontainerregistry.RegistriesClientUpdateResponse](cr.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcontainerregistry.RegistriesClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, registryName, err := containerRegistryIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeContainerRegistryProperties(result.Registry, rgName, registryName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize Container Registry properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
-func (cr *ContainerRegistry) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID lroRequestID) (*resource.StatusResult, error) {
-	poller, err := cr.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+func (cr *ContainerRegistry) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armcontainerregistry.RegistriesClientDeleteResponse], error) {
+			return resumePoller[armcontainerregistry.RegistriesClientDeleteResponse](cr.pipeline, token)
+		}, nil)
 }
 
 func (cr *ContainerRegistry) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

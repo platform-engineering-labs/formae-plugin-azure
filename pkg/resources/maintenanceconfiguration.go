@@ -40,7 +40,7 @@ type MaintenanceConfiguration struct {
 }
 
 func serializeMaintenanceConfigurationProperties(result armcontainerservice.MaintenanceConfiguration, rgName, clusterName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	if result.ID != nil {
 		props["id"] = *result.ID
@@ -54,12 +54,12 @@ func serializeMaintenanceConfigurationProperties(result armcontainerservice.Main
 	if result.Properties != nil {
 		// TimeInWeek
 		if result.Properties.TimeInWeek != nil {
-			slots := make([]map[string]interface{}, 0, len(result.Properties.TimeInWeek))
+			slots := make([]map[string]any, 0, len(result.Properties.TimeInWeek))
 			for _, tiw := range result.Properties.TimeInWeek {
 				if tiw == nil {
 					continue
 				}
-				slot := make(map[string]interface{})
+				slot := make(map[string]any)
 				if tiw.Day != nil {
 					slot["day"] = string(*tiw.Day)
 				}
@@ -81,12 +81,12 @@ func serializeMaintenanceConfigurationProperties(result armcontainerservice.Main
 
 		// NotAllowedTime
 		if result.Properties.NotAllowedTime != nil {
-			spans := make([]map[string]interface{}, 0, len(result.Properties.NotAllowedTime))
+			spans := make([]map[string]any, 0, len(result.Properties.NotAllowedTime))
 			for _, ts := range result.Properties.NotAllowedTime {
 				if ts == nil {
 					continue
 				}
-				span := make(map[string]interface{})
+				span := make(map[string]any)
 				if ts.Start != nil {
 					span["start"] = ts.Start.UTC().Format("2006-01-02T15:04:05Z")
 				}
@@ -104,8 +104,16 @@ func serializeMaintenanceConfigurationProperties(result armcontainerservice.Main
 	return json.Marshal(props)
 }
 
+func maintenanceConfigurationIDParts(nativeID string) (rgName, clusterName, configName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "managedclusters", "maintenanceconfigurations")
+	if err != nil {
+		return "", "", "", fmt.Errorf("invalid NativeID: %w", err)
+	}
+	return rgName, names["managedclusters"], names["maintenanceconfigurations"], nil
+}
+
 func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -130,10 +138,10 @@ func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resourc
 	}
 
 	// Parse TimeInWeek
-	if tiwRaw, ok := props["timeInWeek"].([]interface{}); ok {
+	if tiwRaw, ok := props["timeInWeek"].([]any); ok {
 		tiws := make([]*armcontainerservice.TimeInWeek, 0, len(tiwRaw))
 		for _, raw := range tiwRaw {
-			tiwMap, ok := raw.(map[string]interface{})
+			tiwMap, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -142,7 +150,7 @@ func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resourc
 				d := armcontainerservice.WeekDay(day)
 				tiw.Day = &d
 			}
-			if hoursRaw, ok := tiwMap["hourSlots"].([]interface{}); ok {
+			if hoursRaw, ok := tiwMap["hourSlots"].([]any); ok {
 				hours := make([]*int32, 0, len(hoursRaw))
 				for _, h := range hoursRaw {
 					if hf, ok := h.(float64); ok {
@@ -157,10 +165,10 @@ func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resourc
 	}
 
 	// Parse NotAllowedTime
-	if natRaw, ok := props["notAllowedTime"].([]interface{}); ok {
+	if natRaw, ok := props["notAllowedTime"].([]any); ok {
 		spans := make([]*armcontainerservice.TimeSpan, 0, len(natRaw))
 		for _, raw := range natRaw {
-			spanMap, ok := raw.(map[string]interface{})
+			spanMap, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -188,7 +196,7 @@ func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resourc
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -209,27 +217,15 @@ func (mc *MaintenanceConfiguration) Create(ctx context.Context, request *resourc
 }
 
 func (mc *MaintenanceConfiguration) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	clusterName, ok := parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
-	}
-
-	configName, ok := parts["maintenanceconfigurations"]
-	if !ok || configName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract maintenance configuration name from %s", request.NativeID)
+	rgName, clusterName, configName, err := maintenanceConfigurationIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := mc.api.Get(ctx, rgName, clusterName, configName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -244,24 +240,12 @@ func (mc *MaintenanceConfiguration) Read(ctx context.Context, request *resource.
 }
 
 func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
+	rgName, clusterName, configName, err := maintenanceConfigurationIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
-	clusterName, ok := parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
-	}
-
-	configName, ok := parts["maintenanceconfigurations"]
-	if !ok || configName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract maintenance configuration name from %s", request.NativeID)
-	}
-
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -271,10 +255,10 @@ func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resourc
 	}
 
 	// Parse TimeInWeek
-	if tiwRaw, ok := props["timeInWeek"].([]interface{}); ok {
+	if tiwRaw, ok := props["timeInWeek"].([]any); ok {
 		tiws := make([]*armcontainerservice.TimeInWeek, 0, len(tiwRaw))
 		for _, raw := range tiwRaw {
-			tiwMap, ok := raw.(map[string]interface{})
+			tiwMap, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -283,7 +267,7 @@ func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resourc
 				d := armcontainerservice.WeekDay(day)
 				tiw.Day = &d
 			}
-			if hoursRaw, ok := tiwMap["hourSlots"].([]interface{}); ok {
+			if hoursRaw, ok := tiwMap["hourSlots"].([]any); ok {
 				hours := make([]*int32, 0, len(hoursRaw))
 				for _, h := range hoursRaw {
 					if hf, ok := h.(float64); ok {
@@ -298,10 +282,10 @@ func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resourc
 	}
 
 	// Parse NotAllowedTime
-	if natRaw, ok := props["notAllowedTime"].([]interface{}); ok {
+	if natRaw, ok := props["notAllowedTime"].([]any); ok {
 		spans := make([]*armcontainerservice.TimeSpan, 0, len(natRaw))
 		for _, raw := range natRaw {
-			spanMap, ok := raw.(map[string]interface{})
+			spanMap, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -330,7 +314,7 @@ func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resourc
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -351,26 +335,14 @@ func (mc *MaintenanceConfiguration) Update(ctx context.Context, request *resourc
 }
 
 func (mc *MaintenanceConfiguration) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	clusterName, ok := parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract cluster name from %s", request.NativeID)
-	}
-
-	configName, ok := parts["maintenanceconfigurations"]
-	if !ok || configName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract maintenance configuration name from %s", request.NativeID)
-	}
-
-	_, err := mc.api.Delete(ctx, rgName, clusterName, configName, nil)
+	rgName, clusterName, configName, err := maintenanceConfigurationIDParts(request.NativeID)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		return nil, err
+	}
+
+	_, err = mc.api.Delete(ctx, rgName, clusterName, configName, nil)
+	if err != nil {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -384,7 +356,7 @@ func (mc *MaintenanceConfiguration) Delete(ctx context.Context, request *resourc
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}

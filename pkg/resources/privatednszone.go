@@ -103,7 +103,7 @@ func (z *PrivateDnsZone) Create(ctx context.Context, request *resource.CreateReq
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -117,7 +117,7 @@ func (z *PrivateDnsZone) Create(ctx context.Context, request *resource.CreateReq
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -154,15 +154,13 @@ func (z *PrivateDnsZone) Create(ctx context.Context, request *resource.CreateReq
 }
 
 func (z *PrivateDnsZone) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	zoneName := parts["privatednszones"]
-	if rgName == "" || zoneName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or zone name from %s", request.NativeID)
+	rgName, zoneName, err := privateDnsZoneIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 	result, err := z.api.Get(ctx, rgName, zoneName, nil)
 	if err != nil {
-		return &resource.ReadResult{ErrorCode: mapAzureErrorToOperationErrorCode(err)}, nil
+		return &resource.ReadResult{ErrorCode: operationErrorCode(err)}, nil
 	}
 	propsJSON, err := serializePrivateDnsZoneProperties(result.PrivateZone, rgName, zoneName)
 	if err != nil {
@@ -175,11 +173,9 @@ func (z *PrivateDnsZone) Read(ctx context.Context, request *resource.ReadRequest
 }
 
 func (z *PrivateDnsZone) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	zoneName := parts["privatednszones"]
-	if rgName == "" || zoneName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or zone name from %s", request.NativeID)
+	rgName, zoneName, err := privateDnsZoneIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	var props map[string]any
@@ -205,7 +201,7 @@ func (z *PrivateDnsZone) Update(ctx context.Context, request *resource.UpdateReq
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -218,7 +214,7 @@ func (z *PrivateDnsZone) Update(ctx context.Context, request *resource.UpdateReq
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -287,11 +283,9 @@ func isZoneDeleteEventualConsistencyError(err error) bool {
 }
 
 func (z *PrivateDnsZone) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-	rgName := parts["resourcegroups"]
-	zoneName := parts["privatednszones"]
-	if rgName == "" || zoneName == "" {
-		return nil, fmt.Errorf("invalid NativeID: cannot extract resourceGroup or zone name from %s", request.NativeID)
+	rgName, zoneName, err := privateDnsZoneIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Retry BeginDelete on eventual-consistency conflicts: after a recent
@@ -304,14 +298,13 @@ func (z *PrivateDnsZone) Delete(ctx context.Context, request *resource.DeleteReq
 	)
 	var (
 		poller *runtime.Poller[armprivatedns.PrivateZonesClientDeleteResponse]
-		err    error
 	)
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		poller, err = z.api.BeginDelete(ctx, rgName, zoneName, nil)
 		if err == nil {
 			break
 		}
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -327,7 +320,7 @@ func (z *PrivateDnsZone) Delete(ctx context.Context, request *resource.DeleteReq
 					Operation:       resource.OperationDelete,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 					StatusMessage:   err.Error(),
 				},
 			}, fmt.Errorf("failed to start PrivateDnsZone deletion: %w", err)
@@ -398,154 +391,28 @@ func (z *PrivateDnsZone) statusCreateOrUpdate(ctx context.Context, request *reso
 	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
-	poller, err := resumePoller[armprivatedns.PrivateZonesClientCreateOrUpdateResponse](z.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-	if poller.Done() {
-		return z.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-	if _, err = poller.Poll(ctx); err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	if poller.Done() {
-		return z.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armprivatedns.PrivateZonesClientCreateOrUpdateResponse], error) {
+			return resumePoller[armprivatedns.PrivateZonesClientCreateOrUpdateResponse](z.pipeline, token)
 		},
-	}, nil
-}
-
-func (z *PrivateDnsZone) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armprivatedns.PrivateZonesClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	propsJSON, err := serializePrivateDnsZoneProperties(result.PrivateZone, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize PrivateDnsZone properties: %w", err)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armprivatedns.PrivateZonesClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, zoneName, err := privateDnsZoneIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializePrivateDnsZoneProperties(result.PrivateZone, rgName, zoneName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize PrivateDnsZone properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (z *PrivateDnsZone) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armprivatedns.PrivateZonesClientDeleteResponse](z.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-	if _, err = poller.Poll(ctx); err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armprivatedns.PrivateZonesClientDeleteResponse], error) {
+			return resumePoller[armprivatedns.PrivateZonesClientDeleteResponse](z.pipeline, token)
+		}, nil)
 }
 
 func (z *PrivateDnsZone) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -579,4 +446,12 @@ func (z *PrivateDnsZone) List(ctx context.Context, request *resource.ListRequest
 		}
 	}
 	return &resource.ListResult{NativeIDs: nativeIDs}, nil
+}
+
+func privateDnsZoneIDParts(nativeID string) (rgName, zoneName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "privatednszones")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["privatednszones"], nil
 }

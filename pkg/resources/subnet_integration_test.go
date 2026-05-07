@@ -64,7 +64,7 @@ func TestSubnet_CRUD(t *testing.T) {
 	prov := newTestSubnet(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "virtualNetworkName": "vnet-1",
 			"name": "subnet-1", "addressPrefix": "10.0.1.0/24",
 		})
@@ -78,7 +78,7 @@ func TestSubnet_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testSubnetNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "subnet-1", props["name"])
 	})
@@ -110,7 +110,7 @@ func TestSubnet_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _, _ string, _ armnetwork.Subnet, _ *armnetwork.SubnetsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "virtualNetworkName": "vnet-1",
 			"name": "subnet-1", "addressPrefix": "10.0.1.0/24",
 		})

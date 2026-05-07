@@ -60,7 +60,7 @@ func TestExtension_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testExtNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "my-ext", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -95,7 +95,7 @@ func TestExtension_CRUD(t *testing.T) {
 		fake.beginCreateFn = func(_ context.Context, _, _, _, _, _ string, _ armkubernetesconfiguration.Extension, _ *armkubernetesconfiguration.ExtensionsClientBeginCreateOptions) (*runtime.Poller[armkubernetesconfiguration.ExtensionsClientCreateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "x", "extensionType": "microsoft.flux"})
+		props, _ := json.Marshal(map[string]any{"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "x", "extensionType": "microsoft.flux"})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)

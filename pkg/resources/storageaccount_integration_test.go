@@ -89,11 +89,11 @@ func TestStorageAccount_CRUD(t *testing.T) {
 	prov := newTestStorageAccount(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "myaccount",
-			"sku":               map[string]interface{}{"name": "Standard_LRS"},
+			"sku":               map[string]any{"name": "Standard_LRS"},
 			"kind":              "StorageV2",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "test-sa", Properties: props})
@@ -105,7 +105,7 @@ func TestStorageAccount_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testSANativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "myaccount", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -133,11 +133,11 @@ func TestStorageAccount_CRUD(t *testing.T) {
 		fake.beginCreateFn = func(_ context.Context, _, _ string, _ armstorage.AccountCreateParameters, _ *armstorage.AccountsClientBeginCreateOptions) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 404}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "myaccount",
-			"sku":               map[string]interface{}{"name": "Standard_LRS"},
+			"sku":               map[string]any{"name": "Standard_LRS"},
 			"kind":              "StorageV2",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{
@@ -162,7 +162,6 @@ type fakeStorageAccountsAPI struct {
 	deleteFn                      func(ctx context.Context, resourceGroupName string, accountName string, options *armstorage.AccountsClientDeleteOptions) (armstorage.AccountsClientDeleteResponse, error)
 	newListByResourceGroupPagerFn func(resourceGroupName string, options *armstorage.AccountsClientListByResourceGroupOptions) *runtime.Pager[armstorage.AccountsClientListByResourceGroupResponse]
 	newListPagerFn                func(options *armstorage.AccountsClientListOptions) *runtime.Pager[armstorage.AccountsClientListResponse]
-	resumeCreatePollerFn          func(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)
 }
 
 func (f *fakeStorageAccountsAPI) BeginCreate(ctx context.Context, resourceGroupName string, accountName string, parameters armstorage.AccountCreateParameters, options *armstorage.AccountsClientBeginCreateOptions) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error) {
@@ -187,8 +186,4 @@ func (f *fakeStorageAccountsAPI) NewListByResourceGroupPager(resourceGroupName s
 
 func (f *fakeStorageAccountsAPI) NewListPager(options *armstorage.AccountsClientListOptions) *runtime.Pager[armstorage.AccountsClientListResponse] {
 	return f.newListPagerFn(options)
-}
-
-func (f *fakeStorageAccountsAPI) ResumeCreatePoller(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error) {
-	return f.resumeCreatePollerFn(token)
 }

@@ -68,7 +68,7 @@ func TestTrustedAccessRoleBinding_CRUD(t *testing.T) {
 	prov := newTestTrustedAccessRoleBinding(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"clusterName":       "aks-1",
 			"name":              "binding-1",
@@ -85,7 +85,7 @@ func TestTrustedAccessRoleBinding_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testTARBNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "binding-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
@@ -110,7 +110,7 @@ func TestTrustedAccessRoleBinding_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _, _ string, _ armcontainerservice.TrustedAccessRoleBinding, _ *armcontainerservice.TrustedAccessRoleBindingsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"clusterName":       "aks-1",
 			"name":              "binding-1",

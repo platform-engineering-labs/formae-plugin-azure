@@ -29,9 +29,9 @@ func TestKeyVault_CRUD(t *testing.T) {
 					Name:     to.Ptr(vaultName),
 					Location: params.Location,
 					Properties: &armkeyvault.VaultProperties{
-						TenantID: params.Properties.TenantID,
-						SKU:      params.Properties.SKU,
-						VaultURI: to.Ptr("https://my-vault.vault.azure.net/"),
+						TenantID:                params.Properties.TenantID,
+						SKU:                     params.Properties.SKU,
+						VaultURI:                to.Ptr("https://my-vault.vault.azure.net/"),
 						EnableRbacAuthorization: params.Properties.EnableRbacAuthorization,
 						AccessPolicies:          params.Properties.AccessPolicies,
 					},
@@ -45,9 +45,9 @@ func TestKeyVault_CRUD(t *testing.T) {
 					Name:     to.Ptr("my-vault"),
 					Location: to.Ptr("eastus"),
 					Properties: &armkeyvault.VaultProperties{
-						TenantID:               to.Ptr("tenant-1"),
-						EnableRbacAuthorization: to.Ptr(true),
-						EnableSoftDelete:        to.Ptr(true),
+						TenantID:                  to.Ptr("tenant-1"),
+						EnableRbacAuthorization:   to.Ptr(true),
+						EnableSoftDelete:          to.Ptr(true),
 						SoftDeleteRetentionInDays: to.Ptr(int32(90)),
 						SKU: &armkeyvault.SKU{
 							Family: to.Ptr(armkeyvault.SKUFamilyA),
@@ -92,12 +92,12 @@ func TestKeyVault_CRUD(t *testing.T) {
 	prov := newTestKeyVault(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "my-vault",
 			"tenantId":          "tenant-1",
-			"sku":               map[string]interface{}{"name": "standard"},
+			"sku":               map[string]any{"name": "standard"},
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "my-vault", Properties: props})
 		require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestKeyVault_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
-		var serialized map[string]interface{}
+		var serialized map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &serialized))
 		require.Equal(t, "my-vault", serialized["name"])
 		require.Equal(t, "rg-1", serialized["resourceGroupName"])
@@ -139,12 +139,12 @@ func TestKeyVault_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armkeyvault.VaultCreateOrUpdateParameters, _ *armkeyvault.VaultsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1",
 			"location":          "eastus",
 			"name":              "my-vault",
 			"tenantId":          "tenant-1",
-			"sku":               map[string]interface{}{"name": "standard"},
+			"sku":               map[string]any{"name": "standard"},
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)

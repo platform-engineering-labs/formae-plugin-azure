@@ -26,42 +26,23 @@ type networkSecurityGroupsAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, networkSecurityGroupName string, options *armnetwork.SecurityGroupsClientBeginDeleteOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, options *armnetwork.SecurityGroupsClientListOptions) *runtime.Pager[armnetwork.SecurityGroupsClientListResponse]
 	NewListAllPager(options *armnetwork.SecurityGroupsClientListAllOptions) *runtime.Pager[armnetwork.SecurityGroupsClientListAllResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error)
-}
-
-// networkSecurityGroupsWrapper composes the SDK client with resume-poller methods from client.Client.
-type networkSecurityGroupsWrapper struct {
-	*armnetwork.SecurityGroupsClient
-	resumeCreate func(string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error)
-}
-
-func (w *networkSecurityGroupsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *networkSecurityGroupsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
 	registry.Register(ResourceTypeNetworkSecurityGroup, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &NetworkSecurityGroup{
-			api: &networkSecurityGroupsWrapper{
-				SecurityGroupsClient: c.SecurityGroupsClient,
-				resumeCreate:         c.ResumeCreateSecurityGroupPoller,
-				resumeDelete:         c.ResumeDeleteSecurityGroupPoller,
-			},
-			config: cfg,
+			api:      c.SecurityGroupsClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 // NetworkSecurityGroup is the provisioner for Azure Network Security Groups.
 type NetworkSecurityGroup struct {
-	api    networkSecurityGroupsAPI
-	config *config.Config
+	api      networkSecurityGroupsAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 // serializeNSGProperties converts an Azure NetworkSecurityGroup to Formae property format
@@ -137,6 +118,14 @@ func serializeNSGProperties(result armnetwork.SecurityGroup, rgName, nsgName str
 	}
 
 	return json.Marshal(props)
+}
+
+func parseNetworkSecurityGroupNativeID(nativeID string) (rgName, nsgName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "networksecuritygroups")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["networksecuritygroups"], nil
 }
 
 func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -230,7 +219,7 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -246,7 +235,7 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -272,44 +261,32 @@ func (n *NetworkSecurityGroup) Create(ctx context.Context, request *resource.Cre
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
 }
 
 func (n *NetworkSecurityGroup) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	nsgName, ok := parts["networksecuritygroups"]
-	if !ok || nsgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract NSG name from %s", request.NativeID)
+	rgName, nsgName, err := parseNetworkSecurityGroupNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := n.api.Get(ctx, rgName, nsgName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -325,16 +302,9 @@ func (n *NetworkSecurityGroup) Read(ctx context.Context, request *resource.ReadR
 }
 
 func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	nsgName, ok := parts["networksecuritygroups"]
-	if !ok || nsgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract NSG name from %s", request.NativeID)
+	rgName, nsgName, err := parseNetworkSecurityGroupNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	var props map[string]any
@@ -418,7 +388,7 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -432,7 +402,7 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -458,43 +428,31 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (n *NetworkSecurityGroup) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	nsgName, ok := parts["networksecuritygroups"]
-	if !ok || nsgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract NSG name from %s", request.NativeID)
+	rgName, nsgName, err := parseNetworkSecurityGroupNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	poller, err := n.api.BeginDelete(ctx, rgName, nsgName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -509,7 +467,7 @@ func (n *NetworkSecurityGroup) Delete(ctx context.Context, request *resource.Del
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start NSG deletion: %w", err)
 	}
@@ -519,29 +477,24 @@ func (n *NetworkSecurityGroup) Delete(ctx context.Context, request *resource.Del
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (n *NetworkSecurityGroup) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -549,13 +502,13 @@ func (n *NetworkSecurityGroup) Status(ctx context.Context, request *resource.Sta
 
 				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return n.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return n.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -571,205 +524,32 @@ func (n *NetworkSecurityGroup) Status(ctx context.Context, request *resource.Sta
 
 func (n *NetworkSecurityGroup) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := n.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		return n.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return n.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse](n.pipeline, token)
 		},
-	}, nil
-}
-
-func (n *NetworkSecurityGroup) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, _ *lroRequestID, poller *runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-
-	propsJSON, err := serializeNSGProperties(result.SecurityGroup, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize NSG properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.SecurityGroupsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, nsgName, err := parseNetworkSecurityGroupNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeNSGProperties(result.SecurityGroup, rgName, nsgName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize NSG properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (n *NetworkSecurityGroup) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := n.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.SecurityGroupsClientDeleteResponse], error) {
+			return resumePoller[armnetwork.SecurityGroupsClientDeleteResponse](n.pipeline, token)
+		}, nil)
 }
 
 func (n *NetworkSecurityGroup) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

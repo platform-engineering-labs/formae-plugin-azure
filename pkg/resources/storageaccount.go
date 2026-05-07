@@ -27,35 +27,31 @@ type storageAccountsAPI interface {
 	Delete(ctx context.Context, resourceGroupName string, accountName string, options *armstorage.AccountsClientDeleteOptions) (armstorage.AccountsClientDeleteResponse, error)
 	NewListByResourceGroupPager(resourceGroupName string, options *armstorage.AccountsClientListByResourceGroupOptions) *runtime.Pager[armstorage.AccountsClientListByResourceGroupResponse]
 	NewListPager(options *armstorage.AccountsClientListOptions) *runtime.Pager[armstorage.AccountsClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)
-}
-
-// storageAccountsWrapper composes the SDK client with resume-poller methods from client.Client.
-type storageAccountsWrapper struct {
-	*armstorage.AccountsClient
-	resumeCreate func(string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)
-}
-
-func (w *storageAccountsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error) {
-	return w.resumeCreate(token)
 }
 
 func init() {
 	registry.Register(ResourceTypeStorageAccount, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &StorageAccount{
-			api: &storageAccountsWrapper{
-				AccountsClient: c.StorageAccountsClient,
-				resumeCreate:   c.ResumeCreateStorageAccountPoller,
-			},
-			config: cfg,
+			api:      c.StorageAccountsClient,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
 
 // StorageAccount is the provisioner for Azure Storage Accounts.
 type StorageAccount struct {
-	api    storageAccountsAPI
-	config *config.Config
+	api      storageAccountsAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
+}
+
+func storageAccountIDParts(resourceID string) (rgName, name string, err error) {
+	rgName, names, err := armIDParts(resourceID, "storageaccounts")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["storageaccounts"], nil
 }
 
 // serializeStorageAccountProperties converts an Azure StorageAccount to Formae property format
@@ -227,7 +223,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -243,7 +239,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -269,12 +265,7 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	requestID, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
 	}
@@ -283,30 +274,23 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       requestID,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
 }
 
 func (s *StorageAccount) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	accountName, ok := parts["storageaccounts"]
-	if !ok || accountName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract StorageAccount name from %s", request.NativeID)
+	rgName, accountName, err := storageAccountIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := s.api.GetProperties(ctx, rgName, accountName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -322,16 +306,9 @@ func (s *StorageAccount) Read(ctx context.Context, request *resource.ReadRequest
 }
 
 func (s *StorageAccount) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	accountName, ok := parts["storageaccounts"]
-	if !ok || accountName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract StorageAccount name from %s", request.NativeID)
+	rgName, accountName, err := storageAccountIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	var props map[string]any
@@ -378,7 +355,7 @@ func (s *StorageAccount) Update(ctx context.Context, request *resource.UpdateReq
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -400,23 +377,16 @@ func (s *StorageAccount) Update(ctx context.Context, request *resource.UpdateReq
 }
 
 func (s *StorageAccount) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	accountName, ok := parts["storageaccounts"]
-	if !ok || accountName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract StorageAccount name from %s", request.NativeID)
+	rgName, accountName, err := storageAccountIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Storage account deletion is synchronous
-	_, err := s.api.Delete(ctx, rgName, accountName, nil)
+	_, err = s.api.Delete(ctx, rgName, accountName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -431,7 +401,7 @@ func (s *StorageAccount) Delete(ctx context.Context, request *resource.DeleteReq
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete StorageAccount: %w", err)
 	}
@@ -446,107 +416,47 @@ func (s *StorageAccount) Delete(ctx context.Context, request *resource.DeleteReq
 }
 
 func (s *StorageAccount) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
-	// Only create is async for storage accounts
-	if reqID.OperationType != "create" {
+	switch reqID.OperationType {
+	case lroOpCreate:
+		return s.statusCreate(ctx, request, &reqID)
+	default:
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
+				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
 		}, fmt.Errorf("unexpected async operation type for storage account: %s", reqID.OperationType)
 	}
-
-	poller, err := s.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		return s.handleCreateComplete(ctx, request, poller)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return s.handleCreateComplete(ctx, request, poller)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
-		},
-	}, nil
 }
 
-func (s *StorageAccount) handleCreateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armstorage.AccountsClientCreateResponse]) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-
-	propsJSON, err := serializeStorageAccountProperties(result.Account, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize StorageAccount properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+func (s *StorageAccount) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error) {
+			return resumePoller[armstorage.AccountsClientCreateResponse](s.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armstorage.AccountsClientCreateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, accountName, err := storageAccountIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeStorageAccountProperties(result.Account, rgName, accountName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize StorageAccount properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (s *StorageAccount) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

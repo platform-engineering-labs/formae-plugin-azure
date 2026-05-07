@@ -121,7 +121,7 @@ func (l *PrivateDnsZoneVNetLink) Create(ctx context.Context, request *resource.C
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -135,7 +135,7 @@ func (l *PrivateDnsZoneVNetLink) Create(ctx context.Context, request *resource.C
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -171,18 +171,12 @@ func (l *PrivateDnsZoneVNetLink) Create(ctx context.Context, request *resource.C
 	}, nil
 }
 
-// vnetLinkPathParts splits a VirtualNetworkLink ARM ID into rg, zone, link
-// segments. ARM key casing is `privateDnsZones` and `virtualNetworkLinks`,
-// which `splitResourceID` lowercases.
 func vnetLinkPathParts(nativeID string) (rg, zone, link string, err error) {
-	parts := splitResourceID(nativeID)
-	rg = parts["resourcegroups"]
-	zone = parts["privatednszones"]
-	link = parts["virtualnetworklinks"]
-	if rg == "" || zone == "" || link == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: cannot extract resourceGroup/zone/link from %s", nativeID)
+	rg, names, err := armIDParts(nativeID, "privatednszones", "virtualnetworklinks")
+	if err != nil {
+		return "", "", "", err
 	}
-	return rg, zone, link, nil
+	return rg, names["privatednszones"], names["virtualnetworklinks"], nil
 }
 
 func (l *PrivateDnsZoneVNetLink) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
@@ -192,7 +186,7 @@ func (l *PrivateDnsZoneVNetLink) Read(ctx context.Context, request *resource.Rea
 	}
 	result, err := l.api.Get(ctx, rgName, zoneName, linkName, nil)
 	if err != nil {
-		return &resource.ReadResult{ErrorCode: mapAzureErrorToOperationErrorCode(err)}, nil
+		return &resource.ReadResult{ErrorCode: operationErrorCode(err)}, nil
 	}
 	propsJSON, err := serializePrivateDnsVNetLinkProperties(result.VirtualNetworkLink, rgName, zoneName, linkName)
 	if err != nil {
@@ -243,7 +237,7 @@ func (l *PrivateDnsZoneVNetLink) Update(ctx context.Context, request *resource.U
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -255,7 +249,7 @@ func (l *PrivateDnsZoneVNetLink) Update(ctx context.Context, request *resource.U
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -299,7 +293,7 @@ func (l *PrivateDnsZoneVNetLink) Delete(ctx context.Context, request *resource.D
 
 	poller, err := l.api.BeginDelete(ctx, rgName, zoneName, linkName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -313,7 +307,7 @@ func (l *PrivateDnsZoneVNetLink) Delete(ctx context.Context, request *resource.D
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start VirtualNetworkLink deletion: %w", err)
 	}
@@ -369,71 +363,21 @@ func (l *PrivateDnsZoneVNetLink) statusCreateOrUpdate(ctx context.Context, reque
 	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
-	poller, err := resumePoller[armprivatedns.VirtualNetworkLinksClientCreateOrUpdateResponse](l.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-	if poller.Done() {
-		return l.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-	if _, err = poller.Poll(ctx); err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	if poller.Done() {
-		return l.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armprivatedns.VirtualNetworkLinksClientCreateOrUpdateResponse], error) {
+			return resumePoller[armprivatedns.VirtualNetworkLinksClientCreateOrUpdateResponse](l.pipeline, token)
 		},
-	}, nil
-}
-
-func (l *PrivateDnsZoneVNetLink) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armprivatedns.VirtualNetworkLinksClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	zoneName := parts["privatednszones"]
-	propsJSON, err := serializePrivateDnsVNetLinkProperties(result.VirtualNetworkLink, rgName, zoneName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize VirtualNetworkLink properties: %w", err)
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armprivatedns.VirtualNetworkLinksClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, zoneName, linkName, err := vnetLinkPathParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializePrivateDnsVNetLinkProperties(result.VirtualNetworkLink, rgName, zoneName, linkName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize VirtualNetworkLink properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 // verifyLinkGone synchronously waits until a Get for the link returns NotFound,
@@ -488,73 +432,10 @@ func (l *PrivateDnsZoneVNetLink) verifyLinkGone(ctx context.Context, request *re
 }
 
 func (l *PrivateDnsZoneVNetLink) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armprivatedns.VirtualNetworkLinksClientDeleteResponse](l.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return l.verifyLinkGone(ctx, request, reqID), nil
-	}
-	if _, err = poller.Poll(ctx); err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return l.verifyLinkGone(ctx, request, reqID), nil
-	}
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armprivatedns.VirtualNetworkLinksClientDeleteResponse], error) {
+			return resumePoller[armprivatedns.VirtualNetworkLinksClientDeleteResponse](l.pipeline, token)
+		}, l.verifyLinkGone)
 }
 
 func (l *PrivateDnsZoneVNetLink) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

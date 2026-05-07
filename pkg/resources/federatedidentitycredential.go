@@ -110,14 +110,11 @@ func ficParamsFromProperties(props map[string]any) (armmsi.FederatedIdentityCred
 }
 
 func (f *FederatedIdentityCredential) parseNativeID(nativeID string) (rgName, uaiName, ficName string, err error) {
-	parts := splitResourceID(nativeID)
-	rgName = parts["resourcegroups"]
-	uaiName = parts["userassignedidentities"]
-	ficName = parts["federatedidentitycredentials"]
-	if rgName == "" || uaiName == "" || ficName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: %s", nativeID)
+	rgName, names, err := armIDParts(nativeID, "userAssignedIdentities", "federatedIdentityCredentials")
+	if err != nil {
+		return "", "", "", err
 	}
-	return rgName, uaiName, ficName, nil
+	return rgName, names["userAssignedIdentities"], names["federatedIdentityCredentials"], nil
 }
 
 func (f *FederatedIdentityCredential) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -153,7 +150,7 @@ func (f *FederatedIdentityCredential) Create(ctx context.Context, request *resou
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -182,7 +179,7 @@ func (f *FederatedIdentityCredential) Read(ctx context.Context, request *resourc
 	result, err := f.api.Get(ctx, rgName, uaiName, ficName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -220,7 +217,7 @@ func (f *FederatedIdentityCredential) Update(ctx context.Context, request *resou
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -247,7 +244,7 @@ func (f *FederatedIdentityCredential) Delete(ctx context.Context, request *resou
 	}
 
 	if _, err := f.api.Delete(ctx, rgName, uaiName, ficName, nil); err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -261,7 +258,7 @@ func (f *FederatedIdentityCredential) Delete(ctx context.Context, request *resou
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete FederatedIdentityCredential: %w", err)
 	}
@@ -294,7 +291,7 @@ func (f *FederatedIdentityCredential) Status(ctx context.Context, request *resou
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to get FederatedIdentityCredential status: %w", err)
 	}

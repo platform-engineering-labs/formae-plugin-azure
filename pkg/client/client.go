@@ -6,6 +6,8 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -81,6 +83,13 @@ type Client struct {
 
 // NewClient creates a new Azure client wrapper
 func NewClient(cfg *config.Config) (*Client, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("azure config is required")
+	}
+	if strings.TrimSpace(cfg.SubscriptionId) == "" {
+		return nil, fmt.Errorf("azure config requires non-empty SubscriptionId")
+	}
+
 	ctx := context.Background()
 	cred, err := cfg.ToAzureCredential(ctx)
 	if err != nil {

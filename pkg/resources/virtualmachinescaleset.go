@@ -369,13 +369,11 @@ func vmssBuildVMProfile(m map[string]any) (*armcompute.VirtualMachineScaleSetVMP
 }
 
 func (v *VirtualMachineScaleSet) parseNativeID(nativeID string) (rgName, vmssName string, err error) {
-	parts := splitResourceID(nativeID)
-	rgName = parts["resourcegroups"]
-	vmssName = parts["virtualmachinescalesets"]
-	if rgName == "" || vmssName == "" {
-		return "", "", fmt.Errorf("invalid NativeID: %s", nativeID)
+	rgName, names, err := armIDParts(nativeID, "virtualmachinescalesets")
+	if err != nil {
+		return "", "", err
 	}
-	return rgName, vmssName, nil
+	return rgName, names["virtualmachinescalesets"], nil
 }
 
 func (v *VirtualMachineScaleSet) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
@@ -407,7 +405,7 @@ func (v *VirtualMachineScaleSet) Create(ctx context.Context, request *resource.C
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -422,7 +420,7 @@ func (v *VirtualMachineScaleSet) Create(ctx context.Context, request *resource.C
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -468,7 +466,7 @@ func (v *VirtualMachineScaleSet) Read(ctx context.Context, request *resource.Rea
 	result, err := v.api.Get(ctx, rgName, vmssName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -520,7 +518,7 @@ func (v *VirtualMachineScaleSet) Update(ctx context.Context, request *resource.U
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -533,7 +531,7 @@ func (v *VirtualMachineScaleSet) Update(ctx context.Context, request *resource.U
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -592,7 +590,7 @@ func (v *VirtualMachineScaleSet) Delete(ctx context.Context, request *resource.D
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete VMSS: %w", err)
 	}
@@ -657,217 +655,50 @@ func (v *VirtualMachineScaleSet) Status(ctx context.Context, request *resource.S
 }
 
 func (v *VirtualMachineScaleSet) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armcompute.VirtualMachineScaleSetsClientCreateOrUpdateResponse](v.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, err
-	}
-
-	if !poller.Done() {
-		if _, err := poller.Poll(ctx); err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationCreate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, err
-		}
-		if !poller.Done() {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationCreate,
-					OperationStatus: resource.OperationStatusInProgress,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-	}
-
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, err
-	}
-
-	rgName, vmssName, err := v.parseNativeID(*result.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	propsJSON, err := serializeVMSSProperties(result.VirtualMachineScaleSet, rgName, vmssName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize VMSS properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationCreate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armcompute.VirtualMachineScaleSetsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armcompute.VirtualMachineScaleSetsClientCreateOrUpdateResponse](v.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcompute.VirtualMachineScaleSetsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, vmssName, err := v.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeVMSSProperties(result.VirtualMachineScaleSet, rgName, vmssName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize VMSS properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		},
+	)
 }
 
 func (v *VirtualMachineScaleSet) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armcompute.VirtualMachineScaleSetsClientUpdateResponse](v.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, err
-	}
-
-	if !poller.Done() {
-		if _, err := poller.Poll(ctx); err != nil {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, err
-		}
-		if !poller.Done() {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationUpdate,
-					OperationStatus: resource.OperationStatusInProgress,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-	}
-
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, err
-	}
-
-	rgName, vmssName, err := v.parseNativeID(*result.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	propsJSON, err := serializeVMSSProperties(result.VirtualMachineScaleSet, rgName, vmssName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize VMSS properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationUpdate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
+	return statusLRO(ctx, request, reqID, resource.OperationUpdate,
+		func(token string) (*runtime.Poller[armcompute.VirtualMachineScaleSetsClientUpdateResponse], error) {
+			return resumePoller[armcompute.VirtualMachineScaleSetsClientUpdateResponse](v.pipeline, token)
 		},
-	}, nil
+		func(_ context.Context, result armcompute.VirtualMachineScaleSetsClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, vmssName, err := v.parseNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeVMSSProperties(result.VirtualMachineScaleSet, rgName, vmssName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize VMSS properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		},
+	)
 }
 
 func (v *VirtualMachineScaleSet) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := resumePoller[armcompute.VirtualMachineScaleSetsClientDeleteResponse](v.pipeline, reqID.ResumeToken)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, err
-	}
-
-	if poller.Done() {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	if _, err := poller.Poll(ctx); err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, err
-	}
-
-	if poller.Done() {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armcompute.VirtualMachineScaleSetsClientDeleteResponse], error) {
+			return resumePoller[armcompute.VirtualMachineScaleSetsClientDeleteResponse](v.pipeline, token)
 		},
-	}, nil
+		nil,
+	)
 }
 
 func (v *VirtualMachineScaleSet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

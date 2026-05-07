@@ -61,10 +61,10 @@ type Subnet struct {
 
 // buildPropertiesFromResult extracts properties from a Subnet Azure response.
 // This is used by Create, Update, and Status to ensure consistent property format.
-func (s *Subnet) buildPropertiesFromResult(subnet *armnetwork.Subnet, rgName, vnetName string) map[string]interface{} {
+func (s *Subnet) buildPropertiesFromResult(subnet *armnetwork.Subnet, rgName, vnetName string) map[string]any {
 	// Include ALL properties (writable + createOnly + read-only) - the framework
 	// will split them based on the schema in updateResourceProperties()
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	// createOnly properties
 	props["resourceGroupName"] = rgName
@@ -103,7 +103,7 @@ func (s *Subnet) buildPropertiesFromResult(subnet *armnetwork.Subnet, rgName, vn
 
 // serializeSubnetProperties converts an Azure Subnet to Formae property format
 func serializeSubnetProperties(result armnetwork.Subnet, rgName, vnetName, subnetName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 	props["resourceGroupName"] = rgName
 	props["virtualNetworkName"] = vnetName
 
@@ -126,9 +126,17 @@ func serializeSubnetProperties(result armnetwork.Subnet, rgName, vnetName, subne
 	return json.Marshal(props)
 }
 
+func parseSubnetNativeID(nativeID string) (rgName, vnetName, subnetName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "virtualnetworks", "subnets")
+	if err != nil {
+		return "", "", "", err
+	}
+	return rgName, names["virtualnetworks"], names["subnets"], nil
+}
+
 func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -179,7 +187,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -197,7 +205,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -243,23 +251,9 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 }
 
 func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// Parse NativeID to extract resourceGroupName, vnetName, and subnetName
-	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vnetName, ok := parts["virtualnetworks"]
-	if !ok || vnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract VNet name from %s", request.NativeID)
-	}
-
-	subnetName, ok := parts["subnets"]
-	if !ok || subnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract subnet name from %s", request.NativeID)
+	rgName, vnetName, subnetName, err := parseSubnetNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get Subnet from Azure
@@ -267,7 +261,7 @@ func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -284,26 +278,13 @@ func (s *Subnet) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 }
 
 func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	// Parse NativeID to extract resourceGroupName, vnetName, and subnetName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vnetName, ok := parts["virtualnetworks"]
-	if !ok || vnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract VNet name from %s", request.NativeID)
-	}
-
-	subnetName, ok := parts["subnets"]
-	if !ok || subnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract subnet name from %s", request.NativeID)
+	rgName, vnetName, subnetName, err := parseSubnetNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -337,7 +318,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -352,7 +333,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -398,29 +379,16 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 }
 
 func (s *Subnet) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Parse NativeID to extract resourceGroupName, vnetName, and subnetName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vnetName, ok := parts["virtualnetworks"]
-	if !ok || vnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract VNet name from %s", request.NativeID)
-	}
-
-	subnetName, ok := parts["subnets"]
-	if !ok || subnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract subnet name from %s", request.NativeID)
+	rgName, vnetName, subnetName, err := parseSubnetNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Start async deletion
 	poller, err := s.api.BeginDelete(ctx, rgName, vnetName, subnetName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -435,7 +403,7 @@ func (s *Subnet) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start Subnet deletion: %w", err)
 	}
@@ -498,213 +466,29 @@ func (s *Subnet) statusCreateOrUpdate(ctx context.Context, request *resource.Sta
 		operation = resource.OperationUpdate
 	}
 
-	// Extract rgName and vnetName from NativeID for buildPropertiesFromResult
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-	vnetName := parts["virtualnetworks"]
-
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armnetwork.SubnetsClientCreateOrUpdateResponse](s.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return s.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation, rgName, vnetName)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return s.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation, rgName, vnetName)
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.SubnetsClientCreateOrUpdateResponse](s.pipeline, token)
 		},
-	}, nil
-}
-
-func (s *Subnet) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller interface {
-	Result(context.Context) (armnetwork.SubnetsClientCreateOrUpdateResponse, error)
-}, operation resource.Operation, rgName, vnetName string) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Build properties using the helper function for consistency
-	responseProps := s.buildPropertiesFromResult(&result.Subnet, rgName, vnetName)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.SubnetsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, vnetName, _, err := parseSubnetNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			responseProps := s.buildPropertiesFromResult(&result.Subnet, rgName, vnetName)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (s *Subnet) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armnetwork.SubnetsClientDeleteResponse](s.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.SubnetsClientDeleteResponse], error) {
+			return resumePoller[armnetwork.SubnetsClientDeleteResponse](s.pipeline, token)
+		}, nil)
 }
 
 func (s *Subnet) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -731,10 +515,8 @@ func (s *Subnet) List(ctx context.Context, request *resource.ListRequest) (*reso
 				if vnet.ID == nil {
 					continue
 				}
-				parts := splitResourceID(*vnet.ID)
-				rgName := parts["resourcegroups"]
-				vnetName := parts["virtualnetworks"]
-				if rgName == "" || vnetName == "" {
+				rgName, vnetName, err := parseVirtualNetworkNativeID(*vnet.ID)
+				if err != nil {
 					continue
 				}
 				ids, err := s.listByVNet(ctx, rgName, vnetName)

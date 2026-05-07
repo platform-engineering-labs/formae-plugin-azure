@@ -26,45 +26,26 @@ type trustedAccessRoleBindingsAPI interface {
 	Get(ctx context.Context, resourceGroupName string, resourceName string, trustedAccessRoleBindingName string, options *armcontainerservice.TrustedAccessRoleBindingsClientGetOptions) (armcontainerservice.TrustedAccessRoleBindingsClientGetResponse, error)
 	BeginDelete(ctx context.Context, resourceGroupName string, resourceName string, trustedAccessRoleBindingName string, options *armcontainerservice.TrustedAccessRoleBindingsClientBeginDeleteOptions) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, resourceName string, options *armcontainerservice.TrustedAccessRoleBindingsClientListOptions) *runtime.Pager[armcontainerservice.TrustedAccessRoleBindingsClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error)
-}
-
-// trustedAccessRoleBindingsWrapper composes the SDK client with resume-poller methods from client.Client.
-type trustedAccessRoleBindingsWrapper struct {
-	*armcontainerservice.TrustedAccessRoleBindingsClient
-	resumeCreate func(string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error)
-}
-
-func (w *trustedAccessRoleBindingsWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *trustedAccessRoleBindingsWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
 	registry.Register(ResourceTypeTrustedAccessRoleBinding, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &TrustedAccessRoleBinding{
-			api: &trustedAccessRoleBindingsWrapper{
-				TrustedAccessRoleBindingsClient: c.TrustedAccessRoleBindingsClient,
-				resumeCreate:                    c.ResumeCreateTrustedAccessRoleBindingPoller,
-				resumeDelete:                    c.ResumeDeleteTrustedAccessRoleBindingPoller,
-			},
-			config: cfg,
+			api:      c.TrustedAccessRoleBindingsClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 type TrustedAccessRoleBinding struct {
-	api    trustedAccessRoleBindingsAPI
-	config *config.Config
+	api      trustedAccessRoleBindingsAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
 }
 
 func serializeTrustedAccessRoleBindingProperties(result armcontainerservice.TrustedAccessRoleBinding, rgName, clusterName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	if result.ID != nil {
 		props["id"] = *result.ID
@@ -94,7 +75,7 @@ func serializeTrustedAccessRoleBindingProperties(result armcontainerservice.Trus
 }
 
 func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -120,7 +101,7 @@ func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource
 	}
 
 	var roles []*string
-	if rolesRaw, ok := props["roles"].([]interface{}); ok {
+	if rolesRaw, ok := props["roles"].([]any); ok {
 		for _, r := range rolesRaw {
 			if s, ok := r.(string); ok {
 				roles = append(roles, to.Ptr(s))
@@ -141,7 +122,7 @@ func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -156,7 +137,7 @@ func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -181,21 +162,16 @@ func (t *TrustedAccessRoleBinding) Create(ctx context.Context, request *resource
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        expectedNativeID,
 		},
 	}, nil
@@ -210,7 +186,7 @@ func (t *TrustedAccessRoleBinding) Read(ctx context.Context, request *resource.R
 	result, err := t.api.Get(ctx, rgName, clusterName, bindingName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -230,7 +206,7 @@ func (t *TrustedAccessRoleBinding) Update(ctx context.Context, request *resource
 		return nil, err
 	}
 
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -241,7 +217,7 @@ func (t *TrustedAccessRoleBinding) Update(ctx context.Context, request *resource
 	}
 
 	var roles []*string
-	if rolesRaw, ok := props["roles"].([]interface{}); ok {
+	if rolesRaw, ok := props["roles"].([]any); ok {
 		for _, r := range rolesRaw {
 			if s, ok := r.(string); ok {
 				roles = append(roles, to.Ptr(s))
@@ -263,7 +239,7 @@ func (t *TrustedAccessRoleBinding) Update(ctx context.Context, request *resource
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -276,7 +252,7 @@ func (t *TrustedAccessRoleBinding) Update(ctx context.Context, request *resource
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -301,21 +277,16 @@ func (t *TrustedAccessRoleBinding) Update(ctx context.Context, request *resource
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationUpdate,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
@@ -329,7 +300,7 @@ func (t *TrustedAccessRoleBinding) Delete(ctx context.Context, request *resource
 
 	poller, err := t.api.BeginDelete(ctx, rgName, clusterName, bindingName, nil)
 	if err != nil {
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -343,7 +314,7 @@ func (t *TrustedAccessRoleBinding) Delete(ctx context.Context, request *resource
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start trusted access role binding deletion: %w", err)
 	}
@@ -353,42 +324,37 @@ func (t *TrustedAccessRoleBinding) Delete(ctx context.Context, request *resource
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       string(reqIDJSON),
+			RequestID:       reqIDJSON,
 			NativeID:        request.NativeID,
 		},
 	}, nil
 }
 
 func (t *TrustedAccessRoleBinding) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
 				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
 			},
-		}, fmt.Errorf("failed to parse request ID: %w", err)
+		}, err
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return t.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return t.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -403,172 +369,31 @@ func (t *TrustedAccessRoleBinding) Status(ctx context.Context, request *resource
 
 func (t *TrustedAccessRoleBinding) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
-
-	poller, err := t.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		return t.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		return t.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error) {
+			return resumePoller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse](t.pipeline, token)
 		},
-	}, nil
-}
-
-func (t *TrustedAccessRoleBinding) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-	clusterName := parts["managedclusters"]
-
-	propsJSON, err := serializeTrustedAccessRoleBindingProperties(result.TrustedAccessRoleBinding, rgName, clusterName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize trusted access role binding properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, clusterName, _, err := parseTrustedAccessRoleBindingNativeID(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializeTrustedAccessRoleBindingProperties(result.TrustedAccessRoleBinding, rgName, clusterName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize trusted access role binding properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (t *TrustedAccessRoleBinding) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := t.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil && !isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse], error) {
+			return resumePoller[armcontainerservice.TrustedAccessRoleBindingsClientDeleteResponse](t.pipeline, token)
+		}, nil)
 }
 
 func (t *TrustedAccessRoleBinding) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -606,22 +431,9 @@ func (t *TrustedAccessRoleBinding) List(ctx context.Context, request *resource.L
 }
 
 func parseTrustedAccessRoleBindingNativeID(nativeID string) (rgName, clusterName, bindingName string, err error) {
-	parts := splitResourceID(nativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract resource group name from %s", nativeID)
+	rgName, names, err := armIDParts(nativeID, "managedclusters", "trustedaccessrolebindings")
+	if err != nil {
+		return "", "", "", err
 	}
-
-	clusterName, ok = parts["managedclusters"]
-	if !ok || clusterName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract cluster name from %s", nativeID)
-	}
-
-	bindingName, ok = parts["trustedaccessrolebindings"]
-	if !ok || bindingName == "" {
-		return "", "", "", fmt.Errorf("invalid NativeID: could not extract trusted access role binding name from %s", nativeID)
-	}
-
-	return rgName, clusterName, bindingName, nil
+	return rgName, names["managedclusters"], names["trustedaccessrolebindings"], nil
 }

@@ -143,7 +143,7 @@ func (r *RoleAssignment) Create(ctx context.Context, request *resource.CreateReq
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -163,7 +163,7 @@ func (r *RoleAssignment) Read(ctx context.Context, request *resource.ReadRequest
 	result, err := r.api.GetByID(ctx, request.NativeID, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -197,7 +197,7 @@ func (r *RoleAssignment) Delete(ctx context.Context, request *resource.DeleteReq
 	_, err := r.api.DeleteByID(ctx, request.NativeID, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -211,7 +211,7 @@ func (r *RoleAssignment) Delete(ctx context.Context, request *resource.DeleteReq
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to delete RoleAssignment: %w", err)
 	}
@@ -234,7 +234,7 @@ func (r *RoleAssignment) Status(ctx context.Context, request *resource.StatusReq
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
 				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to get RoleAssignment status: %w", err)
 	}

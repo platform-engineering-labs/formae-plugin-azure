@@ -80,7 +80,7 @@ func TestFirewallRule_CRUD(t *testing.T) {
 	prov := newTestFirewallRule(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "serverName": "pg-1", "name": "allow-all",
 			"startIpAddress": "0.0.0.0", "endIpAddress": "255.255.255.255",
 		})
@@ -94,7 +94,7 @@ func TestFirewallRule_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testFWRuleNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "allow-all", props["name"])
 	})
@@ -117,7 +117,7 @@ func TestFirewallRule_CRUD(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _, _ string, _ armpostgresqlflexibleservers.FirewallRule, _ *armpostgresqlflexibleservers.FirewallRulesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "serverName": "pg-1", "name": "allow-all",
 			"startIpAddress": "0.0.0.0", "endIpAddress": "255.255.255.255",
 		})
@@ -141,7 +141,10 @@ type firewallRuleDoneHandler[T any] struct {
 
 func (h *firewallRuleDoneHandler[T]) Done() bool                                     { return true }
 func (h *firewallRuleDoneHandler[T]) Poll(_ context.Context) (*http.Response, error) { return nil, nil }
-func (h *firewallRuleDoneHandler[T]) Result(_ context.Context, out *T) error         { *out = h.resp; return nil }
+func (h *firewallRuleDoneHandler[T]) Result(_ context.Context, out *T) error {
+	*out = h.resp
+	return nil
+}
 
 func newDoneCreateFirewallRulePoller(resp armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse) *runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse] {
 	p, err := runtime.NewPoller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse](nil, runtime.Pipeline{}, &runtime.NewPollerOptions[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse]{
@@ -154,13 +157,13 @@ func newDoneCreateFirewallRulePoller(resp armpostgresqlflexibleservers.FirewallR
 }
 
 type fakeFirewallRulesAPI struct {
-	beginCreateOrUpdateFn        func(ctx context.Context, rgName, serverName, ruleName string, params armpostgresqlflexibleservers.FirewallRule, opts *armpostgresqlflexibleservers.FirewallRulesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
-	getFn                        func(ctx context.Context, rgName, serverName, ruleName string, opts *armpostgresqlflexibleservers.FirewallRulesClientGetOptions) (armpostgresqlflexibleservers.FirewallRulesClientGetResponse, error)
-	beginDeleteFn                func(ctx context.Context, rgName, serverName, ruleName string, opts *armpostgresqlflexibleservers.FirewallRulesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
-	newListByServerPagerFn       func(rgName, serverName string, opts *armpostgresqlflexibleservers.FirewallRulesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.FirewallRulesClientListByServerResponse]
+	beginCreateOrUpdateFn         func(ctx context.Context, rgName, serverName, ruleName string, params armpostgresqlflexibleservers.FirewallRule, opts *armpostgresqlflexibleservers.FirewallRulesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
+	getFn                         func(ctx context.Context, rgName, serverName, ruleName string, opts *armpostgresqlflexibleservers.FirewallRulesClientGetOptions) (armpostgresqlflexibleservers.FirewallRulesClientGetResponse, error)
+	beginDeleteFn                 func(ctx context.Context, rgName, serverName, ruleName string, opts *armpostgresqlflexibleservers.FirewallRulesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
+	newListByServerPagerFn        func(rgName, serverName string, opts *armpostgresqlflexibleservers.FirewallRulesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.FirewallRulesClientListByServerResponse]
 	newListFlexibleServersPagerFn func(opts *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	resumeCreatePollerFn         func(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
-	resumeDeletePollerFn         func(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
+	resumeCreatePollerFn          func(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
+	resumeDeletePollerFn          func(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
 }
 
 func (f *fakeFirewallRulesAPI) BeginCreateOrUpdate(ctx context.Context, rgName, serverName, ruleName string, params armpostgresqlflexibleservers.FirewallRule, opts *armpostgresqlflexibleservers.FirewallRulesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error) {

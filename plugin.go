@@ -10,7 +10,6 @@ import (
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
-	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/nativeid"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
@@ -72,7 +71,10 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 
 // Create provisions a new Azure resource.
 func (p *Plugin) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	targetConfig := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	if err != nil {
+		return nil, err
+	}
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -88,9 +90,10 @@ func (p *Plugin) Create(ctx context.Context, request *resource.CreateRequest) (*
 
 // Read retrieves the current state of an Azure resource.
 func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
-
-	targetConfig := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	if err != nil {
+		return nil, err
+	}
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -106,9 +109,10 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 
 // Update modifies an existing Azure resource.
 func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
-
-	targetConfig := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	if err != nil {
+		return nil, err
+	}
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -124,9 +128,10 @@ func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*
 
 // Delete removes an Azure resource.
 func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
-
-	targetConfig := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	if err != nil {
+		return nil, err
+	}
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -142,9 +147,10 @@ func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 
 // Status checks the progress of an async operation.
 func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	request.NativeID = nativeid.NativeID(request.NativeID).ArmID()
-
-	targetConfig := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	if err != nil {
+		return nil, err
+	}
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Azure client: %w", err)
@@ -166,7 +172,11 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		"additionalProperties", request.AdditionalProperties,
 	)
 
-	targetConfig := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	if err != nil {
+		log.Error("Failed to parse Azure config", "error", err)
+		return nil, err
+	}
 	azureClient, err := client.NewClient(targetConfig)
 	if err != nil {
 		log.Error("Failed to create Azure client", "error", err)

@@ -27,28 +27,16 @@ type firewallRulesAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, serverName string, firewallRuleName string, options *armpostgresqlflexibleservers.FirewallRulesClientBeginDeleteOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
 	NewListByServerPager(resourceGroupName string, serverName string, options *armpostgresqlflexibleservers.FirewallRulesClientListByServerOptions) *runtime.Pager[armpostgresqlflexibleservers.FirewallRulesClientListByServerResponse]
 	NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
 }
 
 // firewallRulesWrapper composes the SDK client with FlexibleServers discovery and resume-poller methods from client.Client.
 type firewallRulesWrapper struct {
 	*armpostgresqlflexibleservers.FirewallRulesClient
 	serversClient *armpostgresqlflexibleservers.ServersClient
-	resumeCreate  func(string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)
-	resumeDelete  func(string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error)
 }
 
 func (w *firewallRulesWrapper) NewListFlexibleServersPager(options *armpostgresqlflexibleservers.ServersClientListOptions) *runtime.Pager[armpostgresqlflexibleservers.ServersClientListResponse] {
 	return w.serversClient.NewListPager(options)
-}
-
-func (w *firewallRulesWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *firewallRulesWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
@@ -57,23 +45,31 @@ func init() {
 			api: &firewallRulesWrapper{
 				FirewallRulesClient: c.FirewallRulesClient,
 				serversClient:       c.FlexibleServersClient,
-				resumeCreate:        c.ResumeCreateFirewallRulePoller,
-				resumeDelete:        c.ResumeDeleteFirewallRulePoller,
 			},
-			config: cfg,
+			config:   cfg,
+			pipeline: c.Pipeline(),
 		}
 	})
 }
 
 // FirewallRule is the provisioner for Azure Database for PostgreSQL Flexible Server Firewall Rules.
 type FirewallRule struct {
-	api    firewallRulesAPI
-	config *config.Config
+	api      firewallRulesAPI
+	config   *config.Config
+	pipeline runtime.Pipeline
+}
+
+func firewallRuleIDParts(resourceID string) (rgName, parentName, name string, err error) {
+	rgName, names, err := armIDParts(resourceID, "flexibleservers", "firewallrules")
+	if err != nil {
+		return "", "", "", err
+	}
+	return rgName, names["flexibleservers"], names["firewallrules"], nil
 }
 
 // buildPropertiesFromResult extracts properties from a FirewallRule Azure response.
-func (f *FirewallRule) buildPropertiesFromResult(rule *armpostgresqlflexibleservers.FirewallRule, rgName, serverName string) map[string]interface{} {
-	props := make(map[string]interface{})
+func (f *FirewallRule) buildPropertiesFromResult(rule *armpostgresqlflexibleservers.FirewallRule, rgName, serverName string) map[string]any {
+	props := make(map[string]any)
 
 	// createOnly properties
 	props["resourceGroupName"] = rgName
@@ -103,7 +99,7 @@ func (f *FirewallRule) buildPropertiesFromResult(rule *armpostgresqlflexibleserv
 
 func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -156,7 +152,7 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -173,7 +169,7 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -200,15 +196,9 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -224,28 +214,16 @@ func (f *FirewallRule) Create(ctx context.Context, request *resource.CreateReque
 
 func (f *FirewallRule) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
 	// Parse NativeID to extract resourceGroupName, serverName, and ruleName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	serverName, ok := parts["flexibleservers"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract server name from %s", request.NativeID)
-	}
-
-	ruleName, ok := parts["firewallrules"]
-	if !ok || ruleName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract firewall rule name from %s", request.NativeID)
+	rgName, serverName, ruleName, err := firewallRuleIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get firewall rule from Azure
 	result, err := f.api.Get(ctx, rgName, serverName, ruleName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -263,25 +241,13 @@ func (f *FirewallRule) Read(ctx context.Context, request *resource.ReadRequest) 
 
 func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	// Parse NativeID to extract resourceGroupName, serverName, and ruleName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	serverName, ok := parts["flexibleservers"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract server name from %s", request.NativeID)
-	}
-
-	ruleName, ok := parts["firewallrules"]
-	if !ok || ruleName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract firewall rule name from %s", request.NativeID)
+	rgName, serverName, ruleName, err := firewallRuleIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -319,7 +285,7 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -333,7 +299,7 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -360,15 +326,9 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -384,28 +344,16 @@ func (f *FirewallRule) Update(ctx context.Context, request *resource.UpdateReque
 
 func (f *FirewallRule) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	// Parse NativeID to extract resourceGroupName, serverName, and ruleName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	serverName, ok := parts["flexibleservers"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract server name from %s", request.NativeID)
-	}
-
-	ruleName, ok := parts["firewallrules"]
-	if !ok || ruleName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract firewall rule name from %s", request.NativeID)
+	rgName, serverName, ruleName, err := firewallRuleIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Start async deletion
 	poller, err := f.api.BeginDelete(ctx, rgName, serverName, ruleName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -419,7 +367,7 @@ func (f *FirewallRule) Delete(ctx context.Context, request *resource.DeleteReque
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start FirewallRule deletion: %w", err)
 	}
@@ -430,15 +378,9 @@ func (f *FirewallRule) Delete(ctx context.Context, request *resource.DeleteReque
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	// Encode operation type + resume token as RequestID
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	// Return InProgress - caller should poll Status
@@ -454,8 +396,8 @@ func (f *FirewallRule) Delete(ctx context.Context, request *resource.DeleteReque
 
 func (f *FirewallRule) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
 	// Parse the RequestID to determine operation type
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -466,9 +408,9 @@ func (f *FirewallRule) Status(ctx context.Context, request *resource.StatusReque
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return f.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return f.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -483,206 +425,33 @@ func (f *FirewallRule) Status(ctx context.Context, request *resource.StatusReque
 
 func (f *FirewallRule) statusCreateOrUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
 	operation := resource.OperationCreate
-	if reqID.OperationType == "update" {
+	if reqID.OperationType == lroOpUpdate {
 		operation = resource.OperationUpdate
 	}
 
-	// Reconstruct the poller from the resume token
-	poller, err := f.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return f.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return f.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse](f.pipeline, token)
 		},
-	}, nil
-}
-
-func (f *FirewallRule) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Extract rgName and serverName from NativeID
-	parts := splitResourceID(reqID.NativeID)
-	rgName := parts["resourcegroups"]
-	serverName := parts["flexibleservers"]
-
-	responseProps := f.buildPropertiesFromResult(&result.FirewallRule, rgName, serverName)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          operation,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			rgName, serverName, _, err := firewallRuleIDParts(*result.ID)
+			if err != nil {
+				return "", nil, err
+			}
+			responseProps := f.buildPropertiesFromResult(&result.FirewallRule, rgName, serverName)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (f *FirewallRule) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := f.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.FirewallRulesClientDeleteResponse](f.pipeline, token)
+		}, nil)
 }
 
 func (f *FirewallRule) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
@@ -709,10 +478,8 @@ func (f *FirewallRule) List(ctx context.Context, request *resource.ListRequest) 
 				if server.ID == nil {
 					continue
 				}
-				parts := splitResourceID(*server.ID)
-				rgName := parts["resourcegroups"]
-				srvName := parts["flexibleservers"]
-				if rgName == "" || srvName == "" {
+				rgName, srvName, err := flexibleServerIDParts(*server.ID)
+				if err != nil {
 					continue
 				}
 				ids, err := f.listByServer(ctx, rgName, srvName)

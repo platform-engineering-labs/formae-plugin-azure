@@ -48,14 +48,24 @@ type FlexibleServer struct {
 	config   *config.Config
 }
 
+func flexibleServerIDParts(resourceID string) (rgName, name string, err error) {
+	rgName, names, err := armIDParts(resourceID, "flexibleservers")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["flexibleservers"], nil
+}
+
 // buildPropertiesFromResult extracts properties from a FlexibleServer Azure response.
-func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexibleservers.Server) map[string]interface{} {
-	props := make(map[string]interface{})
+func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexibleservers.Server) map[string]any {
+	props := make(map[string]any)
 
 	// createOnly properties
 	if server.ID != nil {
-		parts := splitResourceID(*server.ID)
-		props["resourceGroupName"] = parts["resourcegroups"]
+		rgName, _, err := flexibleServerIDParts(*server.ID)
+		if err == nil {
+			props["resourceGroupName"] = rgName
+		}
 	}
 
 	if server.Name != nil {
@@ -70,7 +80,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 	// SKU
 	if server.SKU != nil {
-		sku := make(map[string]interface{})
+		sku := make(map[string]any)
 		if server.SKU.Name != nil {
 			sku["name"] = *server.SKU.Name
 		}
@@ -96,7 +106,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 		// Storage
 		if server.Properties.Storage != nil {
-			storage := make(map[string]interface{})
+			storage := make(map[string]any)
 			if server.Properties.Storage.StorageSizeGB != nil {
 				storage["storageSizeGB"] = *server.Properties.Storage.StorageSizeGB
 			}
@@ -119,7 +129,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 		// Backup
 		if server.Properties.Backup != nil {
-			backup := make(map[string]interface{})
+			backup := make(map[string]any)
 			if server.Properties.Backup.BackupRetentionDays != nil {
 				backup["backupRetentionDays"] = *server.Properties.Backup.BackupRetentionDays
 			}
@@ -133,7 +143,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 		// High Availability
 		if server.Properties.HighAvailability != nil {
-			ha := make(map[string]interface{})
+			ha := make(map[string]any)
 			if server.Properties.HighAvailability.Mode != nil {
 				ha["mode"] = string(*server.Properties.HighAvailability.Mode)
 			}
@@ -151,7 +161,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 		// with only that field causes PKL extract rendering errors for the undefined optional fields.
 		if server.Properties.Network != nil &&
 			(server.Properties.Network.DelegatedSubnetResourceID != nil || server.Properties.Network.PrivateDNSZoneArmResourceID != nil) {
-			network := make(map[string]interface{})
+			network := make(map[string]any)
 			if server.Properties.Network.DelegatedSubnetResourceID != nil {
 				network["delegatedSubnetResourceId"] = *server.Properties.Network.DelegatedSubnetResourceID
 			}
@@ -168,7 +178,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 		// Maintenance Window
 		if server.Properties.MaintenanceWindow != nil {
-			mw := make(map[string]interface{})
+			mw := make(map[string]any)
 			if server.Properties.MaintenanceWindow.CustomWindow != nil {
 				mw["customWindow"] = *server.Properties.MaintenanceWindow.CustomWindow
 			}
@@ -188,7 +198,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 		// Auth Config
 		if server.Properties.AuthConfig != nil {
-			auth := make(map[string]interface{})
+			auth := make(map[string]any)
 			if server.Properties.AuthConfig.ActiveDirectoryAuth != nil {
 				auth["activeDirectoryAuth"] = string(*server.Properties.AuthConfig.ActiveDirectoryAuth)
 			}
@@ -227,7 +237,7 @@ func (f *FlexibleServer) buildPropertiesFromResult(server *armpostgresqlflexible
 
 func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -264,7 +274,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Extract SKU
-	skuMap, ok := props["sku"].(map[string]interface{})
+	skuMap, ok := props["sku"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("sku is required")
 	}
@@ -298,7 +308,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Optional: storage
-	if storageMap, ok := props["storage"].(map[string]interface{}); ok {
+	if storageMap, ok := props["storage"].(map[string]any); ok {
 		storage := &armpostgresqlflexibleservers.Storage{}
 		if v, ok := storageMap["storageSizeGB"].(float64); ok {
 			storage.StorageSizeGB = to.Ptr(int32(v))
@@ -321,7 +331,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Optional: backup
-	if backupMap, ok := props["backup"].(map[string]interface{}); ok {
+	if backupMap, ok := props["backup"].(map[string]any); ok {
 		backup := &armpostgresqlflexibleservers.Backup{}
 		if v, ok := backupMap["backupRetentionDays"].(float64); ok {
 			backup.BackupRetentionDays = to.Ptr(int32(v))
@@ -334,7 +344,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Optional: high availability
-	if haMap, ok := props["highAvailability"].(map[string]interface{}); ok {
+	if haMap, ok := props["highAvailability"].(map[string]any); ok {
 		ha := &armpostgresqlflexibleservers.HighAvailability{}
 		if v, ok := haMap["mode"].(string); ok {
 			mode := armpostgresqlflexibleservers.HighAvailabilityMode(v)
@@ -347,7 +357,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Optional: network
-	if networkMap, ok := props["network"].(map[string]interface{}); ok {
+	if networkMap, ok := props["network"].(map[string]any); ok {
 		network := &armpostgresqlflexibleservers.Network{}
 		if v, ok := networkMap["delegatedSubnetResourceId"].(string); ok {
 			network.DelegatedSubnetResourceID = to.Ptr(v)
@@ -363,7 +373,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Optional: maintenance window
-	if mwMap, ok := props["maintenanceWindow"].(map[string]interface{}); ok {
+	if mwMap, ok := props["maintenanceWindow"].(map[string]any); ok {
 		mw := &armpostgresqlflexibleservers.MaintenanceWindow{}
 		if v, ok := mwMap["customWindow"].(string); ok {
 			mw.CustomWindow = to.Ptr(v)
@@ -381,7 +391,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Optional: auth config
-	if authMap, ok := props["authConfig"].(map[string]interface{}); ok {
+	if authMap, ok := props["authConfig"].(map[string]any); ok {
 		auth := &armpostgresqlflexibleservers.AuthConfig{}
 		if v, ok := authMap["activeDirectoryAuth"].(string); ok {
 			ad := armpostgresqlflexibleservers.ActiveDirectoryAuthEnum(v)
@@ -415,7 +425,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 			ProgressResult: &resource.ProgressResult{
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -432,7 +442,7 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -477,23 +487,16 @@ func (f *FlexibleServer) Create(ctx context.Context, request *resource.CreateReq
 
 func (f *FlexibleServer) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
 	// Parse NativeID to extract resourceGroupName and serverName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	serverName, ok := parts["flexibleservers"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract server name from %s", request.NativeID)
+	rgName, serverName, err := flexibleServerIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get server from Azure
 	result, err := f.api.Get(ctx, rgName, serverName, nil)
 	if err != nil {
 		return &resource.ReadResult{
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -511,20 +514,13 @@ func (f *FlexibleServer) Read(ctx context.Context, request *resource.ReadRequest
 
 func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	// Parse NativeID to extract resourceGroupName and serverName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	serverName, ok := parts["flexibleservers"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract server name from %s", request.NativeID)
+	rgName, serverName, err := flexibleServerIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -533,7 +529,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	params := armpostgresqlflexibleservers.ServerForUpdate{}
 
 	// SKU (updatable)
-	if skuMap, ok := props["sku"].(map[string]interface{}); ok {
+	if skuMap, ok := props["sku"].(map[string]any); ok {
 		sku := &armpostgresqlflexibleservers.SKU{}
 		if v, ok := skuMap["name"].(string); ok {
 			sku.Name = to.Ptr(v)
@@ -550,7 +546,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	hasProps := false
 
 	// Storage (updatable)
-	if storageMap, ok := props["storage"].(map[string]interface{}); ok {
+	if storageMap, ok := props["storage"].(map[string]any); ok {
 		storage := &armpostgresqlflexibleservers.Storage{}
 		if v, ok := storageMap["storageSizeGB"].(float64); ok {
 			storage.StorageSizeGB = to.Ptr(int32(v))
@@ -574,7 +570,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Backup (updatable)
-	if backupMap, ok := props["backup"].(map[string]interface{}); ok {
+	if backupMap, ok := props["backup"].(map[string]any); ok {
 		backup := &armpostgresqlflexibleservers.Backup{}
 		if v, ok := backupMap["backupRetentionDays"].(float64); ok {
 			backup.BackupRetentionDays = to.Ptr(int32(v))
@@ -588,7 +584,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// High availability (updatable)
-	if haMap, ok := props["highAvailability"].(map[string]interface{}); ok {
+	if haMap, ok := props["highAvailability"].(map[string]any); ok {
 		ha := &armpostgresqlflexibleservers.HighAvailability{}
 		if v, ok := haMap["mode"].(string); ok {
 			mode := armpostgresqlflexibleservers.HighAvailabilityMode(v)
@@ -602,7 +598,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Maintenance window (updatable)
-	if mwMap, ok := props["maintenanceWindow"].(map[string]interface{}); ok {
+	if mwMap, ok := props["maintenanceWindow"].(map[string]any); ok {
 		mw := &armpostgresqlflexibleservers.MaintenanceWindow{}
 		if v, ok := mwMap["customWindow"].(string); ok {
 			mw.CustomWindow = to.Ptr(v)
@@ -621,7 +617,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Auth config (updatable)
-	if authMap, ok := props["authConfig"].(map[string]interface{}); ok {
+	if authMap, ok := props["authConfig"].(map[string]any); ok {
 		auth := &armpostgresqlflexibleservers.AuthConfig{}
 		if v, ok := authMap["activeDirectoryAuth"].(string); ok {
 			ad := armpostgresqlflexibleservers.ActiveDirectoryAuthEnum(v)
@@ -661,7 +657,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -675,7 +671,7 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 					Operation:       resource.OperationUpdate,
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+					ErrorCode:       operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -720,23 +716,16 @@ func (f *FlexibleServer) Update(ctx context.Context, request *resource.UpdateReq
 
 func (f *FlexibleServer) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	// Parse NativeID to extract resourceGroupName and serverName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	serverName, ok := parts["flexibleservers"]
-	if !ok || serverName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract server name from %s", request.NativeID)
+	rgName, serverName, err := flexibleServerIDParts(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Start async deletion
 	poller, err := f.api.BeginDelete(ctx, rgName, serverName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -750,7 +739,7 @@ func (f *FlexibleServer) Delete(ctx context.Context, request *resource.DeleteReq
 				Operation:       resource.OperationDelete,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start FlexibleServer deletion: %w", err)
 	}
@@ -810,285 +799,40 @@ func (f *FlexibleServer) Status(ctx context.Context, request *resource.StatusReq
 }
 
 func (f *FlexibleServer) statusCreate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armpostgresqlflexibleservers.ServersClientCreateResponse](f.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-				StatusMessage:   fmt.Sprintf("failed to resume poller: %v", err),
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return f.handleCreateComplete(ctx, request, reqID, poller)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				StatusMessage:   err.Error(),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return f.handleCreateComplete(ctx, request, reqID, poller)
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationCreate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, resource.OperationCreate,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.ServersClientCreateResponse](f.pipeline, token)
 		},
-	}, nil
-}
-
-func (f *FlexibleServer) handleCreateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse]) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationCreate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				StatusMessage:   err.Error(),
-			},
-		}, nil
-	}
-
-	responseProps := f.buildPropertiesFromResult(&result.Server)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationCreate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armpostgresqlflexibleservers.ServersClientCreateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			responseProps := f.buildPropertiesFromResult(&result.Server)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (f *FlexibleServer) statusUpdate(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armpostgresqlflexibleservers.ServersClientUpdateResponse](f.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-				StatusMessage:   fmt.Sprintf("failed to resume poller: %v", err),
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return f.handleUpdateComplete(ctx, request, reqID, poller)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				StatusMessage:   err.Error(),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return f.handleUpdateComplete(ctx, request, reqID, poller)
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationUpdate,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
+	return statusLRO(ctx, request, reqID, resource.OperationUpdate,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.ServersClientUpdateResponse](f.pipeline, token)
 		},
-	}, nil
-}
-
-func (f *FlexibleServer) handleUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armpostgresqlflexibleservers.ServersClientUpdateResponse]) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				StatusMessage:   err.Error(),
-			},
-		}, nil
-	}
-
-	responseProps := f.buildPropertiesFromResult(&result.Server)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:          resource.OperationUpdate,
-			OperationStatus:    resource.OperationStatusSuccess,
-			RequestID:          request.RequestID,
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armpostgresqlflexibleservers.ServersClientUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			responseProps := f.buildPropertiesFromResult(&result.Server)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (f *FlexibleServer) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armpostgresqlflexibleservers.ServersClientDeleteResponse](f.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       resource.OperationErrorCodeGeneralServiceException,
-				StatusMessage:   fmt.Sprintf("failed to resume poller: %v", err),
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-					StatusMessage:   err.Error(),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				StatusMessage:   err.Error(),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-					StatusMessage:   err.Error(),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientDeleteResponse], error) {
+			return resumePoller[armpostgresqlflexibleservers.ServersClientDeleteResponse](f.pipeline, token)
+		}, nil)
 }
 
 func (f *FlexibleServer) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

@@ -49,7 +49,9 @@ func TestMaintenanceConfiguration_CRUD(t *testing.T) {
 		},
 		listFn: func(_, _ string, _ *armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterOptions) *runtime.Pager[armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse] {
 			return runtime.NewPager(runtime.PagingHandler[armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse]{
-				More: func(_ armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse) bool { return false },
+				More: func(_ armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse) bool {
+					return false
+				},
 				Fetcher: func(_ context.Context, _ *armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse) (armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse, error) {
 					return armcontainerservice.MaintenanceConfigurationsClientListByManagedClusterResponse{
 						MaintenanceConfigurationListResult: armcontainerservice.MaintenanceConfigurationListResult{
@@ -63,9 +65,9 @@ func TestMaintenanceConfiguration_CRUD(t *testing.T) {
 	prov := newTestMaintenanceConfiguration(fake)
 
 	t.Run("Create", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]interface{}{
+		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "default",
-			"timeInWeek": []map[string]interface{}{{"day": "Tuesday", "hourSlots": []float64{1}}},
+			"timeInWeek": []map[string]any{{"day": "Tuesday", "hourSlots": []float64{1}}},
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)
@@ -77,7 +79,7 @@ func TestMaintenanceConfiguration_CRUD(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testMCNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
-		var props map[string]interface{}
+		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "default", props["name"])
 	})
@@ -109,7 +111,7 @@ func TestMaintenanceConfiguration_CRUD(t *testing.T) {
 		fake.createOrUpdateFn = func(_ context.Context, _, _, _ string, _ armcontainerservice.MaintenanceConfiguration, _ *armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateOptions) (armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateResponse, error) {
 			return armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateResponse{}, &azcore.ResponseError{StatusCode: 403}
 		}
-		props, _ := json.Marshal(map[string]interface{}{"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "x"})
+		props, _ := json.Marshal(map[string]any{"resourceGroupName": "rg-1", "clusterName": "aks-1", "name": "x"})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)

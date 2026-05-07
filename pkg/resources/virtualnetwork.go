@@ -47,15 +47,16 @@ type VirtualNetwork struct {
 
 // buildPropertiesFromResult extracts properties from a VirtualNetwork Azure response.
 // This is used by Create, Update, and Status to ensure consistent property format.
-func (v *VirtualNetwork) buildPropertiesFromResult(vnet *armnetwork.VirtualNetwork) map[string]interface{} {
+func (v *VirtualNetwork) buildPropertiesFromResult(vnet *armnetwork.VirtualNetwork) map[string]any {
 	// Include ALL properties (writable + createOnly + read-only) - the framework
 	// will split them based on the schema in updateResourceProperties()
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	// createOnly properties
 	if vnet.ID != nil {
-		parts := splitResourceID(*vnet.ID)
-		props["resourceGroupName"] = parts["resourcegroups"]
+		if rgName, _, err := parseVirtualNetworkNativeID(*vnet.ID); err == nil {
+			props["resourceGroupName"] = rgName
+		}
 	}
 
 	if vnet.Name != nil {
@@ -74,7 +75,7 @@ func (v *VirtualNetwork) buildPropertiesFromResult(vnet *armnetwork.VirtualNetwo
 				prefixes = append(prefixes, *p)
 			}
 		}
-		props["addressSpace"] = map[string]interface{}{
+		props["addressSpace"] = map[string]any{
 			"addressPrefixes": prefixes,
 		}
 	}
@@ -105,9 +106,17 @@ func (v *VirtualNetwork) buildPropertiesFromResult(vnet *armnetwork.VirtualNetwo
 	return props
 }
 
+func parseVirtualNetworkNativeID(nativeID string) (rgName, vnetName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "virtualnetworks")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["virtualnetworks"], nil
+}
+
 // serializeVirtualNetworkProperties converts an Azure VirtualNetwork to Formae property format
 func serializeVirtualNetworkProperties(result armnetwork.VirtualNetwork, rgName, vnetName string) (json.RawMessage, error) {
-	props := make(map[string]interface{})
+	props := make(map[string]any)
 
 	props["resourceGroupName"] = rgName
 	if result.Name != nil {
@@ -136,7 +145,7 @@ func serializeVirtualNetworkProperties(result armnetwork.VirtualNetwork, rgName,
 				prefixes = append(prefixes, *p)
 			}
 		}
-		props["addressSpace"] = map[string]interface{}{
+		props["addressSpace"] = map[string]any{
 			"addressPrefixes": prefixes,
 		}
 	}
@@ -153,7 +162,7 @@ func serializeVirtualNetworkProperties(result armnetwork.VirtualNetwork, rgName,
 func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -177,11 +186,11 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 	}
 
 	// Extract addressSpace (required)
-	addressSpace, ok := props["addressSpace"].(map[string]interface{})
+	addressSpace, ok := props["addressSpace"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("addressSpace is required")
 	}
-	addressPrefixesRaw, ok := addressSpace["addressPrefixes"].([]interface{})
+	addressPrefixesRaw, ok := addressSpace["addressPrefixes"].([]any)
 	if !ok || len(addressPrefixesRaw) == 0 {
 		return nil, fmt.Errorf("addressSpace.addressPrefixes is required")
 	}
@@ -223,7 +232,7 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -242,7 +251,7 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -288,18 +297,9 @@ func (v *VirtualNetwork) Create(ctx context.Context, request *resource.CreateReq
 }
 
 func (v *VirtualNetwork) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	// Parse NativeID to extract resourceGroupName and vnetName
-	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vnetName, ok := parts["virtualnetworks"]
-	if !ok || vnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract VNet name from %s", request.NativeID)
+	rgName, vnetName, err := parseVirtualNetworkNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get VNet from Azure
@@ -307,7 +307,7 @@ func (v *VirtualNetwork) Read(ctx context.Context, request *resource.ReadRequest
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -324,17 +324,9 @@ func (v *VirtualNetwork) Read(ctx context.Context, request *resource.ReadRequest
 }
 
 func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	// Parse NativeID to extract resourceGroupName and vnetName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vnetName, ok := parts["virtualnetworks"]
-	if !ok || vnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract VNet name from %s", request.NativeID)
+	rgName, vnetName, err := parseVirtualNetworkNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// First, read the existing VNet to preserve subnets
@@ -346,13 +338,13 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 				Operation:       resource.OperationUpdate,
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
+				ErrorCode:       operationErrorCode(err),
 			},
 		}, nil
 	}
 
 	// Parse properties JSON
-	var props map[string]interface{}
+	var props map[string]any
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
@@ -364,11 +356,11 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	// Extract addressSpace (required)
-	addressSpace, ok := props["addressSpace"].(map[string]interface{})
+	addressSpace, ok := props["addressSpace"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("addressSpace is required")
 	}
-	addressPrefixesRaw, ok := addressSpace["addressPrefixes"].([]interface{})
+	addressPrefixesRaw, ok := addressSpace["addressPrefixes"].([]any)
 	if !ok || len(addressPrefixesRaw) == 0 {
 		return nil, fmt.Errorf("addressSpace.addressPrefixes is required")
 	}
@@ -418,7 +410,7 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -434,7 +426,7 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -480,24 +472,16 @@ func (v *VirtualNetwork) Update(ctx context.Context, request *resource.UpdateReq
 }
 
 func (v *VirtualNetwork) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	// Parse NativeID to extract resourceGroupName and vnetName
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	vnetName, ok := parts["virtualnetworks"]
-	if !ok || vnetName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract VNet name from %s", request.NativeID)
+	rgName, vnetName, err := parseVirtualNetworkNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Start async deletion
 	poller, err := v.api.BeginDelete(ctx, rgName, vnetName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -512,7 +496,7 @@ func (v *VirtualNetwork) Delete(ctx context.Context, request *resource.DeleteReq
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start VNet deletion: %w", err)
 	}
@@ -576,205 +560,25 @@ func (v *VirtualNetwork) statusCreateOrUpdate(ctx context.Context, request *reso
 		operation = resource.OperationUpdate
 	}
 
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse](v.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		return v.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return v.handleCreateOrUpdateComplete(ctx, request, reqID, poller, operation)
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse](v.pipeline, token)
 		},
-	}, nil
-}
-
-func (v *VirtualNetwork) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, poller *runtime.Poller[armnetwork.VirtualNetworksClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Build properties using the helper function for consistency
-	responseProps := v.buildPropertiesFromResult(&result.VirtualNetwork)
-	propsJSON, err := json.Marshal(responseProps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.VirtualNetworksClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			responseProps := v.buildPropertiesFromResult(&result.VirtualNetwork)
+			propsJSON, err := json.Marshal(responseProps)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to marshal response properties: %w", err)
+			}
+			return *result.ID, propsJSON, nil
+		})
 }
 
 func (v *VirtualNetwork) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	// Reconstruct the poller from the resume token
-	poller, err := resumePoller[armnetwork.VirtualNetworksClientDeleteResponse](v.pipeline, reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	// Check if the operation is already done
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Poll for updated status
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-			NativeID:        reqID.NativeID,
-		},
-	}, nil
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.VirtualNetworksClientDeleteResponse], error) {
+			return resumePoller[armnetwork.VirtualNetworksClientDeleteResponse](v.pipeline, token)
+		}, nil)
 }
 
 func (v *VirtualNetwork) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {

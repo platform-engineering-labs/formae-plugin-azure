@@ -26,42 +26,31 @@ type publicIPAddressesAPI interface {
 	BeginDelete(ctx context.Context, resourceGroupName string, publicIPAddressName string, options *armnetwork.PublicIPAddressesClientBeginDeleteOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
 	NewListPager(resourceGroupName string, options *armnetwork.PublicIPAddressesClientListOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListResponse]
 	NewListAllPager(options *armnetwork.PublicIPAddressesClientListAllOptions) *runtime.Pager[armnetwork.PublicIPAddressesClientListAllResponse]
-	ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
-	ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
-}
-
-// publicIPAddressesWrapper composes the SDK client with resume-poller methods from client.Client.
-type publicIPAddressesWrapper struct {
-	*armnetwork.PublicIPAddressesClient
-	resumeCreate func(string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)
-	resumeDelete func(string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error)
-}
-
-func (w *publicIPAddressesWrapper) ResumeCreatePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
-	return w.resumeCreate(token)
-}
-
-func (w *publicIPAddressesWrapper) ResumeDeletePoller(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error) {
-	return w.resumeDelete(token)
 }
 
 func init() {
 	registry.Register(ResourceTypePublicIPAddress, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &PublicIPAddress{
-			api: &publicIPAddressesWrapper{
-				PublicIPAddressesClient: c.PublicIPAddressesClient,
-				resumeCreate:           c.ResumeCreatePublicIPAddressPoller,
-				resumeDelete:           c.ResumeDeletePublicIPAddressPoller,
-			},
-			config: cfg,
+			api:      c.PublicIPAddressesClient,
+			pipeline: c.Pipeline(),
+			config:   cfg,
 		}
 	})
 }
 
 // PublicIPAddress is the provisioner for Azure Public IP Addresses.
 type PublicIPAddress struct {
-	api    publicIPAddressesAPI
-	config *config.Config
+	api      publicIPAddressesAPI
+	pipeline runtime.Pipeline
+	config   *config.Config
+}
+
+func parsePublicIPAddressNativeID(nativeID string) (rgName, pipName string, err error) {
+	rgName, names, err := armIDParts(nativeID, "publicipaddresses")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["publicipaddresses"], nil
 }
 
 // serializePublicIPProperties converts an Azure PublicIPAddress to Formae property format
@@ -214,7 +203,7 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 				Operation:       resource.OperationCreate,
 				OperationStatus: resource.OperationStatusFailure,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -230,7 +219,7 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 					Operation:       resource.OperationCreate,
 					OperationStatus: resource.OperationStatusFailure,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -256,14 +245,9 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "create",
-		ResumeToken:   resumeToken,
-		NativeID:      expectedNativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpCreate, resumeToken, expectedNativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.CreateResult{
@@ -277,23 +261,16 @@ func (p *PublicIPAddress) Create(ctx context.Context, request *resource.CreateRe
 }
 
 func (p *PublicIPAddress) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	pipName, ok := parts["publicipaddresses"]
-	if !ok || pipName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract PublicIP name from %s", request.NativeID)
+	rgName, pipName, err := parsePublicIPAddressNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	result, err := p.api.Get(ctx, rgName, pipName, nil)
 	if err != nil {
 		return &resource.ReadResult{
 
-			ErrorCode: mapAzureErrorToOperationErrorCode(err),
+			ErrorCode: operationErrorCode(err),
 		}, nil
 	}
 
@@ -309,16 +286,9 @@ func (p *PublicIPAddress) Read(ctx context.Context, request *resource.ReadReques
 }
 
 func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	pipName, ok := parts["publicipaddresses"]
-	if !ok || pipName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract PublicIP name from %s", request.NativeID)
+	rgName, pipName, err := parsePublicIPAddressNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	var props map[string]any
@@ -392,7 +362,7 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, nil
 	}
@@ -406,7 +376,7 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 					OperationStatus: resource.OperationStatusFailure,
 					NativeID:        request.NativeID,
 
-					ErrorCode: mapAzureErrorToOperationErrorCode(err),
+					ErrorCode: operationErrorCode(err),
 				},
 			}, nil
 		}
@@ -432,14 +402,9 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "update",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpUpdate, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.UpdateResult{
@@ -453,22 +418,15 @@ func (p *PublicIPAddress) Update(ctx context.Context, request *resource.UpdateRe
 }
 
 func (p *PublicIPAddress) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	parts := splitResourceID(request.NativeID)
-
-	rgName, ok := parts["resourcegroups"]
-	if !ok || rgName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract resource group name from %s", request.NativeID)
-	}
-
-	pipName, ok := parts["publicipaddresses"]
-	if !ok || pipName == "" {
-		return nil, fmt.Errorf("invalid NativeID: could not extract PublicIP name from %s", request.NativeID)
+	rgName, pipName, err := parsePublicIPAddressNativeID(request.NativeID)
+	if err != nil {
+		return nil, err
 	}
 
 	poller, err := p.api.BeginDelete(ctx, rgName, pipName, nil)
 	if err != nil {
 		// If the resource is already gone (NotFound), treat as success
-		if mapAzureErrorToOperationErrorCode(err) == resource.OperationErrorCodeNotFound {
+		if operationErrorCode(err) == resource.OperationErrorCodeNotFound {
 			return &resource.DeleteResult{
 				ProgressResult: &resource.ProgressResult{
 					Operation:       resource.OperationDelete,
@@ -483,7 +441,7 @@ func (p *PublicIPAddress) Delete(ctx context.Context, request *resource.DeleteRe
 				OperationStatus: resource.OperationStatusFailure,
 				NativeID:        request.NativeID,
 
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
+				ErrorCode: operationErrorCode(err),
 			},
 		}, fmt.Errorf("failed to start PublicIP deletion: %w", err)
 	}
@@ -493,14 +451,9 @@ func (p *PublicIPAddress) Delete(ctx context.Context, request *resource.DeleteRe
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
 
-	reqID := lroRequestID{
-		OperationType: "delete",
-		ResumeToken:   resumeToken,
-		NativeID:      request.NativeID,
-	}
-	reqIDJSON, err := json.Marshal(reqID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request ID: %w", err)
+		return nil, err
 	}
 
 	return &resource.DeleteResult{
@@ -514,8 +467,8 @@ func (p *PublicIPAddress) Delete(ctx context.Context, request *resource.DeleteRe
 }
 
 func (p *PublicIPAddress) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	var reqID lroRequestID
-	if err := json.Unmarshal([]byte(request.RequestID), &reqID); err != nil {
+	reqID, err := decodeLROStatus(request.RequestID)
+	if err != nil {
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				OperationStatus: resource.OperationStatusFailure,
@@ -527,9 +480,9 @@ func (p *PublicIPAddress) Status(ctx context.Context, request *resource.StatusRe
 	}
 
 	switch reqID.OperationType {
-	case "create", "update":
+	case lroOpCreate, lroOpUpdate:
 		return p.statusCreateOrUpdate(ctx, request, &reqID)
-	case "delete":
+	case lroOpDelete:
 		return p.statusDelete(ctx, request, &reqID)
 	default:
 		return &resource.StatusResult{
@@ -549,201 +502,33 @@ func (p *PublicIPAddress) statusCreateOrUpdate(ctx context.Context, request *res
 		operation = resource.OperationUpdate
 	}
 
-	poller, err := p.api.ResumeCreatePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		return p.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		return p.handleCreateOrUpdateComplete(ctx, request, poller, operation)
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusLRO(ctx, request, reqID, operation,
+		func(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error) {
+			return resumePoller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse](p.pipeline, token)
 		},
-	}, nil
-}
-
-func (p *PublicIPAddress) handleCreateOrUpdateComplete(ctx context.Context, request *resource.StatusRequest, poller *runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], operation resource.Operation) (*resource.StatusResult, error) {
-	result, err := poller.Result(ctx)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       operation,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	parts := splitResourceID(*result.ID)
-	rgName := parts["resourcegroups"]
-
-	propsJSON, err := serializePublicIPProperties(result.PublicIPAddress, rgName, *result.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize PublicIP properties: %w", err)
-	}
-
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       operation,
-			OperationStatus: resource.OperationStatusSuccess,
-			RequestID:       request.RequestID,
-
-			NativeID:           *result.ID,
-			ResourceProperties: propsJSON,
-		},
-	}, nil
+		func(_ context.Context, result armnetwork.PublicIPAddressesClientCreateOrUpdateResponse, _ resource.Operation) (string, json.RawMessage, error) {
+			nativeID := reqID.NativeID
+			if result.ID != nil {
+				nativeID = *result.ID
+			}
+			rgName, pipName, err := parsePublicIPAddressNativeID(nativeID)
+			if err != nil {
+				return "", nil, err
+			}
+			propsJSON, err := serializePublicIPProperties(result.PublicIPAddress, rgName, pipName)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to serialize PublicIP properties: %w", err)
+			}
+			return nativeID, propsJSON, nil
+		})
 }
 
 func (p *PublicIPAddress) statusDelete(ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID) (*resource.StatusResult, error) {
-	poller, err := p.api.ResumeDeletePoller(reqID.ResumeToken)
-	if err != nil {
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-
-				ErrorCode: resource.OperationErrorCodeGeneralServiceException,
-			},
-		}, fmt.Errorf("failed to resume poller from token: %w", err)
-	}
-
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	_, err = poller.Poll(ctx)
-	if err != nil {
-		// NotFound means resource is already deleted - success
-		if isDeleteSuccessError(err) {
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					RequestID:       request.RequestID,
-					NativeID:        reqID.NativeID,
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				RequestID:       request.RequestID,
-				ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-			},
-		}, nil
-	}
-
-	// Check if this poll revealed completion
-	if poller.Done() {
-		_, err := poller.Result(ctx)
-		if err != nil {
-			// NotFound means resource is already deleted - success
-			if isDeleteSuccessError(err) {
-				return &resource.StatusResult{
-					ProgressResult: &resource.ProgressResult{
-						Operation:       resource.OperationDelete,
-						OperationStatus: resource.OperationStatusSuccess,
-						RequestID:       request.RequestID,
-						NativeID:        reqID.NativeID,
-					},
-				}, nil
-			}
-			return &resource.StatusResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					RequestID:       request.RequestID,
-					ErrorCode:       mapAzureErrorToOperationErrorCode(err),
-				},
-			}, nil
-		}
-		return &resource.StatusResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				RequestID:       request.RequestID,
-				NativeID:        reqID.NativeID,
-			},
-		}, nil
-	}
-
-	// Still in progress - the next status check will determine if Done()
-	return &resource.StatusResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       request.RequestID,
-
-			NativeID: reqID.NativeID,
+	return statusDeleteLRO(ctx, request, reqID,
+		func(token string) (*runtime.Poller[armnetwork.PublicIPAddressesClientDeleteResponse], error) {
+			return resumePoller[armnetwork.PublicIPAddressesClientDeleteResponse](p.pipeline, token)
 		},
-	}, nil
+		nil)
 }
 
 func (p *PublicIPAddress) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
