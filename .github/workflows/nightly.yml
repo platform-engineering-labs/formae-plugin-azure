@@ -56,6 +56,9 @@ jobs:
           git fetch --tags --unshallow
           make build
           /tmp/formae/formae --version
+          mkdir -p /tmp/formae-install/bin /tmp/formae-install/.ops
+          touch /tmp/formae-install/.ops/.keep
+          cp /tmp/formae/formae /tmp/formae-install/bin/formae
 
       - name: Track formae clone
         if: env.POSTHOG_API_KEY != ''
@@ -83,11 +86,12 @@ jobs:
                 }
               }')" || echo "[telemetry] event send failed (non-critical)" >&2
 
-      - name: Upload formae binary
+      - name: Upload formae install tree
         uses: actions/upload-artifact@v4
         with:
-          name: formae-binary
-          path: /tmp/formae/formae
+          name: formae-install
+          path: /tmp/formae-install
+          include-hidden-files: true
           retention-days: 1
 
       - name: Upload formae source (for replace directives)
@@ -153,11 +157,11 @@ jobs:
         with:
           pkl-version: 0.30.0
 
-      - name: Download formae binary
+      - name: Download formae install tree
         uses: actions/download-artifact@v4
         with:
-          name: formae-binary
-          path: /tmp/formae-bin
+          name: formae-install
+          path: /tmp/formae-install
 
       - name: Download formae source
         uses: actions/download-artifact@v4
@@ -167,9 +171,10 @@ jobs:
 
       - name: Set up formae binary
         run: |
-          chmod +x /tmp/formae-bin/formae
-          echo "FORMAE_BINARY=/tmp/formae-bin/formae" >> $GITHUB_ENV
-          /tmp/formae-bin/formae --version
+          test -d /tmp/formae-install/.ops
+          chmod +x /tmp/formae-install/bin/formae
+          echo "FORMAE_BINARY=/tmp/formae-install/bin/formae" >> $GITHUB_ENV
+          /tmp/formae-install/bin/formae --version
 
       # Temporary: until Orbital package manager handles plugin version
       # coordination, the formae Makefile is the source of truth for which
