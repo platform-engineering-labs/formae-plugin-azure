@@ -49,7 +49,6 @@ class PrivateLinkServiceConnection {
     identifier = "id"
     apiVersion = module.apiVersion
     parent = "Azure::Resources::ResourceGroup"
-    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class PrivateEndpoint extends formae.Resource {
 
