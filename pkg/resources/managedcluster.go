@@ -77,10 +77,10 @@ func (mc *ManagedCluster) fetchCertificateAuthority(ctx context.Context, rgName,
 	if err != nil {
 		return ""
 	}
-	if resp.CredentialResults.Kubeconfigs == nil || len(resp.CredentialResults.Kubeconfigs) == 0 {
+	if len(resp.Kubeconfigs) == 0 {
 		return ""
 	}
-	kc := resp.CredentialResults.Kubeconfigs[0]
+	kc := resp.Kubeconfigs[0]
 	if kc == nil || len(kc.Value) == 0 {
 		return ""
 	}

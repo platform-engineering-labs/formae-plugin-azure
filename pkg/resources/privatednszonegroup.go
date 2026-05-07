@@ -31,9 +31,10 @@ type privateDnsZoneGroupsAPI interface {
 func init() {
 	registry.Register(ResourceTypePrivateDnsZoneGroup, func(c *client.Client, cfg *config.Config) prov.Provisioner {
 		return &PrivateDnsZoneGroup{
-			api:      c.PrivateDnsZoneGroupsClient,
-			pipeline: c.Pipeline(),
-			config:   cfg,
+			api:              c.PrivateDnsZoneGroupsClient,
+			privateEndpoints: c.PrivateEndpointsClient,
+			pipeline:         c.Pipeline(),
+			config:           cfg,
 		}
 	})
 }
@@ -41,9 +42,10 @@ func init() {
 // PrivateDnsZoneGroup is the provisioner for the binding between a Private
 // Endpoint and one or more Private DNS Zones.
 type PrivateDnsZoneGroup struct {
-	api      privateDnsZoneGroupsAPI
-	pipeline runtime.Pipeline
-	config   *config.Config
+	api              privateDnsZoneGroupsAPI
+	privateEndpoints privateEndpointsAPI
+	pipeline         runtime.Pipeline
+	config           *config.Config
 }
 
 func zoneGroupPathParts(nativeID string) (rg, peName, groupName string, err error) {
@@ -55,6 +57,16 @@ func zoneGroupPathParts(nativeID string) (rg, peName, groupName string, err erro
 		return "", "", "", fmt.Errorf("invalid NativeID: cannot extract resourceGroup/privateEndpoint/zoneGroup from %s", nativeID)
 	}
 	return rg, peName, groupName, nil
+}
+
+func privateEndpointParentParts(nativeID string) (rg, peName string, err error) {
+	parts := splitResourceID(nativeID)
+	rg = parts["resourcegroups"]
+	peName = parts["privateendpoints"]
+	if rg == "" || peName == "" {
+		return "", "", fmt.Errorf("invalid PrivateEndpoint NativeID: cannot extract resourceGroup/privateEndpoint from %s", nativeID)
+	}
+	return rg, peName, nil
 }
 
 func (g *PrivateDnsZoneGroup) buildParams(props map[string]any) (armnetwork.PrivateDNSZoneGroup, error) {
@@ -529,9 +541,40 @@ func (g *PrivateDnsZoneGroup) statusDelete(ctx context.Context, request *resourc
 func (g *PrivateDnsZoneGroup) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
 	rgName := request.AdditionalProperties["resourceGroupName"]
 	peName := request.AdditionalProperties["privateEndpointName"]
-	if rgName == "" || peName == "" {
+	if rgName != "" && peName != "" {
+		return g.listByPrivateEndpoint(ctx, rgName, peName)
+	}
+
+	if g.privateEndpoints == nil {
 		return &resource.ListResult{}, nil
 	}
+
+	var nativeIDs []string
+	pePager := g.privateEndpoints.NewListBySubscriptionPager(nil)
+	for pePager.More() {
+		page, err := pePager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list private endpoints for private dns zone group discovery: %w", err)
+		}
+		for _, pe := range page.Value {
+			if pe == nil || pe.ID == nil {
+				continue
+			}
+			parentRG, parentPE, err := privateEndpointParentParts(*pe.ID)
+			if err != nil {
+				continue
+			}
+			ids, err := g.listByPrivateEndpoint(ctx, parentRG, parentPE)
+			if err != nil {
+				return nil, err
+			}
+			nativeIDs = append(nativeIDs, ids.NativeIDs...)
+		}
+	}
+	return &resource.ListResult{NativeIDs: nativeIDs}, nil
+}
+
+func (g *PrivateDnsZoneGroup) listByPrivateEndpoint(ctx context.Context, rgName, peName string) (*resource.ListResult, error) {
 	pager := g.api.NewListPager(peName, rgName, nil)
 	var nativeIDs []string
 	for pager.More() {

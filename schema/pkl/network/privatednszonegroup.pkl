@@ -38,10 +38,6 @@ class PrivateDnsZoneConfig {
     identifier = "id"
     apiVersion = module.apiVersion
     parent = "Azure::Network::PrivateEndpoint"
-    listParam = List(
-        new formae.ListProperty { parentProperty = "name" listParameter = "privateEndpointName" },
-        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
-    )
 }
 open class PrivateDnsZoneGroup extends formae.Resource {
 
