@@ -115,6 +115,30 @@ func TestPrivateDnsZoneGroup_CRUD(t *testing.T) {
 		require.Len(t, got.NativeIDs, 1)
 	})
 
+	t.Run("List_subscription_wide", func(t *testing.T) {
+		prov.privateEndpoints = &fakePrivateEndpointsAPI{
+			newListBySubscriptionPagerFn: func(_ *armnetwork.PrivateEndpointsClientListBySubscriptionOptions) *runtime.Pager[armnetwork.PrivateEndpointsClientListBySubscriptionResponse] {
+				return runtime.NewPager(runtime.PagingHandler[armnetwork.PrivateEndpointsClientListBySubscriptionResponse]{
+					More: func(_ armnetwork.PrivateEndpointsClientListBySubscriptionResponse) bool { return false },
+					Fetcher: func(_ context.Context, _ *armnetwork.PrivateEndpointsClientListBySubscriptionResponse) (armnetwork.PrivateEndpointsClientListBySubscriptionResponse, error) {
+						return armnetwork.PrivateEndpointsClientListBySubscriptionResponse{
+							PrivateEndpointListResult: armnetwork.PrivateEndpointListResult{
+								Value: []*armnetwork.PrivateEndpoint{{ID: to.Ptr("/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/privateEndpoints/pe-1")}},
+							},
+						}, nil
+					},
+				})
+			},
+		}
+
+		got, err := prov.List(context.Background(), &resource.ListRequest{
+			AdditionalProperties: map[string]string{},
+		})
+		require.NoError(t, err)
+		require.Len(t, got.NativeIDs, 1)
+		require.Equal(t, testZoneGroupNativeID, got.NativeIDs[0])
+	})
+
 	t.Run("Azure_error_maps_to_failure", func(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _, _ string, _ armnetwork.PrivateDNSZoneGroup, _ *armnetwork.PrivateDNSZoneGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PrivateDNSZoneGroupsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 403}

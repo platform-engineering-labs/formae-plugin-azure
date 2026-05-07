@@ -132,6 +132,7 @@ type fakeManagedClustersAPI struct {
 	newListByResourceGroupPagerFn func(rgName string, opts *armcontainerservice.ManagedClustersClientListByResourceGroupOptions) *runtime.Pager[armcontainerservice.ManagedClustersClientListByResourceGroupResponse]
 	resumeCreatePollerFn          func(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)
 	resumeDeletePollerFn          func(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientDeleteResponse], error)
+	listClusterAdminCredentialsFn func(ctx context.Context, rgName, clusterName string, opts *armcontainerservice.ManagedClustersClientListClusterAdminCredentialsOptions) (armcontainerservice.ManagedClustersClientListClusterAdminCredentialsResponse, error)
 }
 
 func (f *fakeManagedClustersAPI) BeginCreateOrUpdate(ctx context.Context, rgName, clusterName string, params armcontainerservice.ManagedCluster, opts *armcontainerservice.ManagedClustersClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error) {
@@ -148,6 +149,13 @@ func (f *fakeManagedClustersAPI) BeginDelete(ctx context.Context, rgName, cluste
 
 func (f *fakeManagedClustersAPI) NewListByResourceGroupPager(rgName string, opts *armcontainerservice.ManagedClustersClientListByResourceGroupOptions) *runtime.Pager[armcontainerservice.ManagedClustersClientListByResourceGroupResponse] {
 	return f.newListByResourceGroupPagerFn(rgName, opts)
+}
+
+func (f *fakeManagedClustersAPI) ListClusterAdminCredentials(ctx context.Context, rgName, clusterName string, opts *armcontainerservice.ManagedClustersClientListClusterAdminCredentialsOptions) (armcontainerservice.ManagedClustersClientListClusterAdminCredentialsResponse, error) {
+	if f.listClusterAdminCredentialsFn != nil {
+		return f.listClusterAdminCredentialsFn(ctx, rgName, clusterName, opts)
+	}
+	return armcontainerservice.ManagedClustersClientListClusterAdminCredentialsResponse{}, nil
 }
 
 func (f *fakeManagedClustersAPI) ResumeCreatePoller(token string) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error) {
