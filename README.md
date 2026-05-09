@@ -40,12 +40,6 @@ Formae plugin for managing Azure resources.
 | `Azure::Compute::Disk` | Managed disks |
 | `Azure::Compute::VirtualMachineScaleSet` | Virtual machine scale sets |
 
-## Installation
-
-```bash
-make install
-```
-
 ## Configuration
 
 Configure an Azure target in your Forma file:
@@ -74,25 +68,6 @@ See [examples/](examples/) for usage patterns:
 - `database/` - PostgreSQL flexible server
 - `virtual-machine/` - VM with networking
 - `subscription-bootstrap/` - Resource group, key vault, storage account
-
-## Development
-
-```bash
-make build          # Build plugin
-make test           # Run tests
-make install        # Install locally
-make install-dev    # Install as v0.0.0 (for debug builds)
-make gen-pkl        # Resolve PKL dependencies
-```
-
-## Conformance Tests
-
-Run against real Azure resources:
-
-```bash
-make setup-credentials                           # Verify Azure login
-make conformance-test   # Run full suite
-```
 
 ## License
 
