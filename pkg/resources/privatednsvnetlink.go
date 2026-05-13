@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypePrivateDnsZoneVNetLink = "Azure::Network::PrivateDnsZoneVirtualNetworkLink"
+const ResourceTypePrivateDnsZoneVNetLink = "AZURE::Network::PrivateDnsZoneVirtualNetworkLink"
 
 type privateDnsVNetLinksAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, privateZoneName string, virtualNetworkLinkName string, parameters armprivatedns.VirtualNetworkLink, options *armprivatedns.VirtualNetworkLinksClientBeginCreateOrUpdateOptions) (*runtime.Poller[armprivatedns.VirtualNetworkLinksClientCreateOrUpdateResponse], error)

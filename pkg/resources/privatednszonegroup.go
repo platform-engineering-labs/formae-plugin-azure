@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypePrivateDnsZoneGroup = "Azure::Network::PrivateDnsZoneGroup"
+const ResourceTypePrivateDnsZoneGroup = "AZURE::Network::PrivateDnsZoneGroup"
 
 type privateDnsZoneGroupsAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, privateEndpointName string, privateDNSZoneGroupName string, parameters armnetwork.PrivateDNSZoneGroup, options *armnetwork.PrivateDNSZoneGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PrivateDNSZoneGroupsClientCreateOrUpdateResponse], error)

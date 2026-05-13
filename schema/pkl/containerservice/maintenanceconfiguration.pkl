@@ -9,7 +9,7 @@ module azure.containerservice.maintenanceconfiguration
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::ContainerService::MaintenanceConfiguration"
+const type = "AZURE::ContainerService::MaintenanceConfiguration"
 const apiVersion = "2024-01-01"
 
 open class MaintenanceConfigurationResolvable extends formae.Resolvable {
@@ -48,7 +48,7 @@ class TimeSpan {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::ContainerService::ManagedCluster"
+    parent = "AZURE::ContainerService::ManagedCluster"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
 }
 open class MaintenanceConfiguration extends formae.Resource {

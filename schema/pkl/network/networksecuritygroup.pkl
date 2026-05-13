@@ -9,7 +9,7 @@ module azure.network.networksecuritygroup
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::NetworkSecurityGroup"
+const type = "AZURE::Network::NetworkSecurityGroup"
 const apiVersion = "2023-05-01"
 
 open class NetworkSecurityGroupResolvable extends formae.Resolvable {
@@ -84,7 +84,7 @@ class SecurityRule {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class NetworkSecurityGroup extends formae.Resource {

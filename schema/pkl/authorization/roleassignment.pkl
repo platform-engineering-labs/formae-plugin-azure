@@ -9,7 +9,7 @@ module azure.authorization.roleassignment
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Authorization::RoleAssignment"
+const type = "AZURE::Authorization::RoleAssignment"
 const apiVersion = "2022-04-01"
 
 open class RoleAssignmentResolvable extends formae.Resolvable {

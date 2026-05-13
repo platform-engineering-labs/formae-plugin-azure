@@ -9,7 +9,7 @@ module azure.dbforpostgresql.flexibleserver
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::DBforPostgreSQL::FlexibleServer"
+const type = "AZURE::DBforPostgreSQL::FlexibleServer"
 const apiVersion = "2024-08-01"
 
 open class FlexibleServerResolvable extends formae.Resolvable {
@@ -138,7 +138,7 @@ class AuthConfig {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class FlexibleServer extends formae.Resource {

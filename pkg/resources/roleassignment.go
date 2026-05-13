@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeRoleAssignment = "Azure::Authorization::RoleAssignment"
+const ResourceTypeRoleAssignment = "AZURE::Authorization::RoleAssignment"
 
 type roleAssignmentsAPI interface {
 	Create(ctx context.Context, scope string, roleAssignmentName string, parameters armauthorization.RoleAssignmentCreateParameters, options *armauthorization.RoleAssignmentsClientCreateOptions) (armauthorization.RoleAssignmentsClientCreateResponse, error)

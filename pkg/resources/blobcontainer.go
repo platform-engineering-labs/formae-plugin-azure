@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeBlobContainer = "Azure::Storage::BlobContainer"
+const ResourceTypeBlobContainer = "AZURE::Storage::BlobContainer"
 
 type blobContainersAPI interface {
 	Create(ctx context.Context, resourceGroupName, accountName, containerName string, blobContainer armstorage.BlobContainer, options *armstorage.BlobContainersClientCreateOptions) (armstorage.BlobContainersClientCreateResponse, error)

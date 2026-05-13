@@ -9,7 +9,7 @@ module azure.network.loadbalancer
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::LoadBalancer"
+const type = "AZURE::Network::LoadBalancer"
 const apiVersion = "2023-05-01"
 
 open class LoadBalancerResolvable extends formae.Resolvable {
@@ -128,7 +128,7 @@ class LoadBalancingRule {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class LoadBalancer extends formae.Resource {

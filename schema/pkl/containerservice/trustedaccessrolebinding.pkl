@@ -9,7 +9,7 @@ module azure.containerservice.trustedaccessrolebinding
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::ContainerService::TrustedAccessRoleBinding"
+const type = "AZURE::ContainerService::TrustedAccessRoleBinding"
 const apiVersion = "2024-01-01"
 
 open class TrustedAccessRoleBindingResolvable extends formae.Resolvable {
@@ -27,7 +27,7 @@ open class TrustedAccessRoleBindingResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::ContainerService::ManagedCluster"
+    parent = "AZURE::ContainerService::ManagedCluster"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
 }
 open class TrustedAccessRoleBinding extends formae.Resource {

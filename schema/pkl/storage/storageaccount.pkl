@@ -9,7 +9,7 @@ module azure.storage.storageaccount
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Storage::StorageAccount"
+const type = "AZURE::Storage::StorageAccount"
 const apiVersion = "2023-01-01"
 
 open class StorageAccountResolvable extends formae.Resolvable {
@@ -57,7 +57,7 @@ class StorageAccountSKU {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class StorageAccount extends formae.Resource {

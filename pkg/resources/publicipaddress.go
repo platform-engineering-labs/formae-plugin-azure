@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypePublicIPAddress = "Azure::Network::PublicIPAddress"
+const ResourceTypePublicIPAddress = "AZURE::Network::PublicIPAddress"
 
 type publicIPAddressesAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, publicIPAddressName string, parameters armnetwork.PublicIPAddress, options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], error)

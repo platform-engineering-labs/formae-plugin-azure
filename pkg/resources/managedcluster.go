@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const ResourceTypeManagedCluster = "Azure::ContainerService::ManagedCluster"
+const ResourceTypeManagedCluster = "AZURE::ContainerService::ManagedCluster"
 
 type managedClustersAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, parameters armcontainerservice.ManagedCluster, options *armcontainerservice.ManagedClustersClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.ManagedClustersClientCreateOrUpdateResponse], error)

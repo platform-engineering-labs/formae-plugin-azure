@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeStorageAccount = "Azure::Storage::StorageAccount"
+const ResourceTypeStorageAccount = "AZURE::Storage::StorageAccount"
 
 type storageAccountsAPI interface {
 	BeginCreate(ctx context.Context, resourceGroupName string, accountName string, parameters armstorage.AccountCreateParameters, options *armstorage.AccountsClientBeginCreateOptions) (*runtime.Poller[armstorage.AccountsClientCreateResponse], error)

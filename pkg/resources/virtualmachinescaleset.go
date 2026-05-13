@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeVirtualMachineScaleSet = "Azure::Compute::VirtualMachineScaleSet"
+const ResourceTypeVirtualMachineScaleSet = "AZURE::Compute::VirtualMachineScaleSet"
 
 type vmssAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName, vmScaleSetName string, parameters armcompute.VirtualMachineScaleSet, options *armcompute.VirtualMachineScaleSetsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcompute.VirtualMachineScaleSetsClientCreateOrUpdateResponse], error)

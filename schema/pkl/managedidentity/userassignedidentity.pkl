@@ -9,7 +9,7 @@ module azure.managedidentity.userassignedidentity
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::ManagedIdentity::UserAssignedIdentity"
+const type = "AZURE::ManagedIdentity::UserAssignedIdentity"
 const apiVersion = "2023-01-31"
 
 open class UserAssignedIdentityResolvable extends formae.Resolvable {
@@ -33,7 +33,7 @@ open class UserAssignedIdentityResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class UserAssignedIdentity extends formae.Resource {

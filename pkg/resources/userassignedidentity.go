@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeUserAssignedIdentity = "Azure::ManagedIdentity::UserAssignedIdentity"
+const ResourceTypeUserAssignedIdentity = "AZURE::ManagedIdentity::UserAssignedIdentity"
 
 type userAssignedIdentitiesAPI interface {
 	CreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, parameters armmsi.Identity, options *armmsi.UserAssignedIdentitiesClientCreateOrUpdateOptions) (armmsi.UserAssignedIdentitiesClientCreateOrUpdateResponse, error)

@@ -9,7 +9,7 @@ module azure.containerservice.managedcluster
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::ContainerService::ManagedCluster"
+const type = "AZURE::ContainerService::ManagedCluster"
 const apiVersion = "2024-03-02-preview"
 
 open class ManagedClusterResolvable extends formae.Resolvable {
@@ -168,7 +168,7 @@ class AADProfile {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class ManagedCluster extends formae.Resource {

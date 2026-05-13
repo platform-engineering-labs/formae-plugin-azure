@@ -9,7 +9,7 @@ module azure.containerregistry.registry
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::ContainerRegistry::Registry"
+const type = "AZURE::ContainerRegistry::Registry"
 const apiVersion = "2023-01-01-preview"
 
 open class RegistryResolvable extends formae.Resolvable {
@@ -39,7 +39,7 @@ class RegistrySKU {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class Registry extends formae.Resource {

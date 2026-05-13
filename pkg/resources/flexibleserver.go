@@ -20,7 +20,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeFlexibleServer = "Azure::DBforPostgreSQL::FlexibleServer"
+const ResourceTypeFlexibleServer = "AZURE::DBforPostgreSQL::FlexibleServer"
 
 type flexibleServersAPI interface {
 	BeginCreate(ctx context.Context, resourceGroupName string, serverName string, parameters armpostgresqlflexibleservers.Server, options *armpostgresqlflexibleservers.ServersClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ServersClientCreateResponse], error)

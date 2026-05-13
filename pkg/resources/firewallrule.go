@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeFirewallRule = "Azure::DBforPostgreSQL::FirewallRule"
+const ResourceTypeFirewallRule = "AZURE::DBforPostgreSQL::FirewallRule"
 
 type firewallRulesAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, serverName string, firewallRuleName string, parameters armpostgresqlflexibleservers.FirewallRule, options *armpostgresqlflexibleservers.FirewallRulesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.FirewallRulesClientCreateOrUpdateResponse], error)

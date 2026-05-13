@@ -9,7 +9,7 @@ module azure.compute.virtualmachine
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Compute::VirtualMachine"
+const type = "AZURE::Compute::VirtualMachine"
 const apiVersion = "2023-07-01"
 
 open class VirtualMachineResolvable extends formae.Resolvable {
@@ -129,7 +129,7 @@ class NetworkInterfaceReference {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class VirtualMachine extends formae.Resource {

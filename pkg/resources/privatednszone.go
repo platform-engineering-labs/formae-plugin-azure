@@ -23,7 +23,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypePrivateDnsZone = "Azure::Network::PrivateDnsZone"
+const ResourceTypePrivateDnsZone = "AZURE::Network::PrivateDnsZone"
 
 type privateDnsZonesAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, privateZoneName string, parameters armprivatedns.PrivateZone, options *armprivatedns.PrivateZonesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armprivatedns.PrivateZonesClientCreateOrUpdateResponse], error)

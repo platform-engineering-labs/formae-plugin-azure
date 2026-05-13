@@ -9,7 +9,7 @@ module azure.resources.subnet
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::Subnet"
+const type = "AZURE::Network::Subnet"
 const apiVersion = "2023-05-01"
 
 open class SubnetResolvable extends formae.Resolvable {
@@ -30,7 +30,7 @@ open class SubnetResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Network::VirtualNetwork"
+    parent = "AZURE::Network::VirtualNetwork"
     listParam = List(
         new formae.ListProperty { parentProperty = "name" listParameter = "virtualNetworkName" },
         new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }

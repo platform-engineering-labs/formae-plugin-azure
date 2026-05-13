@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeLoadBalancer = "Azure::Network::LoadBalancer"
+const ResourceTypeLoadBalancer = "AZURE::Network::LoadBalancer"
 
 type loadBalancersAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, loadBalancerName string, parameters armnetwork.LoadBalancer, options *armnetwork.LoadBalancersClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.LoadBalancersClientCreateOrUpdateResponse], error)

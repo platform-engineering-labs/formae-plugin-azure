@@ -28,7 +28,7 @@ type extensionsAPI interface {
 }
 
 const (
-	ResourceTypeExtension = "Azure::KubernetesConfiguration::Extension"
+	ResourceTypeExtension = "AZURE::KubernetesConfiguration::Extension"
 
 	// AKS cluster resource provider and type for the Extensions API
 	aksClusterRP           = "Microsoft.ContainerService"

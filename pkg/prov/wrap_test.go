@@ -27,13 +27,13 @@ func TestWrapNormalizesNativeIDs(t *testing.T) {
 		inner := &mockProvisioner{}
 		inner.On("Read", mock.Anything, mock.MatchedBy(func(req *resource.ReadRequest) bool {
 			return req.NativeID == rawID
-		})).Return(&resource.ReadResult{ResourceType: "Azure::Test"}, nil).Once()
+		})).Return(&resource.ReadResult{ResourceType: "AZURE::Test"}, nil).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Read(ctx, &resource.ReadRequest{NativeID: encodedID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Read(ctx, &resource.ReadRequest{NativeID: encodedID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
-		require.Equal(t, "Azure::Test", got.ResourceType)
+		require.Equal(t, "AZURE::Test", got.ResourceType)
 		inner.AssertExpectations(t)
 	})
 
@@ -44,7 +44,7 @@ func TestWrapNormalizesNativeIDs(t *testing.T) {
 		})).Return(&resource.UpdateResult{ProgressResult: &resource.ProgressResult{OperationStatus: resource.OperationStatusSuccess}}, nil).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Update(ctx, &resource.UpdateRequest{NativeID: encodedID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Update(ctx, &resource.UpdateRequest{NativeID: encodedID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
@@ -58,7 +58,7 @@ func TestWrapNormalizesNativeIDs(t *testing.T) {
 		})).Return(&resource.DeleteResult{ProgressResult: &resource.ProgressResult{OperationStatus: resource.OperationStatusSuccess}}, nil).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Delete(ctx, &resource.DeleteRequest{NativeID: encodedID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Delete(ctx, &resource.DeleteRequest{NativeID: encodedID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
@@ -72,7 +72,7 @@ func TestWrapNormalizesNativeIDs(t *testing.T) {
 		})).Return(&resource.StatusResult{ProgressResult: &resource.ProgressResult{OperationStatus: resource.OperationStatusSuccess}}, nil).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Status(ctx, &resource.StatusRequest{NativeID: encodedID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Status(ctx, &resource.StatusRequest{NativeID: encodedID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
@@ -90,7 +90,7 @@ func TestWrapMapsAzureErrors(t *testing.T) {
 			Return((*resource.CreateResult)(nil), &azcore.ResponseError{StatusCode: 403}).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Create(ctx, &resource.CreateRequest{ResourceType: "Azure::Test"})
+		got, err := wrapped.Create(ctx, &resource.CreateRequest{ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationCreate, got.ProgressResult.Operation)
@@ -105,10 +105,10 @@ func TestWrapMapsAzureErrors(t *testing.T) {
 			Return((*resource.ReadResult)(nil), &azcore.ResponseError{StatusCode: 404}).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Read(ctx, &resource.ReadRequest{NativeID: rawID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Read(ctx, &resource.ReadRequest{NativeID: rawID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
-		require.Equal(t, "Azure::Test", got.ResourceType)
+		require.Equal(t, "AZURE::Test", got.ResourceType)
 		require.Equal(t, resource.OperationErrorCodeNotFound, got.ErrorCode)
 		inner.AssertExpectations(t)
 	})
@@ -119,7 +119,7 @@ func TestWrapMapsAzureErrors(t *testing.T) {
 			Return((*resource.UpdateResult)(nil), &azcore.ResponseError{StatusCode: 409}).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Update(ctx, &resource.UpdateRequest{NativeID: rawID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Update(ctx, &resource.UpdateRequest{NativeID: rawID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationUpdate, got.ProgressResult.Operation)
@@ -135,7 +135,7 @@ func TestWrapMapsAzureErrors(t *testing.T) {
 			Return((*resource.DeleteResult)(nil), &azcore.ResponseError{StatusCode: 404}).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Delete(ctx, &resource.DeleteRequest{NativeID: rawID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Delete(ctx, &resource.DeleteRequest{NativeID: rawID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationDelete, got.ProgressResult.Operation)
@@ -150,7 +150,7 @@ func TestWrapMapsAzureErrors(t *testing.T) {
 			Return((*resource.StatusResult)(nil), &azcore.ResponseError{StatusCode: 429}).Once()
 		wrapped := Wrap(inner)
 
-		got, err := wrapped.Status(ctx, &resource.StatusRequest{RequestID: "req-1", NativeID: rawID, ResourceType: "Azure::Test"})
+		got, err := wrapped.Status(ctx, &resource.StatusRequest{RequestID: "req-1", NativeID: rawID, ResourceType: "AZURE::Test"})
 
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)
@@ -168,7 +168,7 @@ func TestWrapPassesThroughUnknownErrors(t *testing.T) {
 		Return((*resource.CreateResult)(nil), want).Once()
 	wrapped := Wrap(inner)
 
-	got, err := wrapped.Create(ctx, &resource.CreateRequest{ResourceType: "Azure::Test"})
+	got, err := wrapped.Create(ctx, &resource.CreateRequest{ResourceType: "AZURE::Test"})
 
 	require.ErrorIs(t, err, want)
 	require.Nil(t, got)
@@ -182,7 +182,7 @@ func TestWrapRejectsNilResults(t *testing.T) {
 		Return((*resource.CreateResult)(nil), nil).Once()
 	wrapped := Wrap(inner)
 
-	got, err := wrapped.Create(ctx, &resource.CreateRequest{ResourceType: "Azure::Test"})
+	got, err := wrapped.Create(ctx, &resource.CreateRequest{ResourceType: "AZURE::Test"})
 
 	require.Error(t, err)
 	require.Nil(t, got)

@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeKeyVault = "Azure::KeyVault::Vault"
+const ResourceTypeKeyVault = "AZURE::KeyVault::Vault"
 
 type vaultsAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, vaultName string, parameters armkeyvault.VaultCreateOrUpdateParameters, options *armkeyvault.VaultsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armkeyvault.VaultsClientCreateOrUpdateResponse], error)

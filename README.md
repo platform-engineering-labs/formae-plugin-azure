@@ -9,36 +9,36 @@ Formae plugin for managing Azure resources.
 
 | Resource Type | Description |
 |---------------|-------------|
-| `Azure::Resources::ResourceGroup` | Resource groups |
-| `Azure::Network::VirtualNetwork` | Virtual networks |
-| `Azure::Network::Subnet` | Subnets |
-| `Azure::Network::NetworkInterface` | Network interfaces |
-| `Azure::Network::NetworkSecurityGroup` | Network security groups |
-| `Azure::Network::PublicIPAddress` | Public IP addresses |
-| `Azure::Compute::VirtualMachine` | Virtual machines |
-| `Azure::Storage::StorageAccount` | Storage accounts |
-| `Azure::KeyVault::Vault` | Key vaults |
-| `Azure::ContainerService::ManagedCluster` | AKS clusters |
-| `Azure::ContainerService::MaintenanceConfiguration` | AKS maintenance windows |
-| `Azure::ContainerService::TrustedAccessRoleBinding` | AKS trusted access for Azure services |
-| `Azure::KubernetesConfiguration::Extension` | Kubernetes extensions (Flux, Dapr, etc.) |
-| `Azure::KubernetesConfiguration::FluxConfiguration` | GitOps Flux v2 configurations |
-| `Azure::ContainerRegistry::Registry` | Container registries |
-| `Azure::DBforPostgreSQL::FlexibleServer` | PostgreSQL flexible servers |
-| `Azure::DBforPostgreSQL::FirewallRule` | PostgreSQL firewall rules |
-| `Azure::DBforPostgreSQL::Database` | PostgreSQL databases |
-| `Azure::DBforPostgreSQL::Configuration` | PostgreSQL server parameters |
-| `Azure::ManagedIdentity::UserAssignedIdentity` | Managed identities |
-| `Azure::ManagedIdentity::FederatedIdentityCredential` | Federated identity credentials (workload identity / OIDC) |
-| `Azure::Authorization::RoleAssignment` | Role assignments |
-| `Azure::Network::LoadBalancer` | Load balancers |
-| `Azure::Network::PrivateDnsZone` | Private DNS zones |
-| `Azure::Network::PrivateDnsZoneVirtualNetworkLink` | Private DNS zone-to-VNet links |
-| `Azure::Network::PrivateEndpoint` | Private endpoints |
-| `Azure::Network::PrivateDnsZoneGroup` | Private DNS zone group bindings |
-| `Azure::Storage::BlobContainer` | Blob containers |
-| `Azure::Compute::Disk` | Managed disks |
-| `Azure::Compute::VirtualMachineScaleSet` | Virtual machine scale sets |
+| `AZURE::Resources::ResourceGroup` | Resource groups |
+| `AZURE::Network::VirtualNetwork` | Virtual networks |
+| `AZURE::Network::Subnet` | Subnets |
+| `AZURE::Network::NetworkInterface` | Network interfaces |
+| `AZURE::Network::NetworkSecurityGroup` | Network security groups |
+| `AZURE::Network::PublicIPAddress` | Public IP addresses |
+| `AZURE::Compute::VirtualMachine` | Virtual machines |
+| `AZURE::Storage::StorageAccount` | Storage accounts |
+| `AZURE::KeyVault::Vault` | Key vaults |
+| `AZURE::ContainerService::ManagedCluster` | AKS clusters |
+| `AZURE::ContainerService::MaintenanceConfiguration` | AKS maintenance windows |
+| `AZURE::ContainerService::TrustedAccessRoleBinding` | AKS trusted access for Azure services |
+| `AZURE::KubernetesConfiguration::Extension` | Kubernetes extensions (Flux, Dapr, etc.) |
+| `AZURE::KubernetesConfiguration::FluxConfiguration` | GitOps Flux v2 configurations |
+| `AZURE::ContainerRegistry::Registry` | Container registries |
+| `AZURE::DBforPostgreSQL::FlexibleServer` | PostgreSQL flexible servers |
+| `AZURE::DBforPostgreSQL::FirewallRule` | PostgreSQL firewall rules |
+| `AZURE::DBforPostgreSQL::Database` | PostgreSQL databases |
+| `AZURE::DBforPostgreSQL::Configuration` | PostgreSQL server parameters |
+| `AZURE::ManagedIdentity::UserAssignedIdentity` | Managed identities |
+| `AZURE::ManagedIdentity::FederatedIdentityCredential` | Federated identity credentials (workload identity / OIDC) |
+| `AZURE::Authorization::RoleAssignment` | Role assignments |
+| `AZURE::Network::LoadBalancer` | Load balancers |
+| `AZURE::Network::PrivateDnsZone` | Private DNS zones |
+| `AZURE::Network::PrivateDnsZoneVirtualNetworkLink` | Private DNS zone-to-VNet links |
+| `AZURE::Network::PrivateEndpoint` | Private endpoints |
+| `AZURE::Network::PrivateDnsZoneGroup` | Private DNS zone group bindings |
+| `AZURE::Storage::BlobContainer` | Blob containers |
+| `AZURE::Compute::Disk` | Managed disks |
+| `AZURE::Compute::VirtualMachineScaleSet` | Virtual machine scale sets |
 
 ## Configuration
 
