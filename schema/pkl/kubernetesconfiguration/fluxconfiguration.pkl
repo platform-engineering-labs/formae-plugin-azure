@@ -9,7 +9,7 @@ module azure.kubernetesconfiguration.fluxconfiguration
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::KubernetesConfiguration::FluxConfiguration"
+const type = "AZURE::KubernetesConfiguration::FluxConfiguration"
 const apiVersion = "2022-03-01"
 
 open class FluxConfigurationResolvable extends formae.Resolvable {
@@ -123,7 +123,7 @@ class Kustomization {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::ContainerService::ManagedCluster"
+    parent = "AZURE::ContainerService::ManagedCluster"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
 }
 open class FluxConfiguration extends formae.Resource {

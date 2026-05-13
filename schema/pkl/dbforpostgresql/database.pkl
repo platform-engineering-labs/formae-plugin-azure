@@ -9,7 +9,7 @@ module azure.dbforpostgresql.database
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::DBforPostgreSQL::Database"
+const type = "AZURE::DBforPostgreSQL::Database"
 const apiVersion = "2024-08-01"
 
 open class DatabaseResolvable extends formae.Resolvable {
@@ -27,7 +27,7 @@ open class DatabaseResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::DBforPostgreSQL::FlexibleServer"
+    parent = "AZURE::DBforPostgreSQL::FlexibleServer"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
 }
 open class Database extends formae.Resource {

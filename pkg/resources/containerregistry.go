@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeContainerRegistry = "Azure::ContainerRegistry::Registry"
+const ResourceTypeContainerRegistry = "AZURE::ContainerRegistry::Registry"
 
 type containerRegistryAPI interface {
 	BeginCreate(ctx context.Context, resourceGroupName string, registryName string, registry armcontainerregistry.Registry, options *armcontainerregistry.RegistriesClientBeginCreateOptions) (*runtime.Poller[armcontainerregistry.RegistriesClientCreateResponse], error)

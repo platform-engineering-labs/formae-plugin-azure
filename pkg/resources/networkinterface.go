@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeNetworkInterface = "Azure::Network::NetworkInterface"
+const ResourceTypeNetworkInterface = "AZURE::Network::NetworkInterface"
 
 type networkInterfacesAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, networkInterfaceName string, parameters armnetwork.Interface, options *armnetwork.InterfacesClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.InterfacesClientCreateOrUpdateResponse], error)

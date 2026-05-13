@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeConfiguration = "Azure::DBforPostgreSQL::Configuration"
+const ResourceTypeConfiguration = "AZURE::DBforPostgreSQL::Configuration"
 
 type configurationsAPI interface {
 	BeginUpdate(ctx context.Context, resourceGroupName string, serverName string, configurationName string, parameters armpostgresqlflexibleservers.ConfigurationForUpdate, options *armpostgresqlflexibleservers.ConfigurationsClientBeginUpdateOptions) (*runtime.Poller[armpostgresqlflexibleservers.ConfigurationsClientUpdateResponse], error)

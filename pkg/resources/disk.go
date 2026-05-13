@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeDisk = "Azure::Compute::Disk"
+const ResourceTypeDisk = "AZURE::Compute::Disk"
 
 type disksAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName, diskName string, disk armcompute.Disk, options *armcompute.DisksClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcompute.DisksClientCreateOrUpdateResponse], error)

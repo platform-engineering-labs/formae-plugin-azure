@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeTrustedAccessRoleBinding = "Azure::ContainerService::TrustedAccessRoleBinding"
+const ResourceTypeTrustedAccessRoleBinding = "AZURE::ContainerService::TrustedAccessRoleBinding"
 
 type trustedAccessRoleBindingsAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, trustedAccessRoleBindingName string, trustedAccessRoleBinding armcontainerservice.TrustedAccessRoleBinding, options *armcontainerservice.TrustedAccessRoleBindingsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armcontainerservice.TrustedAccessRoleBindingsClientCreateOrUpdateResponse], error)

@@ -9,7 +9,7 @@ module azure.network.privateendpoint
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::PrivateEndpoint"
+const type = "AZURE::Network::PrivateEndpoint"
 const apiVersion = "2023-05-01"
 
 open class PrivateEndpointResolvable extends formae.Resolvable {
@@ -48,7 +48,7 @@ class PrivateLinkServiceConnection {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
 }
 open class PrivateEndpoint extends formae.Resource {
 

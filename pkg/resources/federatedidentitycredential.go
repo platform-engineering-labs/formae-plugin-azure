@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeFederatedIdentityCredential = "Azure::ManagedIdentity::FederatedIdentityCredential"
+const ResourceTypeFederatedIdentityCredential = "AZURE::ManagedIdentity::FederatedIdentityCredential"
 
 type federatedIdentityCredentialsAPI interface {
 	CreateOrUpdate(ctx context.Context, resourceGroupName, resourceName, federatedIdentityCredentialResourceName string, parameters armmsi.FederatedIdentityCredential, options *armmsi.FederatedIdentityCredentialsClientCreateOrUpdateOptions) (armmsi.FederatedIdentityCredentialsClientCreateOrUpdateResponse, error)

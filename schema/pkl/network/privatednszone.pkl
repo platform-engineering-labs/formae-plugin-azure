@@ -9,7 +9,7 @@ module azure.network.privatednszone
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::PrivateDnsZone"
+const type = "AZURE::Network::PrivateDnsZone"
 const apiVersion = "2024-06-01"
 
 open class PrivateDnsZoneResolvable extends formae.Resolvable {
@@ -27,7 +27,7 @@ open class PrivateDnsZoneResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class PrivateDnsZone extends formae.Resource {

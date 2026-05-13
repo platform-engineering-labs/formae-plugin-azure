@@ -9,7 +9,7 @@ module azure.compute.virtualmachinescaleset
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Compute::VirtualMachineScaleSet"
+const type = "AZURE::Compute::VirtualMachineScaleSet"
 const apiVersion = "2023-09-01"
 
 typealias VMSSStorageAccountType = "Standard_LRS"|"Premium_LRS"|"StandardSSD_LRS"|"UltraSSD_LRS"|"Premium_ZRS"|"StandardSSD_ZRS"
@@ -122,7 +122,7 @@ open class VirtualMachineScaleSetResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class VirtualMachineScaleSet extends formae.Resource {

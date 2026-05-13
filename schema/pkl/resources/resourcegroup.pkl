@@ -9,7 +9,7 @@ module azure.resources.resourcegroup
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Resources::ResourceGroup"
+const type = "AZURE::Resources::ResourceGroup"
 const apiVersion = "2024-03-01"
 
 open class ResourceGroupResolvable extends formae.Resolvable {

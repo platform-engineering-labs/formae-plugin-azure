@@ -9,7 +9,7 @@ module azure.storage.blobcontainer
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Storage::BlobContainer"
+const type = "AZURE::Storage::BlobContainer"
 const apiVersion = "2024-01-01"
 
 open class BlobContainerResolvable extends formae.Resolvable {
@@ -27,7 +27,7 @@ open class BlobContainerResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Storage::StorageAccount"
+    parent = "AZURE::Storage::StorageAccount"
     listParam = List(
         new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
         new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }

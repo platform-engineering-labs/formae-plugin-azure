@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeDatabase = "Azure::DBforPostgreSQL::Database"
+const ResourceTypeDatabase = "AZURE::DBforPostgreSQL::Database"
 
 type databasesAPI interface {
 	BeginCreate(ctx context.Context, resourceGroupName string, serverName string, databaseName string, parameters armpostgresqlflexibleservers.Database, options *armpostgresqlflexibleservers.DatabasesClientBeginCreateOptions) (*runtime.Poller[armpostgresqlflexibleservers.DatabasesClientCreateResponse], error)

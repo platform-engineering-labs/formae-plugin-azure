@@ -9,7 +9,7 @@ module azure.network.networkinterface
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::NetworkInterface"
+const type = "AZURE::Network::NetworkInterface"
 const apiVersion = "2023-05-01"
 
 open class NetworkInterfaceResolvable extends formae.Resolvable {
@@ -54,7 +54,7 @@ class IPConfiguration {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class NetworkInterface extends formae.Resource {

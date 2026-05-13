@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypePrivateEndpoint = "Azure::Network::PrivateEndpoint"
+const ResourceTypePrivateEndpoint = "AZURE::Network::PrivateEndpoint"
 
 type privateEndpointsAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, privateEndpointName string, parameters armnetwork.PrivateEndpoint, options *armnetwork.PrivateEndpointsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.PrivateEndpointsClientCreateOrUpdateResponse], error)

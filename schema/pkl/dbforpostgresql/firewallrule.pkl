@@ -9,7 +9,7 @@ module azure.dbforpostgresql.firewallrule
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::DBforPostgreSQL::FirewallRule"
+const type = "AZURE::DBforPostgreSQL::FirewallRule"
 const apiVersion = "2024-08-01"
 
 open class FirewallRuleResolvable extends formae.Resolvable {
@@ -27,7 +27,7 @@ open class FirewallRuleResolvable extends formae.Resolvable {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::DBforPostgreSQL::FlexibleServer"
+    parent = "AZURE::DBforPostgreSQL::FlexibleServer"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
 }
 open class FirewallRule extends formae.Resource {

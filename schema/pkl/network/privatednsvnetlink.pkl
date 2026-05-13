@@ -9,7 +9,7 @@ module azure.network.privatednsvnetlink
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::PrivateDnsZoneVirtualNetworkLink"
+const type = "AZURE::Network::PrivateDnsZoneVirtualNetworkLink"
 const apiVersion = "2024-06-01"
 
 open class PrivateDnsZoneVirtualNetworkLinkResolvable extends formae.Resolvable {
@@ -27,7 +27,7 @@ open class PrivateDnsZoneVirtualNetworkLinkResolvable extends formae.Resolvable 
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Network::PrivateDnsZone"
+    parent = "AZURE::Network::PrivateDnsZone"
     listParam = List(
         new formae.ListProperty { parentProperty = "name" listParameter = "privateZoneName" },
         new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }

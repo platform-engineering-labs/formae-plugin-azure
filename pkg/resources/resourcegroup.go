@@ -20,7 +20,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeResourceGroup = "Azure::Resources::ResourceGroup"
+const ResourceTypeResourceGroup = "AZURE::Resources::ResourceGroup"
 
 // azureTagsToFormaeTags, formaeTagsToAzureTags, operationErrorCode
 // are defined in common.go.

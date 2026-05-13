@@ -19,7 +19,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeMaintenanceConfiguration = "Azure::ContainerService::MaintenanceConfiguration"
+const ResourceTypeMaintenanceConfiguration = "AZURE::ContainerService::MaintenanceConfiguration"
 
 type maintenanceConfigurationsAPI interface {
 	CreateOrUpdate(ctx context.Context, resourceGroupName string, resourceName string, configName string, parameters armcontainerservice.MaintenanceConfiguration, options *armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateOptions) (armcontainerservice.MaintenanceConfigurationsClientCreateOrUpdateResponse, error)

@@ -56,7 +56,7 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 // resource groups or subscriptions — whichever is discovered second collides
 // with the first in the unmanaged-label uniqueness check.
 //
-// Azure::Resources::ResourceGroup has no resourceGroupName property, so the
+// AZURE::Resources::ResourceGroup has no resourceGroupName property, so the
 // selector returns just [name], yielding "myrg" — still unique within a
 // subscription.
 func (p *Plugin) LabelConfig() model.LabelConfig {

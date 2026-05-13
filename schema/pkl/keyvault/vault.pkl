@@ -9,7 +9,7 @@ module azure.keyvault.vault
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::KeyVault::Vault"
+const type = "AZURE::KeyVault::Vault"
 const apiVersion = "2023-07-01"
 
 open class VaultResolvable extends formae.Resolvable {
@@ -117,7 +117,7 @@ class NetworkRuleSet {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class Vault extends formae.Resource {

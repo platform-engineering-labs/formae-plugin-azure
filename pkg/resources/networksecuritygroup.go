@@ -18,7 +18,7 @@ import (
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
-const ResourceTypeNetworkSecurityGroup = "Azure::Network::NetworkSecurityGroup"
+const ResourceTypeNetworkSecurityGroup = "AZURE::Network::NetworkSecurityGroup"
 
 type networkSecurityGroupsAPI interface {
 	BeginCreateOrUpdate(ctx context.Context, resourceGroupName string, networkSecurityGroupName string, parameters armnetwork.SecurityGroup, options *armnetwork.SecurityGroupsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SecurityGroupsClientCreateOrUpdateResponse], error)

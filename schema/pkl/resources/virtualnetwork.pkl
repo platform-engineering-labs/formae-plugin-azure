@@ -9,7 +9,7 @@ module azure.resources.virtualnetwork
 import "@formae/formae.pkl"
 import "../azure.pkl"
 
-const type = "Azure::Network::VirtualNetwork"
+const type = "AZURE::Network::VirtualNetwork"
 const apiVersion = "2023-05-01"
 
 open class VirtualNetworkResolvable extends formae.Resolvable {
@@ -36,7 +36,7 @@ class AddressSpace {
     type = module.type
     identifier = "id"
     apiVersion = module.apiVersion
-    parent = "Azure::Resources::ResourceGroup"
+    parent = "AZURE::Resources::ResourceGroup"
     listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
 }
 open class VirtualNetwork extends formae.Resource {
