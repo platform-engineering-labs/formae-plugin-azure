@@ -160,7 +160,7 @@ open class VirtualMachine extends formae.Resource {
     adminUsername: String
 
     // Optional properties - authentication
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     adminPassword: String?
 
     @azure.FieldHint {}
@@ -170,7 +170,7 @@ open class VirtualMachine extends formae.Resource {
     windowsConfiguration: WindowsConfiguration?
 
     // Optional properties - other
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     computerName: String?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }

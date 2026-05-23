@@ -188,11 +188,11 @@ open class ManagedCluster extends formae.Resource {
     sku: ManagedClusterSKU
 
     // Identity configuration
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { required = true; createOnly = true }
     identity: ManagedClusterIdentity
 
     // DNS prefix for the cluster
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     dnsPrefix: String?
 
     // Agent pool profiles
@@ -204,7 +204,7 @@ open class ManagedCluster extends formae.Resource {
     linuxProfile: LinuxProfile?
 
     // Network profile
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     networkProfile: NetworkProfile?
 
     // AAD profile
@@ -230,7 +230,7 @@ open class ManagedCluster extends formae.Resource {
     @azure.FieldHint { hasProviderDefault = true }
     currentKubernetesVersion: String?
 
-    @azure.FieldHint { hasProviderDefault = true }
+    @azure.FieldHint { hasProviderDefault = true; createOnly = true }
     nodeResourceGroup: String?
 
     hidden parent = this

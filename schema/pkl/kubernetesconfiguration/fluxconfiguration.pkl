@@ -143,11 +143,11 @@ open class FluxConfiguration extends formae.Resource {
     sourceKind: SourceKind
 
     /// Scope
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     scope: FluxScope?
 
     /// Namespace for the configuration
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     namespace: String?
 
     /// Whether to suspend reconciliation
