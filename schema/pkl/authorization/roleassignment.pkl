@@ -63,15 +63,15 @@ open class RoleAssignment extends formae.Resource {
     principalType: PrincipalType?
 
     /// Description of the role assignment
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     description: String?
 
     /// The conditions on the role assignment for ABAC
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     condition: String?
 
     /// Version of the condition syntax
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     conditionVersion: String?
 
     hidden parent = this

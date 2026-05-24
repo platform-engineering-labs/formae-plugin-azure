@@ -51,11 +51,11 @@ open class Extension extends formae.Resource {
     autoUpgradeMinorVersion: Boolean?
 
     /// Release train (e.g. "Stable", "Preview")
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     releaseTrain: String?
 
     /// Pinned version (requires autoUpgradeMinorVersion = false)
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     version: String?
 
     /// Configuration settings as key-value pairs

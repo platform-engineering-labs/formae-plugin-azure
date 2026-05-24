@@ -43,7 +43,7 @@ open class TrustedAccessRoleBinding extends formae.Resource {
     clusterName: String(length >= 1)|formae.Resolvable
 
     /// ARM resource ID of the source resource that trusted access is configured for
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { required = true; createOnly = true }
     sourceResourceId: String|formae.Resolvable
 
     /// Qualified role names (e.g. "Microsoft.MachineLearningServices/workspaces/reader")
