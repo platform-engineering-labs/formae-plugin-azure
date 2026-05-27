@@ -44,8 +44,9 @@ forma {
     administratorLogin = "sqladmin"
     administratorLoginPassword = "T3stP@ssw0rd!"
     version = "12.0"
-    // Updatable fields changed to exercise in-place UPDATE:
-    minimalTlsVersion = "1.1"
+    minimalTlsVersion = "1.2"
+    // Tag addition exercises the in-place UPDATE path. minimalTlsVersion stays at
+    // 1.2 because Azure rejects anything below 1.2 (TLS 1.0/1.1 retired Nov 2024).
     tags {
       new azure.Tag { key = "Environment"; value = "updated" }
     }
