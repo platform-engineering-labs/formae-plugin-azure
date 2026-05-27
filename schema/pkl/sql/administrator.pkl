@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.administrator
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::ServerAzureADAdministrator"
+const apiVersion = "2021-11-01"
+
+open class AdministratorResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AdministratorResolvable = (this) {
+        property = "id"
+    }
+    hidden login: AdministratorResolvable = (this) {
+        property = "login"
+    }
+    hidden sid: AdministratorResolvable = (this) {
+        property = "sid"
+    }
+    hidden tenantId: AdministratorResolvable = (this) {
+        property = "tenantId"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Sql::Server"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+}
+open class Administrator extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: String(length >= 1)|formae.Resolvable
+
+    // Login name of the AAD administrator (UPN, group name, or app display name).
+    @azure.FieldHint { required = true }
+    login: String(length >= 1)
+
+    // Object (principal) ID of the AAD administrator — bindable from a
+    // user-assigned identity's principalId.
+    @azure.FieldHint { required = true }
+    sid: (String|formae.Resolvable)
+
+    // Tenant ID of the AAD administrator — bindable from a user-assigned
+    // identity's tenantId.
+    @azure.FieldHint {}
+    tenantId: (String|formae.Resolvable)?
+
+    // administratorType is fixed to "ActiveDirectory"; surfaced as a
+    // provider-default output rather than a user-supplied field.
+    @azure.FieldHint { hasProviderDefault = true }
+    administratorType: String?
+
+    hidden parent = this
+
+    hidden res: AdministratorResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

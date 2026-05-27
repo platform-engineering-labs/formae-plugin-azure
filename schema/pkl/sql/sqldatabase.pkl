@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.sqldatabase
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::Database"
+const apiVersion = "2021-11-01"
+
+open class DatabaseResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatabaseResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatabaseResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// SKU (service tier) for the database, e.g. name="S0", tier="Standard".
+class SKU {
+    /// The name of the SKU, typically a letter + number code (e.g. "S0", "P1").
+    name: String
+
+    /// The tier or edition of the SKU (e.g. "Basic", "Standard", "Premium").
+    tier: String?
+
+    /// Capacity (DTUs or vCores) of the SKU.
+    capacity: Int?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Sql::Server"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+}
+open class Database extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint {}
+    sku: SKU?
+
+    @azure.FieldHint { createOnly = true }
+    collation: String?
+
+    @azure.FieldHint {}
+    maxSizeBytes: Int?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    status: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    databaseId: String?
+
+    hidden parent = this
+
+    hidden res: DatabaseResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
