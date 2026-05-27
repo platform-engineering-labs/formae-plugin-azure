@@ -24,6 +24,12 @@ open class VirtualMachineResolvable extends formae.Resolvable {
     hidden privateIPAddress: VirtualMachineResolvable = (this) {
         property = "privateIPAddress"
     }
+    hidden provisioningState: VirtualMachineResolvable = (this) {
+        property = "provisioningState"
+    }
+    hidden vmId: VirtualMachineResolvable = (this) {
+        property = "vmId"
+    }
 }
 
 /// OS disk create option
@@ -175,6 +181,13 @@ open class VirtualMachine extends formae.Resource {
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
+
+    // Read-only outputs surfaced by the provider.
+    @azure.FieldHint { hasProviderDefault = true }
+    provisioningState: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    vmId: String?
 
     hidden parent = this
 

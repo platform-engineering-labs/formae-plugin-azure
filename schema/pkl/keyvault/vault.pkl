@@ -169,6 +169,10 @@ open class Vault extends formae.Resource {
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
+    // Read-only output surfaced by the provider.
+    @azure.FieldHint { hasProviderDefault = true }
+    vaultUri: String?
+
     hidden parent = this
 
     hidden res: VaultResolvable = new {
