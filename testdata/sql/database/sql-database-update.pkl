@@ -57,9 +57,10 @@ forma {
     resourceGroupName = rg.res.name
     serverName = srv.res.name
     collation = "SQL_Latin1_General_CP1_CI_AS"
-    // Scale up the SKU tier to exercise the Update path.
+    // Scale up DTU capacity (10 -> 20, i.e. S0 -> S1) to exercise the Update
+    // path. name stays "Standard": Azure returns the tier name, not "S1".
     sku = new database.SKU {
-      name = "S1"
+      name = "Standard"
       tier = "Standard"
       capacity = 20
     }

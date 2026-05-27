@@ -57,8 +57,10 @@ forma {
     resourceGroupName = rg.res.name
     serverName = srv.res.name
     collation = "SQL_Latin1_General_CP1_CI_AS"
+    // Azure normalizes a DTU service objective to its tier name in the SKU it
+    // returns, so name is "Standard" (capacity distinguishes S0=10 from S1=20).
     sku = new database.SKU {
-      name = "S0"
+      name = "Standard"
       tier = "Standard"
       capacity = 10
     }

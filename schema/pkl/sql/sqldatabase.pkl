@@ -62,7 +62,7 @@ open class Database extends formae.Resource {
     @azure.FieldHint { createOnly = true }
     collation: String?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { hasProviderDefault = true }
     maxSizeBytes: Int?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
