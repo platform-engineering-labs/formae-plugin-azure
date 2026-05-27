@@ -65,8 +65,10 @@ forma {
     name = "fpsdtvmss\(testRunID)"
     location = "eastus"
     resourceGroupName = rg.res.name
+    // 1-vCPU size keeps the scale-out footprint small (1 -> 2 instances = 2 vCPUs
+    // total) so the test survives the shared 10-core regional quota in eastus.
     sku = new virtualmachinescaleset.VMSSSku {
-      name = "Standard_D2s_v4"
+      name = "Standard_B1s"
       capacity = 1
       tier = "Standard"
     }

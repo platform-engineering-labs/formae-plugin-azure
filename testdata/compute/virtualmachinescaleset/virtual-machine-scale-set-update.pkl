@@ -66,8 +66,9 @@ forma {
     location = "eastus"
     resourceGroupName = rg.res.name
     sku = new virtualmachinescaleset.VMSSSku {
-      name = "Standard_D2s_v4"
-      // Update: scale out from 1 to 2 instances (uses 4 vCPUs total — within 10 quota)
+      name = "Standard_B1s"
+      // Update: scale out 1 -> 2 instances (2 vCPUs total — small footprint for the
+      // shared 10-core regional quota in eastus).
       capacity = 2
       tier = "Standard"
     }
