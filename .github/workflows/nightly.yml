@@ -119,6 +119,7 @@ jobs:
           - storage-account
           - registry
           - vault
+          - sql-server
           # flexible-server and firewall-rule excluded from nightly due to formae core
           # discovery persistence bug (discovered resources not appearing in inventory).
           # CRUD tests still run via test-integration.

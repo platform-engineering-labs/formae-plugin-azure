@@ -1,0 +1,137 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.server
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::Server"
+const apiVersion = "2021-11-01"
+
+open class ServerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ServerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ServerResolvable = (this) {
+        property = "name"
+    }
+    hidden fullyQualifiedDomainName: ServerResolvable = (this) {
+        property = "fullyQualifiedDomainName"
+    }
+}
+
+/// Azure SQL server version (logical server is always 12.0)
+typealias ServerVersion = "12.0"
+
+/// Minimal TLS version accepted by the server
+typealias MinimalTlsVersion = "1.0"|"1.1"|"1.2"
+
+/// Public network access setting
+typealias PublicNetworkAccess = "Enabled"|"Disabled"
+
+/// Principal type of the AAD administrator
+typealias PrincipalType = "User"|"Group"|"Application"
+
+/// Managed identity type for the server
+typealias IdentityType = "None"|"SystemAssigned"|"UserAssigned"|"SystemAssigned,UserAssigned"
+
+/// Azure Active Directory administrator configuration. Setting this (with
+/// azureADOnlyAuthentication) is what enables AAD / workload-identity logins.
+class Administrators {
+    /// Login name of the AAD administrator (UPN, group name, or app display name)
+    login: String
+
+    /// Object (principal) ID of the AAD administrator — bindable from a
+    /// user-assigned identity's principalId.
+    sid: (String|formae.Resolvable)
+
+    /// Tenant ID of the AAD administrator — bindable from a user-assigned
+    /// identity's tenantId.
+    tenantId: (String|formae.Resolvable)?
+
+    /// Principal type of the administrator
+    principalType: PrincipalType?
+
+    /// When true, only AAD authentication is allowed (SQL auth disabled)
+    azureADOnlyAuthentication: Boolean?
+}
+
+/// Managed identity configuration for the server
+class Identity {
+    /// Identity type
+    type: IdentityType
+
+    /// Resource IDs of user-assigned identities to attach to the server
+    userAssignedIdentityIds: Listing<(String|formae.Resolvable)>?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Server extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex("^[a-z0-9]+(-[a-z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    // SQL administrator (required for SQL auth; may be omitted for AAD-only servers)
+    @azure.FieldHint { createOnly = true }
+    administratorLogin: String(length >= 1)?
+
+    @azure.FieldHint {}
+    administratorLoginPassword: String(length >= 8)?
+
+    @azure.FieldHint { createOnly = true }
+    version: ServerVersion?
+
+    // Optional / updatable properties
+    @azure.FieldHint {}
+    minimalTlsVersion: MinimalTlsVersion?
+
+    // Azure always returns this (defaults to "Enabled") even when unset, so it
+    // must be a provider-default output or Verify/Extract flag it as unexpected.
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: PublicNetworkAccess?
+
+    @azure.FieldHint {}
+    administrators: Administrators?
+
+    @azure.FieldHint {}
+    identity: Identity?
+
+    @azure.FieldHint {}
+    primaryUserAssignedIdentityId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    fullyQualifiedDomainName: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    state: String?
+
+    hidden parent = this
+
+    hidden res: ServerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
