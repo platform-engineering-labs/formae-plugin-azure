@@ -120,6 +120,12 @@ jobs:
           - registry
           - vault
           - sql-server
+          - sql-database
+          # sql-firewall-rule excluded from nightly due to the same formae core
+          # discovery persistence bug as flexible-server/firewall-rule below
+          # (discovered resources not appearing in inventory). CRUD validated locally.
+          # sql-ad-administrator excluded from nightly: needs a real Azure AD
+          # principal (sid/tenantId); placeholder fixtures fail provisioning.
           # flexible-server and firewall-rule excluded from nightly due to formae core
           # discovery persistence bug (discovered resources not appearing in inventory).
           # CRUD tests still run via test-integration.

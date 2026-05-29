@@ -55,10 +55,12 @@ open class BlobContainer extends formae.Resource {
     /// Default the container to use this encryption scope for all writes.
     /// Only set when the storage account has encryption scopes configured —
     /// ARM rejects sending `denyEncryptionScopeOverride` without this field.
+    @azure.FieldHint { hasProviderDefault = true }
     defaultEncryptionScope: String?
 
     /// Block override of the encryption scope from the container default.
     /// Coupled with `defaultEncryptionScope`; only meaningful when that field is set.
+    @azure.FieldHint { hasProviderDefault = true }
     denyEncryptionScopeOverride: Boolean?
 
     hidden parent = this
