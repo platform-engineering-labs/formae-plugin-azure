@@ -1,0 +1,38 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+projectName = "azure-workload-identity"
+
+stackName = "azure-workload-identity-eastus"
+
+location = "eastus"
+
+subscriptionId = read?("env:AZURE_SUBSCRIPTION_ID") ?? "your-subscription-id"
+
+/// Kubernetes namespace and ServiceAccount that the FederatedIdentityCredential
+/// will trust. The SA must exist in-cluster with annotation
+/// `azure.workload.identity/client-id: <UAI clientId>` for the wiring to actually
+/// authenticate workloads.
+serviceAccountNamespace = "default"
+serviceAccountName = "workload-identity-sa"
+
+/// Reader is enough to demonstrate the binding; swap in a stronger role as needed.
+readerRoleId = "acdd72a7-3385-48ef-bd42-f606fba81ae7"
+
+stack: formae.Stack = new {
+    label = stackName
+    description = "AKS workload-identity federation: UAI -> AKS OIDC -> FederatedIdentityCredential -> RoleAssignment"
+}
+
+target: formae.Target = new formae.Target {
+    label = "workload-identity-target-azure"
+    config = new azure.Config {
+        subscriptionId = module.subscriptionId
+    }
+}

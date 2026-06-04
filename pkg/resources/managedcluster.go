@@ -254,6 +254,16 @@ func serializeManagedClusterProperties(result armcontainerservice.ManagedCluster
 				props["aadProfile"] = aadProfile
 			}
 		}
+
+		// OIDC issuer: echo enabled as input, surface issuerURL at top-level for resolvables.
+		if oidc := result.Properties.OidcIssuerProfile; oidc != nil {
+			if oidc.Enabled != nil {
+				props["oidcIssuerProfile"] = map[string]any{"enabled": *oidc.Enabled}
+			}
+			if oidc.IssuerURL != nil {
+				props["oidcIssuerUrl"] = *oidc.IssuerURL
+			}
+		}
 	}
 
 	// Tags
@@ -427,6 +437,15 @@ func (mc *ManagedCluster) Create(ctx context.Context, request *resource.CreateRe
 			aadProfile.TenantID = to.Ptr(tenantID)
 		}
 		params.Properties.AADProfile = aadProfile
+	}
+
+	// Parse OIDC issuer profile
+	if oidcRaw, ok := props["oidcIssuerProfile"].(map[string]any); ok {
+		oidc := &armcontainerservice.ManagedClusterOIDCIssuerProfile{}
+		if enabled, ok := oidcRaw["enabled"].(bool); ok {
+			oidc.Enabled = to.Ptr(enabled)
+		}
+		params.Properties.OidcIssuerProfile = oidc
 	}
 
 	// Parse Linux profile

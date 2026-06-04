@@ -1,0 +1,98 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rgmod
+import "@azure/managedidentity/userassignedidentity.pkl" as uaimod
+import "@azure/managedidentity/federatedidentitycredential.pkl" as ficmod
+import "@azure/containerservice/managedcluster.pkl" as aksmod
+import "@azure/authorization/roleassignment.pkl" as ramod
+
+import "./vars.pkl"
+
+description {
+    text = """
+        AKS workload-identity federation end-to-end:
+
+          ResourceGroup
+            ├─ UserAssignedIdentity         (exposes principalId, clientId, tenantId)
+            ├─ ManagedCluster (AKS)         (oidcIssuerProfile.enabled = true, exposes oidcIssuerUrl)
+            ├─ FederatedIdentityCredential  (trusts AKS issuer for a K8s ServiceAccount subject)
+            └─ RoleAssignment               (binds the UAI's principalId on the resource group)
+
+        After apply, the cluster's pods can authenticate as the UAI by running under
+        the ServiceAccount '\(vars.serviceAccountNamespace)/\(vars.serviceAccountName)'
+        annotated with the UAI's clientId.
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+
+    resourceGroup
+    uai
+    cluster
+    federatedCredential
+    readerOnRG
+}
+
+local resourceGroup = new rgmod.ResourceGroup {
+    label = "wi-rg"
+    name = "\(vars.projectName)-rg"
+    location = vars.location
+}
+
+local uai = new uaimod.UserAssignedIdentity {
+    label = "wi-uai"
+    name = "\(vars.projectName)-uai"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+}
+
+local cluster = new aksmod.ManagedCluster {
+    label = "wi-aks"
+    name = "\(vars.projectName)-aks"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    sku = new aksmod.ManagedClusterSKU { name = "Base"; tier = "Free" }
+    identity = new aksmod.ManagedClusterIdentity { type = "SystemAssigned" }
+    dnsPrefix = "\(vars.projectName)-aks"
+    agentPoolProfiles = new Listing {
+        new aksmod.AgentPoolProfile {
+            name = "system"
+            count = 1
+            vmSize = "Standard_D2s_v4"
+            mode = "System"
+            osType = "Linux"
+        }
+    }
+    // Enabling the OIDC issuer surfaces `oidcIssuerUrl`, which the
+    // FederatedIdentityCredential below references as its trusted issuer.
+    oidcIssuerProfile = new aksmod.OIDCIssuerProfile { enabled = true }
+}
+
+local federatedCredential = new ficmod.FederatedIdentityCredential {
+    label = "wi-fic"
+    name = "\(vars.projectName)-fic"
+    resourceGroupName = resourceGroup.res.name
+    userAssignedIdentityName = uai.res.name
+    issuer = cluster.res.oidcIssuerUrl
+    subject = "system:serviceaccount:\(vars.serviceAccountNamespace):\(vars.serviceAccountName)"
+    audiences = new Listing { "api://AzureADTokenExchange" }
+}
+
+local readerOnRG = new ramod.RoleAssignment {
+    label = "wi-reader-on-rg"
+    scope = resourceGroup.res.id
+    principalId = uai.res.principalId
+    principalType = "ServicePrincipal"
+    roleDefinitionId = "/subscriptions/\(vars.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/\(vars.readerRoleId)"
+}

@@ -39,6 +39,9 @@ open class ManagedClusterResolvable extends formae.Resolvable {
     hidden nodeResourceGroup: ManagedClusterResolvable = (this) {
         property = "nodeResourceGroup"
     }
+    hidden oidcIssuerUrl: ManagedClusterResolvable = (this) {
+        property = "oidcIssuerUrl"
+    }
 }
 
 /// SKU name for the managed cluster
@@ -149,6 +152,13 @@ class NetworkProfile {
     loadBalancerSku: String?
 }
 
+/// OIDC issuer profile — when enabled, AKS exposes a public OIDC issuer URL
+/// that workload-identity FederatedIdentityCredentials can trust as a subject.
+class OIDCIssuerProfile {
+    /// Enable the OIDC issuer for this cluster
+    enabled: Boolean?
+}
+
 /// Azure Active Directory profile
 class AADProfile {
     /// Enable managed AAD
@@ -211,6 +221,10 @@ open class ManagedCluster extends formae.Resource {
     @azure.FieldHint {}
     aadProfile: AADProfile?
 
+    // OIDC issuer (enable to surface oidcIssuerUrl for workload-identity federation)
+    @azure.FieldHint {}
+    oidcIssuerProfile: OIDCIssuerProfile?
+
     // Kubernetes version (optional, Azure will use default if not specified)
     @azure.FieldHint {}
     kubernetesVersion: String?
@@ -232,6 +246,11 @@ open class ManagedCluster extends formae.Resource {
 
     @azure.FieldHint { hasProviderDefault = true; createOnly = true }
     nodeResourceGroup: String?
+
+    // OIDC issuer URL surfaced when oidcIssuerProfile.enabled is true; trusted
+    // as the issuer of FederatedIdentityCredential subjects.
+    @azure.FieldHint { hasProviderDefault = true }
+    oidcIssuerUrl: String?
 
     hidden parent = this
 

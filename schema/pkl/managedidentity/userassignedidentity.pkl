@@ -27,6 +27,9 @@ open class UserAssignedIdentityResolvable extends formae.Resolvable {
     hidden clientId: UserAssignedIdentityResolvable = (this) {
         property = "clientId"
     }
+    hidden tenantId: UserAssignedIdentityResolvable = (this) {
+        property = "tenantId"
+    }
 }
 
 @azure.ResourceHint {
@@ -51,6 +54,10 @@ open class UserAssignedIdentity extends formae.Resource {
     // Optional properties
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
+
+    // Read-only output surfaced by Azure (the identity's tenant).
+    @azure.FieldHint { hasProviderDefault = true }
+    tenantId: String?
 
     hidden parent = this
 
