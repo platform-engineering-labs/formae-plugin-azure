@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl" as rg
+import "@azure/keyvault/vault.pkl" as kv
+import "@azure/keyvault/secret.pkl" as secret
+
+import "./vars.pkl"
+
+description {
+    text = """
+        Key Vault Secret (issue #67).
+
+        Declares a database admin password as an Azure::KeyVault::Secret in the
+        same stack as the vault that holds it, instead of dropping out to
+        `az keyvault secret set`. Downstream resources and applications then read
+        the password from the vault at runtime.
+        """
+    confirm = true
+}
+
+forma {
+    vars.stack
+    vars.target
+
+    resourceGroup
+    vault
+    adminPasswordSecret
+}
+
+local resourceGroup = new rg.ResourceGroup {
+    label = "kv-secret-rg"
+    name = "\(vars.projectName)-rg"
+    location = vars.location
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "managed-by"; value = "formae" }
+    }
+}
+
+local vault = new kv.Vault {
+    label = "secret-vault"
+    // Key Vault names are globally unique and 3-24 chars; adjust for your tenant.
+    name = "\(vars.projectName)-kv"
+    location = vars.location
+    resourceGroupName = resourceGroup.res.name
+    tenantId = vars.tenantId
+    sku = new kv.VaultSKU { family = "A"; name = "standard" }
+    enableSoftDelete = true
+    softDeleteRetentionInDays = 7
+    // RBAC mode so a "Key Vault Secrets Officer" role can write secrets here; access-policy mode would 403. See README.
+    enableRbacAuthorization = true
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "managed-by"; value = "formae" }
+    }
+}
+
+// The Secret parents off the vault via vaultUri; value is write-only.
+local adminPasswordSecret = new secret.Secret {
+    label = "pg-admin-password"
+    name = "pg-admin-password"
+    vaultUri = vault.res.vaultUri
+    value = formae.value(vars.adminPassword).opaque.setOnce
+    contentType = "text/plain"
+    tags {
+        new azure.Tag { key = "project"; value = vars.projectName }
+        new azure.Tag { key = "managed-by"; value = "formae" }
+    }
+}

@@ -326,6 +326,11 @@ func (c *Client) Pipeline() runtime.Pipeline {
 	return c.armClient.Pipeline()
 }
 
+// Credential exposes the token credential for building per-endpoint data-plane clients (e.g. azsecrets).
+func (c *Client) Credential() azcore.TokenCredential {
+	return c.credential
+}
+
 // ResumeDeleteResourceGroupPoller reconstructs a delete poller from a resume token.
 // This allows tracking the status of a long-running delete operation across process restarts.
 func (c *Client) ResumeDeleteResourceGroupPoller(token string) (*runtime.Poller[armresources.ResourceGroupsClientDeleteResponse], error) {

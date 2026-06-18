@@ -1,0 +1,33 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+projectName = "azure-kv-secret"
+
+stackName = "azure-kv-secret-eastus"
+
+location = "eastus"
+
+subscriptionId = read?("env:AZURE_SUBSCRIPTION_ID") ?? "your-subscription-id"
+
+tenantId = read?("env:AZURE_TENANT_ID") ?? "your-tenant-id"
+
+// The secret value (a database admin password), stored in Key Vault.
+adminPassword = read?("env:PG_ADMIN_PASSWORD") ?? "ChangeMe123!"
+
+stack: formae.Stack = new {
+    label = stackName
+    description = "Key Vault Secret (issue #67)"
+}
+
+target: formae.Target = new formae.Target {
+    label = "kv-secret-target-azure"
+    config = new azure.Config {
+        subscriptionId = module.subscriptionId
+    }
+}
