@@ -217,188 +217,182 @@ func serializeKeyVaultProperties(result armkeyvault.Vault, rgName, vaultName str
 	return json.Marshal(props)
 }
 
-func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+// keyVaultProps mirrors schema/pkl/keyvault/vault.pkl; pointer fields stay nil when absent.
+type keyVaultProps struct {
+	ResourceGroupName            string                 `json:"resourceGroupName"`
+	Location                     string                 `json:"location"`
+	Name                         string                 `json:"name"`
+	TenantID                     string                 `json:"tenantId"`
+	SKU                          *keyVaultSKU           `json:"sku"`
+	EnabledForDeployment         *bool                  `json:"enabledForDeployment"`
+	EnabledForDiskEncryption     *bool                  `json:"enabledForDiskEncryption"`
+	EnabledForTemplateDeployment *bool                  `json:"enabledForTemplateDeployment"`
+	EnableSoftDelete             *bool                  `json:"enableSoftDelete"`
+	SoftDeleteRetentionInDays    *int32                 `json:"softDeleteRetentionInDays"`
+	EnablePurgeProtection        *bool                  `json:"enablePurgeProtection"`
+	EnableRbacAuthorization      *bool                  `json:"enableRbacAuthorization"`
+	AccessPolicies               []keyVaultAccessPolicy `json:"accessPolicies"`
+	NetworkACLs                  *keyVaultNetworkACLs   `json:"networkAcls"`
+}
 
-	// Parse properties JSON
-	var props map[string]any
+type keyVaultSKU struct {
+	Name string `json:"name"`
+}
+
+type keyVaultAccessPolicy struct {
+	TenantID    *string              `json:"tenantId"`
+	ObjectID    *string              `json:"objectId"`
+	Permissions *keyVaultPermissions `json:"permissions"`
+}
+
+type keyVaultPermissions struct {
+	Keys         []string `json:"keys"`
+	Secrets      []string `json:"secrets"`
+	Certificates []string `json:"certificates"`
+	Storage      []string `json:"storage"`
+}
+
+type keyVaultNetworkACLs struct {
+	DefaultAction       *string            `json:"defaultAction"`
+	Bypass              *string            `json:"bypass"`
+	IPRules             []keyVaultIPRule   `json:"ipRules"`
+	VirtualNetworkRules []keyVaultVNetRule `json:"virtualNetworkRules"`
+}
+
+type keyVaultIPRule struct {
+	Value *string `json:"value"`
+}
+
+type keyVaultVNetRule struct {
+	ID *string `json:"id"`
+}
+
+// toVaultParams validates the fields Azure requires and builds the SDK params; tags are applied by the caller.
+func (p keyVaultProps) toVaultParams() (armkeyvault.VaultCreateOrUpdateParameters, error) {
+	var params armkeyvault.VaultCreateOrUpdateParameters
+
+	if p.Location == "" {
+		return params, fmt.Errorf("location is required")
+	}
+	if p.TenantID == "" {
+		return params, fmt.Errorf("tenantId is required")
+	}
+	if p.SKU == nil {
+		return params, fmt.Errorf("sku is required")
+	}
+	if p.SKU.Name == "" {
+		return params, fmt.Errorf("sku.name is required")
+	}
+
+	params = armkeyvault.VaultCreateOrUpdateParameters{
+		Location: stringPtr(p.Location),
+		Properties: &armkeyvault.VaultProperties{
+			TenantID: stringPtr(p.TenantID),
+			SKU: &armkeyvault.SKU{
+				Family: to.Ptr(armkeyvault.SKUFamilyA),
+				Name:   to.Ptr(armkeyvault.SKUName(p.SKU.Name)),
+			},
+			EnabledForDeployment:         p.EnabledForDeployment,
+			EnabledForDiskEncryption:     p.EnabledForDiskEncryption,
+			EnabledForTemplateDeployment: p.EnabledForTemplateDeployment,
+			EnableSoftDelete:             p.EnableSoftDelete,
+			SoftDeleteRetentionInDays:    p.SoftDeleteRetentionInDays,
+			EnablePurgeProtection:        p.EnablePurgeProtection,
+			EnableRbacAuthorization:      p.EnableRbacAuthorization,
+			AccessPolicies:               p.accessPoliciesToAzure(),
+			NetworkACLs:                  p.networkACLsToAzure(),
+		},
+	}
+	return params, nil
+}
+
+// accessPoliciesToAzure always returns a non-nil slice: Azure requires accessPolicies to be present.
+func (p keyVaultProps) accessPoliciesToAzure() []*armkeyvault.AccessPolicyEntry {
+	entries := make([]*armkeyvault.AccessPolicyEntry, 0, len(p.AccessPolicies))
+	for _, ap := range p.AccessPolicies {
+		entry := &armkeyvault.AccessPolicyEntry{
+			TenantID: ap.TenantID,
+			ObjectID: ap.ObjectID,
+		}
+		if ap.Permissions != nil {
+			entry.Permissions = &armkeyvault.Permissions{
+				Keys:         keyVaultPermPtrs[armkeyvault.KeyPermissions](ap.Permissions.Keys),
+				Secrets:      keyVaultPermPtrs[armkeyvault.SecretPermissions](ap.Permissions.Secrets),
+				Certificates: keyVaultPermPtrs[armkeyvault.CertificatePermissions](ap.Permissions.Certificates),
+				Storage:      keyVaultPermPtrs[armkeyvault.StoragePermissions](ap.Permissions.Storage),
+			}
+		}
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+func (p keyVaultProps) networkACLsToAzure() *armkeyvault.NetworkRuleSet {
+	if p.NetworkACLs == nil {
+		return nil
+	}
+	acls := &armkeyvault.NetworkRuleSet{}
+	if p.NetworkACLs.DefaultAction != nil {
+		action := armkeyvault.NetworkRuleAction(*p.NetworkACLs.DefaultAction)
+		acls.DefaultAction = &action
+	}
+	if p.NetworkACLs.Bypass != nil {
+		bypass := armkeyvault.NetworkRuleBypassOptions(*p.NetworkACLs.Bypass)
+		acls.Bypass = &bypass
+	}
+	if p.NetworkACLs.IPRules != nil {
+		ipRules := make([]*armkeyvault.IPRule, 0, len(p.NetworkACLs.IPRules))
+		for _, rule := range p.NetworkACLs.IPRules {
+			if rule.Value != nil {
+				ipRules = append(ipRules, &armkeyvault.IPRule{Value: rule.Value})
+			}
+		}
+		acls.IPRules = ipRules
+	}
+	if p.NetworkACLs.VirtualNetworkRules != nil {
+		vnetRules := make([]*armkeyvault.VirtualNetworkRule, 0, len(p.NetworkACLs.VirtualNetworkRules))
+		for _, rule := range p.NetworkACLs.VirtualNetworkRules {
+			if rule.ID != nil {
+				vnetRules = append(vnetRules, &armkeyvault.VirtualNetworkRule{ID: rule.ID})
+			}
+		}
+		acls.VirtualNetworkRules = vnetRules
+	}
+	return acls
+}
+
+// keyVaultPermPtrs maps a permission list to the SDK pointer slice; nil stays nil (category omitted).
+func keyVaultPermPtrs[T ~string](values []string) []*T {
+	if values == nil {
+		return nil
+	}
+	out := make([]*T, 0, len(values))
+	for _, v := range values {
+		perm := T(v)
+		out = append(out, &perm)
+	}
+	return out
+}
+
+func (kv *KeyVault) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
+	var props keyVaultProps
 	if err := json.Unmarshal(request.Properties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
 
-	// Extract resourceGroupName (required)
-	rgName, ok := props["resourceGroupName"].(string)
-	if !ok || rgName == "" {
+	if props.ResourceGroupName == "" {
 		return nil, fmt.Errorf("resourceGroupName is required")
 	}
+	rgName := props.ResourceGroupName
 
-	// Extract location (required)
-	location, ok := props["location"].(string)
-	if !ok || location == "" {
-		return nil, fmt.Errorf("location is required")
-	}
-
-	// Extract vault name from properties, fall back to label
-	vaultName, ok := props["name"].(string)
-	if !ok || vaultName == "" {
+	vaultName := props.Name
+	if vaultName == "" {
 		vaultName = request.Label
 	}
 
-	// Extract tenantId (required)
-	tenantId, ok := props["tenantId"].(string)
-	if !ok || tenantId == "" {
-		return nil, fmt.Errorf("tenantId is required")
-	}
-
-	// Extract SKU (required)
-	skuMap, ok := props["sku"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("sku is required")
-	}
-	skuName, ok := skuMap["name"].(string)
-	if !ok || skuName == "" {
-		return nil, fmt.Errorf("sku.name is required")
-	}
-
-	// Build Vault parameters
-	params := armkeyvault.VaultCreateOrUpdateParameters{
-		Location: stringPtr(location),
-		Properties: &armkeyvault.VaultProperties{
-			TenantID: stringPtr(tenantId),
-			SKU: &armkeyvault.SKU{
-				Family: to.Ptr(armkeyvault.SKUFamilyA),
-				Name:   to.Ptr(armkeyvault.SKUName(skuName)),
-			},
-		},
-	}
-
-	// Add optional properties
-	if enabledForDeployment, ok := props["enabledForDeployment"].(bool); ok {
-		params.Properties.EnabledForDeployment = to.Ptr(enabledForDeployment)
-	}
-
-	if enabledForDiskEncryption, ok := props["enabledForDiskEncryption"].(bool); ok {
-		params.Properties.EnabledForDiskEncryption = to.Ptr(enabledForDiskEncryption)
-	}
-
-	if enabledForTemplateDeployment, ok := props["enabledForTemplateDeployment"].(bool); ok {
-		params.Properties.EnabledForTemplateDeployment = to.Ptr(enabledForTemplateDeployment)
-	}
-
-	if enableSoftDelete, ok := props["enableSoftDelete"].(bool); ok {
-		params.Properties.EnableSoftDelete = to.Ptr(enableSoftDelete)
-	}
-
-	if softDeleteRetentionInDays, ok := props["softDeleteRetentionInDays"].(float64); ok {
-		params.Properties.SoftDeleteRetentionInDays = to.Ptr(int32(softDeleteRetentionInDays))
-	}
-
-	if enablePurgeProtection, ok := props["enablePurgeProtection"].(bool); ok {
-		params.Properties.EnablePurgeProtection = to.Ptr(enablePurgeProtection)
-	}
-
-	if enableRbacAuthorization, ok := props["enableRbacAuthorization"].(bool); ok {
-		params.Properties.EnableRbacAuthorization = to.Ptr(enableRbacAuthorization)
-	}
-
-	// Parse access policies (Azure requires this field, even if empty)
-	if accessPoliciesRaw, ok := props["accessPolicies"].([]any); ok {
-		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
-		for _, apRaw := range accessPoliciesRaw {
-			apMap, ok := apRaw.(map[string]any)
-			if !ok {
-				continue
-			}
-			entry := &armkeyvault.AccessPolicyEntry{}
-			if tid, ok := apMap["tenantId"].(string); ok {
-				entry.TenantID = stringPtr(tid)
-			}
-			if oid, ok := apMap["objectId"].(string); ok {
-				entry.ObjectID = stringPtr(oid)
-			}
-			if permsRaw, ok := apMap["permissions"].(map[string]any); ok {
-				entry.Permissions = &armkeyvault.Permissions{}
-				if keysRaw, ok := permsRaw["keys"].([]any); ok {
-					keys := make([]*armkeyvault.KeyPermissions, 0, len(keysRaw))
-					for _, k := range keysRaw {
-						if ks, ok := k.(string); ok {
-							perm := armkeyvault.KeyPermissions(ks)
-							keys = append(keys, &perm)
-						}
-					}
-					entry.Permissions.Keys = keys
-				}
-				if secretsRaw, ok := permsRaw["secrets"].([]any); ok {
-					secrets := make([]*armkeyvault.SecretPermissions, 0, len(secretsRaw))
-					for _, s := range secretsRaw {
-						if ss, ok := s.(string); ok {
-							perm := armkeyvault.SecretPermissions(ss)
-							secrets = append(secrets, &perm)
-						}
-					}
-					entry.Permissions.Secrets = secrets
-				}
-				if certsRaw, ok := permsRaw["certificates"].([]any); ok {
-					certs := make([]*armkeyvault.CertificatePermissions, 0, len(certsRaw))
-					for _, c := range certsRaw {
-						if cs, ok := c.(string); ok {
-							perm := armkeyvault.CertificatePermissions(cs)
-							certs = append(certs, &perm)
-						}
-					}
-					entry.Permissions.Certificates = certs
-				}
-				if storageRaw, ok := permsRaw["storage"].([]any); ok {
-					storage := make([]*armkeyvault.StoragePermissions, 0, len(storageRaw))
-					for _, s := range storageRaw {
-						if ss, ok := s.(string); ok {
-							perm := armkeyvault.StoragePermissions(ss)
-							storage = append(storage, &perm)
-						}
-					}
-					entry.Permissions.Storage = storage
-				}
-			}
-			accessPolicies = append(accessPolicies, entry)
-		}
-		params.Properties.AccessPolicies = accessPolicies
-	} else {
-		// Azure API requires accessPolicies to be present, default to empty
-		params.Properties.AccessPolicies = []*armkeyvault.AccessPolicyEntry{}
-	}
-
-	// Parse network ACLs
-	if networkAclsRaw, ok := props["networkAcls"].(map[string]any); ok {
-		params.Properties.NetworkACLs = &armkeyvault.NetworkRuleSet{}
-		if defaultAction, ok := networkAclsRaw["defaultAction"].(string); ok {
-			action := armkeyvault.NetworkRuleAction(defaultAction)
-			params.Properties.NetworkACLs.DefaultAction = &action
-		}
-		if bypass, ok := networkAclsRaw["bypass"].(string); ok {
-			bypassVal := armkeyvault.NetworkRuleBypassOptions(bypass)
-			params.Properties.NetworkACLs.Bypass = &bypassVal
-		}
-		if ipRulesRaw, ok := networkAclsRaw["ipRules"].([]any); ok {
-			ipRules := make([]*armkeyvault.IPRule, 0, len(ipRulesRaw))
-			for _, rule := range ipRulesRaw {
-				if ruleMap, ok := rule.(map[string]any); ok {
-					if value, ok := ruleMap["value"].(string); ok {
-						ipRules = append(ipRules, &armkeyvault.IPRule{Value: stringPtr(value)})
-					}
-				}
-			}
-			params.Properties.NetworkACLs.IPRules = ipRules
-		}
-		if vnetRulesRaw, ok := networkAclsRaw["virtualNetworkRules"].([]any); ok {
-			vnetRules := make([]*armkeyvault.VirtualNetworkRule, 0, len(vnetRulesRaw))
-			for _, rule := range vnetRulesRaw {
-				if ruleMap, ok := rule.(map[string]any); ok {
-					if id, ok := ruleMap["id"].(string); ok {
-						vnetRules = append(vnetRules, &armkeyvault.VirtualNetworkRule{ID: stringPtr(id)})
-					}
-				}
-			}
-			params.Properties.NetworkACLs.VirtualNetworkRules = vnetRules
-		}
+	params, err := props.toVaultParams()
+	if err != nil {
+		return nil, err
 	}
 
 	// Add tags if present
@@ -518,174 +512,14 @@ func (kv *KeyVault) Update(ctx context.Context, request *resource.UpdateRequest)
 		return nil, err
 	}
 
-	// Parse properties JSON
-	var props map[string]any
+	var props keyVaultProps
 	if err := json.Unmarshal(request.DesiredProperties, &props); err != nil {
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
 
-	// Extract location (required)
-	location, ok := props["location"].(string)
-	if !ok || location == "" {
-		return nil, fmt.Errorf("location is required")
-	}
-
-	// Extract tenantId (required)
-	tenantId, ok := props["tenantId"].(string)
-	if !ok || tenantId == "" {
-		return nil, fmt.Errorf("tenantId is required")
-	}
-
-	// Extract SKU (required)
-	skuMap, ok := props["sku"].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("sku is required")
-	}
-	skuName, ok := skuMap["name"].(string)
-	if !ok || skuName == "" {
-		return nil, fmt.Errorf("sku.name is required")
-	}
-
-	// Build Vault parameters
-	params := armkeyvault.VaultCreateOrUpdateParameters{
-		Location: stringPtr(location),
-		Properties: &armkeyvault.VaultProperties{
-			TenantID: stringPtr(tenantId),
-			SKU: &armkeyvault.SKU{
-				Family: to.Ptr(armkeyvault.SKUFamilyA),
-				Name:   to.Ptr(armkeyvault.SKUName(skuName)),
-			},
-		},
-	}
-
-	// Add optional properties (same as Create)
-	if enabledForDeployment, ok := props["enabledForDeployment"].(bool); ok {
-		params.Properties.EnabledForDeployment = to.Ptr(enabledForDeployment)
-	}
-
-	if enabledForDiskEncryption, ok := props["enabledForDiskEncryption"].(bool); ok {
-		params.Properties.EnabledForDiskEncryption = to.Ptr(enabledForDiskEncryption)
-	}
-
-	if enabledForTemplateDeployment, ok := props["enabledForTemplateDeployment"].(bool); ok {
-		params.Properties.EnabledForTemplateDeployment = to.Ptr(enabledForTemplateDeployment)
-	}
-
-	if enableSoftDelete, ok := props["enableSoftDelete"].(bool); ok {
-		params.Properties.EnableSoftDelete = to.Ptr(enableSoftDelete)
-	}
-
-	if softDeleteRetentionInDays, ok := props["softDeleteRetentionInDays"].(float64); ok {
-		params.Properties.SoftDeleteRetentionInDays = to.Ptr(int32(softDeleteRetentionInDays))
-	}
-
-	if enablePurgeProtection, ok := props["enablePurgeProtection"].(bool); ok {
-		params.Properties.EnablePurgeProtection = to.Ptr(enablePurgeProtection)
-	}
-
-	if enableRbacAuthorization, ok := props["enableRbacAuthorization"].(bool); ok {
-		params.Properties.EnableRbacAuthorization = to.Ptr(enableRbacAuthorization)
-	}
-
-	// Parse access policies (Azure requires this field, even if empty)
-	if accessPoliciesRaw, ok := props["accessPolicies"].([]any); ok {
-		accessPolicies := make([]*armkeyvault.AccessPolicyEntry, 0, len(accessPoliciesRaw))
-		for _, apRaw := range accessPoliciesRaw {
-			apMap, ok := apRaw.(map[string]any)
-			if !ok {
-				continue
-			}
-			entry := &armkeyvault.AccessPolicyEntry{}
-			if tid, ok := apMap["tenantId"].(string); ok {
-				entry.TenantID = stringPtr(tid)
-			}
-			if oid, ok := apMap["objectId"].(string); ok {
-				entry.ObjectID = stringPtr(oid)
-			}
-			if permsRaw, ok := apMap["permissions"].(map[string]any); ok {
-				entry.Permissions = &armkeyvault.Permissions{}
-				if keysRaw, ok := permsRaw["keys"].([]any); ok {
-					keys := make([]*armkeyvault.KeyPermissions, 0, len(keysRaw))
-					for _, k := range keysRaw {
-						if ks, ok := k.(string); ok {
-							perm := armkeyvault.KeyPermissions(ks)
-							keys = append(keys, &perm)
-						}
-					}
-					entry.Permissions.Keys = keys
-				}
-				if secretsRaw, ok := permsRaw["secrets"].([]any); ok {
-					secrets := make([]*armkeyvault.SecretPermissions, 0, len(secretsRaw))
-					for _, s := range secretsRaw {
-						if ss, ok := s.(string); ok {
-							perm := armkeyvault.SecretPermissions(ss)
-							secrets = append(secrets, &perm)
-						}
-					}
-					entry.Permissions.Secrets = secrets
-				}
-				if certsRaw, ok := permsRaw["certificates"].([]any); ok {
-					certs := make([]*armkeyvault.CertificatePermissions, 0, len(certsRaw))
-					for _, c := range certsRaw {
-						if cs, ok := c.(string); ok {
-							perm := armkeyvault.CertificatePermissions(cs)
-							certs = append(certs, &perm)
-						}
-					}
-					entry.Permissions.Certificates = certs
-				}
-				if storageRaw, ok := permsRaw["storage"].([]any); ok {
-					storage := make([]*armkeyvault.StoragePermissions, 0, len(storageRaw))
-					for _, s := range storageRaw {
-						if ss, ok := s.(string); ok {
-							perm := armkeyvault.StoragePermissions(ss)
-							storage = append(storage, &perm)
-						}
-					}
-					entry.Permissions.Storage = storage
-				}
-			}
-			accessPolicies = append(accessPolicies, entry)
-		}
-		params.Properties.AccessPolicies = accessPolicies
-	} else {
-		// Azure API requires accessPolicies to be present, default to empty
-		params.Properties.AccessPolicies = []*armkeyvault.AccessPolicyEntry{}
-	}
-
-	// Parse network ACLs (same as Create)
-	if networkAclsRaw, ok := props["networkAcls"].(map[string]any); ok {
-		params.Properties.NetworkACLs = &armkeyvault.NetworkRuleSet{}
-		if defaultAction, ok := networkAclsRaw["defaultAction"].(string); ok {
-			action := armkeyvault.NetworkRuleAction(defaultAction)
-			params.Properties.NetworkACLs.DefaultAction = &action
-		}
-		if bypass, ok := networkAclsRaw["bypass"].(string); ok {
-			bypassVal := armkeyvault.NetworkRuleBypassOptions(bypass)
-			params.Properties.NetworkACLs.Bypass = &bypassVal
-		}
-		if ipRulesRaw, ok := networkAclsRaw["ipRules"].([]any); ok {
-			ipRules := make([]*armkeyvault.IPRule, 0, len(ipRulesRaw))
-			for _, rule := range ipRulesRaw {
-				if ruleMap, ok := rule.(map[string]any); ok {
-					if value, ok := ruleMap["value"].(string); ok {
-						ipRules = append(ipRules, &armkeyvault.IPRule{Value: stringPtr(value)})
-					}
-				}
-			}
-			params.Properties.NetworkACLs.IPRules = ipRules
-		}
-		if vnetRulesRaw, ok := networkAclsRaw["virtualNetworkRules"].([]any); ok {
-			vnetRules := make([]*armkeyvault.VirtualNetworkRule, 0, len(vnetRulesRaw))
-			for _, rule := range vnetRulesRaw {
-				if ruleMap, ok := rule.(map[string]any); ok {
-					if id, ok := ruleMap["id"].(string); ok {
-						vnetRules = append(vnetRules, &armkeyvault.VirtualNetworkRule{ID: stringPtr(id)})
-					}
-				}
-			}
-			params.Properties.NetworkACLs.VirtualNetworkRules = vnetRules
-		}
+	params, err := props.toVaultParams()
+	if err != nil {
+		return nil, err
 	}
 
 	// Add tags if present
