@@ -192,28 +192,38 @@ func (s *KeyVaultSecret) Update(ctx context.Context, request *resource.UpdateReq
 		return nil, err
 	}
 
-	// value is createOnly; Update only touches metadata (contentType, tags).
-	params := azsecrets.UpdateSecretPropertiesParameters{}
-	if props.ContentType != "" {
-		params.ContentType = stringPtr(props.ContentType)
-	}
-	if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
-		params.Tags = tags
+	// core emits a /value patch op only when the value genuinely changed (never
+	// for an unchanged or setOnce-frozen value), so a value op means rotate.
+	var sec azsecrets.Secret
+	if patchSetsValue(request.PatchDocument) && props.Value != "" {
+		params := azsecrets.SetSecretParameters{Value: stringPtr(props.Value)}
+		if props.ContentType != "" {
+			params.ContentType = stringPtr(props.ContentType)
+		}
+		if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+			params.Tags = tags
+		}
+		res, err := api.SetSecret(ctx, name, params, nil)
+		if err != nil {
+			return secretUpdateFailure(request.NativeID, err), nil
+		}
+		sec = res.Secret
+	} else {
+		params := azsecrets.UpdateSecretPropertiesParameters{}
+		if props.ContentType != "" {
+			params.ContentType = stringPtr(props.ContentType)
+		}
+		if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+			params.Tags = tags
+		}
+		res, err := api.UpdateSecretProperties(ctx, name, "", params, nil)
+		if err != nil {
+			return secretUpdateFailure(request.NativeID, err), nil
+		}
+		sec = res.Secret
 	}
 
-	res, err := api.UpdateSecretProperties(ctx, name, "", params, nil)
-	if err != nil {
-		return &resource.UpdateResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusFailure,
-				NativeID:        request.NativeID,
-				ErrorCode:       operationErrorCode(err),
-			},
-		}, nil
-	}
-
-	propsJSON, err := json.Marshal(buildSecretProperties(res.Secret, vaultURL+"/", name, request.NativeID))
+	propsJSON, err := json.Marshal(buildSecretProperties(sec, vaultURL+"/", name, request.NativeID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
 	}
@@ -225,6 +235,37 @@ func (s *KeyVaultSecret) Update(ctx context.Context, request *resource.UpdateReq
 			ResourceProperties: propsJSON,
 		},
 	}, nil
+}
+
+// patchSetsValue reports whether the patch document carries an op on the
+// write-only value, which core emits only when the value actually changed.
+func patchSetsValue(patchDoc *string) bool {
+	if patchDoc == nil || *patchDoc == "" {
+		return false
+	}
+	var ops []struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(*patchDoc), &ops); err != nil {
+		return false
+	}
+	for _, op := range ops {
+		if op.Path == "/value" || strings.HasPrefix(op.Path, "/value/") {
+			return true
+		}
+	}
+	return false
+}
+
+func secretUpdateFailure(nativeID string, err error) *resource.UpdateResult {
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationUpdate,
+			OperationStatus: resource.OperationStatusFailure,
+			NativeID:        nativeID,
+			ErrorCode:       operationErrorCode(err),
+		},
+	}
 }
 
 func (s *KeyVaultSecret) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {

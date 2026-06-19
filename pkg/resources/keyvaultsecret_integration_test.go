@@ -165,6 +165,69 @@ func TestKeyVaultSecret_CRUD(t *testing.T) {
 	})
 }
 
+func TestKeyVaultSecret_UpdateRotation(t *testing.T) {
+	t.Run("value patch op rotates via SetSecret", func(t *testing.T) {
+		var setVal string
+		setCalled, updateCalled := false, false
+		fake := &fakeSecretsAPI{
+			setSecretFn: func(_ context.Context, _ string, params azsecrets.SetSecretParameters, _ *azsecrets.SetSecretOptions) (azsecrets.SetSecretResponse, error) {
+				setCalled = true
+				if params.Value != nil {
+					setVal = *params.Value
+				}
+				return azsecrets.SetSecretResponse{Secret: azsecrets.Secret{ID: secretID("v2")}}, nil
+			},
+			updateSecretPropertiesFn: func(_ context.Context, _, _ string, _ azsecrets.UpdateSecretPropertiesParameters, _ *azsecrets.UpdateSecretPropertiesOptions) (azsecrets.UpdateSecretPropertiesResponse, error) {
+				updateCalled = true
+				return azsecrets.UpdateSecretPropertiesResponse{Secret: azsecrets.Secret{ID: secretID("v1")}}, nil
+			},
+		}
+		prov := newTestKeyVaultSecret(fake)
+
+		patch := `[{"op":"add","path":"/value","value":"rotated-secret"}]`
+		props, _ := json.Marshal(map[string]any{"value": "rotated-secret", "contentType": "text/plain"})
+		got, err := prov.Update(context.Background(), &resource.UpdateRequest{
+			NativeID:          testSecretNativeID,
+			DesiredProperties: props,
+			PatchDocument:     &patch,
+		})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+		require.True(t, setCalled, "SetSecret should rotate the value")
+		require.False(t, updateCalled, "UpdateSecretProperties should not run when the value changed")
+		require.Equal(t, "rotated-secret", setVal)
+	})
+
+	t.Run("no value patch op updates metadata only", func(t *testing.T) {
+		setCalled, updateCalled := false, false
+		fake := &fakeSecretsAPI{
+			setSecretFn: func(_ context.Context, _ string, _ azsecrets.SetSecretParameters, _ *azsecrets.SetSecretOptions) (azsecrets.SetSecretResponse, error) {
+				setCalled = true
+				return azsecrets.SetSecretResponse{Secret: azsecrets.Secret{ID: secretID("v1")}}, nil
+			},
+			updateSecretPropertiesFn: func(_ context.Context, _, _ string, params azsecrets.UpdateSecretPropertiesParameters, _ *azsecrets.UpdateSecretPropertiesOptions) (azsecrets.UpdateSecretPropertiesResponse, error) {
+				updateCalled = true
+				return azsecrets.UpdateSecretPropertiesResponse{Secret: azsecrets.Secret{ID: secretID("v1"), ContentType: params.ContentType}}, nil
+			},
+		}
+		prov := newTestKeyVaultSecret(fake)
+
+		// A setOnce-frozen or unchanged value carries no /value op even though the
+		// desired props still contain a value; SetSecret must not fire.
+		patch := `[{"op":"replace","path":"/contentType","value":"application/json"}]`
+		props, _ := json.Marshal(map[string]any{"value": "unchanged-frozen", "contentType": "application/json"})
+		got, err := prov.Update(context.Background(), &resource.UpdateRequest{
+			NativeID:          testSecretNativeID,
+			DesiredProperties: props,
+			PatchDocument:     &patch,
+		})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+		require.False(t, setCalled, "SetSecret must not run without a value patch op")
+		require.True(t, updateCalled, "metadata-only update should use UpdateSecretProperties")
+	})
+}
+
 // --- Test helpers ---
 
 type fakeSecretsAPI struct {
