@@ -145,6 +145,24 @@ jobs:
           # maintenance-configuration and trusted-access-role-binding excluded: Create returns
           # empty NativeID in ~9s (fails before Azure API call). Plugin-side diagnosis needed;
           # tracked as follow-up.
+          - route-table
+          # event-hub-namespace and service-bus-namespace excluded from nightly: both provision
+          # correctly against live Azure (verified locally, Active), but first-apply of the
+          # resource-group + namespace in a single command intermittently times out in the formae
+          # core "resolving" state (ResolveCacheMissingInAction) and succeeds on re-apply. Nightly
+          # does a single first-apply, so these would flake until the core resolve-cache race is
+          # fixed. CRUD validated via test-integration (mocked) + local live apply.
+          # - event-hub-namespace
+          # - service-bus-namespace
+          # virtual-machine-extension excluded: child of a VirtualMachine, which must be provisioned
+          # first (and has no conformance fixture); too heavy/slow for the 10m command timeout.
+          # event-grid-system-topic excluded: requires a pre-existing event source resource
+          # (createOnly source ARM id, e.g. a storage account) wired into the fixture.
+          # cognitive-services-account excluded: may require subscription quota/approval
+          # (Azure OpenAI kind in particular) not available to the CI principal.
+          # grafana and grafana-managed-private-endpoint excluded: Managed Grafana provisioning is
+          # slow (minutes) and the managed private endpoint needs a Grafana workspace + a
+          # private-link target. Not yet live-verified; CRUD validated via test-integration.
 
     permissions:
       id-token: write

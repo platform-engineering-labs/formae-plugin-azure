@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventhub.namespace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventHub::Namespace"
+const apiVersion = "2024-01-01"
+
+open class NamespaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NamespaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NamespaceResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// SKU name for Event Hubs Namespace
+typealias NamespaceSKUName = "Basic"|"Standard"|"Premium"
+
+/// SKU configuration for Event Hubs Namespace
+class NamespaceSKU {
+    /// SKU name (Basic, Standard, Premium)
+    name: NamespaceSKUName
+
+    /// The billing tier of this SKU
+    tier: String?
+
+    /// Throughput units (Basic/Standard) or premium units (Premium)
+    capacity: Int?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Namespace extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 6 && length <= 50 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: NamespaceSKU
+
+    @azure.FieldHint { hasProviderDefault = true }
+    zoneRedundant: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NamespaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

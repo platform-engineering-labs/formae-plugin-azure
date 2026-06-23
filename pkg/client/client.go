@@ -13,9 +13,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dashboard/armdashboard"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kubernetesconfiguration/armkubernetesconfiguration"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
@@ -23,6 +27,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -80,6 +85,14 @@ type Client struct {
 	SQLDatabasesClient                   *armsql.DatabasesClient
 	SQLFirewallRulesClient               *armsql.FirewallRulesClient
 	SQLServerAzureADAdministratorsClient *armsql.ServerAzureADAdministratorsClient
+	RouteTablesClient                    *armnetwork.RouteTablesClient
+	VirtualMachineExtensionsClient       *armcompute.VirtualMachineExtensionsClient
+	EventHubNamespacesClient             *armeventhub.NamespacesClient
+	ServiceBusNamespacesClient           *armservicebus.NamespacesClient
+	EventGridSystemTopicsClient          *armeventgrid.SystemTopicsClient
+	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
+	GrafanaClient                        *armdashboard.GrafanaClient
+	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
 	credential                           azcore.TokenCredential
 	clientOptions                        *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
@@ -273,6 +286,46 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	routeTablesClient, err := armnetwork.NewRouteTablesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualMachineExtensionsClient, err := armcompute.NewVirtualMachineExtensionsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	eventHubNamespacesClient, err := armeventhub.NewNamespacesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	serviceBusNamespacesClient, err := armservicebus.NewNamespacesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	eventGridSystemTopicsClient, err := armeventgrid.NewSystemTopicsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cognitiveAccountsClient, err := armcognitiveservices.NewAccountsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	grafanaClient, err := armdashboard.NewGrafanaClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	grafanaManagedPrivateEndpointsClient, err := armdashboard.NewManagedPrivateEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -315,6 +368,14 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		SQLDatabasesClient:                   sqlDatabasesClient,
 		SQLFirewallRulesClient:               sqlFirewallRulesClient,
 		SQLServerAzureADAdministratorsClient: sqlServerAzureADAdministratorsClient,
+		RouteTablesClient:                    routeTablesClient,
+		VirtualMachineExtensionsClient:       virtualMachineExtensionsClient,
+		EventHubNamespacesClient:             eventHubNamespacesClient,
+		ServiceBusNamespacesClient:           serviceBusNamespacesClient,
+		EventGridSystemTopicsClient:          eventGridSystemTopicsClient,
+		CognitiveAccountsClient:              cognitiveAccountsClient,
+		GrafanaClient:                        grafanaClient,
+		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
 		credential:                           cred,
 		clientOptions:                        clientOptions,
 		armClient:                            armClient,

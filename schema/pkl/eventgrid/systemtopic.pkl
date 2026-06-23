@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventgrid.systemtopic
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventGrid::SystemTopic"
+const apiVersion = "2021-12-01"
+
+open class SystemTopicResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SystemTopicResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SystemTopicResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class SystemTopic extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    source: String|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    topicType: String
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: SystemTopicResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

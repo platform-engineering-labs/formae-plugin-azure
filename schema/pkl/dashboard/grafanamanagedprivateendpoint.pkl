@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dashboard.grafanamanagedprivateendpoint
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Dashboard::GrafanaManagedPrivateEndpoint"
+const apiVersion = "2023-09-01"
+
+open class GrafanaManagedPrivateEndpointResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GrafanaManagedPrivateEndpointResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GrafanaManagedPrivateEndpointResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Dashboard::Grafana"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class GrafanaManagedPrivateEndpoint extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 90)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    privateLinkResourceId: String|formae.Resolvable
+
+    @azure.FieldHint { createOnly = true }
+    privateLinkResourceRegion: String?
+
+    @azure.FieldHint { createOnly = true }
+    groupIds: Listing<String>?
+
+    @azure.FieldHint { createOnly = true }
+    requestMessage: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: GrafanaManagedPrivateEndpointResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dashboard.grafana
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Dashboard::Grafana"
+const apiVersion = "2023-09-01"
+
+open class GrafanaResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GrafanaResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GrafanaResolvable = (this) {
+        property = "name"
+    }
+    hidden endpoint: GrafanaResolvable = (this) {
+        property = "endpoint"
+    }
+}
+
+/// SKU name for Managed Grafana
+typealias GrafanaSKUName = "Standard"|"Essential"
+
+/// SKU configuration for Managed Grafana
+class GrafanaSKU {
+    /// SKU name (Standard, Essential)
+    name: GrafanaSKUName
+}
+
+/// Managed identity configuration for Managed Grafana
+class GrafanaIdentity {
+    /// Identity type (e.g. SystemAssigned)
+    type: String
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Grafana extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 2 && length <= 23 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { hasProviderDefault = true }
+    sku: GrafanaSKU?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    apiKey: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    identity: GrafanaIdentity?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: GrafanaResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

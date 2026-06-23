@@ -1,0 +1,82 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.routetable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::RouteTable"
+const apiVersion = "2023-05-01"
+
+open class RouteTableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RouteTableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RouteTableResolvable = (this) {
+        property = "name"
+    }
+    hidden location: RouteTableResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// Next hop type for a route
+typealias RouteNextHopType = "VirtualNetworkGateway"|"VnetLocal"|"Internet"|"VirtualAppliance"|"None"
+
+/// Route entry within a route table
+class Route {
+    /// Name of the route
+    name: String(length >= 1 && length <= 80)
+
+    /// Destination CIDR the route applies to
+    addressPrefix: String
+
+    /// Type of Azure hop the packet should be sent to
+    nextHopType: RouteNextHopType
+
+    /// Next hop IP address, only valid when nextHopType is VirtualAppliance
+    nextHopIpAddress: String?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class RouteTable extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    // Optional properties
+    @azure.FieldHint {}
+    routes: Listing<Route>?
+
+    @azure.FieldHint {}
+    disableBgpRoutePropagation: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: RouteTableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

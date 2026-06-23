@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/eventgrid/systemtopic.pkl"
+
+local stackName = "plugin-sdk-test-egst-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "egst-test-rg"
+  name = "formae-plugin-sdk-test-egst-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "egst-test-sa"
+  name = "fpsdtegst\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure EventGrid SystemTopic"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  sa
+
+  // Replace: Change name (createOnly field triggers delete+create)
+  new systemtopic.SystemTopic {
+    label = "plugin-sdk-test-egst"
+    name = "fpsdt-egst-rpl-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    source = sa.res.id
+    topicType = "Microsoft.Storage.StorageAccounts"
+  }
+}
