@@ -119,6 +119,13 @@ jobs:
           - storage-account
           - registry
           - vault
+          # secret excluded from nightly until the CI principal is granted a
+          # Key Vault data-plane role ("Key Vault Secrets Officer"). Writing a
+          # secret is a data-plane operation: the service principal can create
+          # the vault via ARM but cannot write its secrets without that role.
+          # CRUD is validated via test-integration (mocked); run live locally
+          # with: make conformance-test-crud TEST=secret
+          # - secret
           - sql-server
           - sql-database
           # sql-firewall-rule excluded from nightly due to the same formae core
