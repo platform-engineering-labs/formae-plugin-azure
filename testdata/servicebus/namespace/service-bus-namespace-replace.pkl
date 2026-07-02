@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/servicebus/servicebusnamespace.pkl" as namespace
+
+local stackName = "plugin-sdk-test-sbns-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sbns-test-rg"
+  name = "formae-plugin-sdk-test-sbns-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local namespaceSku = new namespace.NamespaceSKU {
+  name = "Standard"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure ServiceBus Namespace"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+
+  // Replace: Change name (createOnly field triggers delete+create)
+  new namespace.Namespace {
+    label = "plugin-sdk-test-sbns"
+    name = "fpsdt-sbns-r-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = namespaceSku
+  }
+}
