@@ -263,26 +263,44 @@ jobs:
       - name: Clean up test resources
         run: ./scripts/ci/clean-environment.sh
 
-  # Notify when nightly is fixed (was red, now green)
+  # Notify when nightly is fixed (was red, now green). Scheduled runs only,
+  # so branch dispatches do not post or pollute the comparison.
   notify-fixed:
     needs: [test-integration, conformance-tests-main]
     runs-on: ubuntu-latest
-    if: success()
+    if: success() && github.event_name == 'schedule'
     steps:
       - name: Check if previous run failed
         id: check_previous
         uses: actions/github-script@v9
         with:
           script: |
+            // A rerun of this same run counts as fixed if the prior attempt failed.
+            const attempt = parseInt(process.env.GITHUB_RUN_ATTEMPT || '1', 10);
+            if (attempt > 1) {
+              const prev = await github.rest.actions.getWorkflowRunAttempt({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.runId,
+                attempt_number: attempt - 1
+              });
+              if (prev.data.conclusion === 'failure') {
+                return 'true';
+              }
+            }
+
+            // Otherwise compare against the previous scheduled run on main;
+            // unfiltered, a dispatched branch run would shadow the comparison.
             const runs = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'nightly.yml',
+              branch: 'main',
+              event: 'schedule',
               per_page: 2,
               status: 'completed'
             });
 
-            // Get previous run (skip current which isn't completed yet)
             const previousRun = runs.data.workflow_runs.find(run => run.id !== context.runId);
 
             if (previousRun && previousRun.conclusion === 'failure') {
@@ -324,11 +342,11 @@ jobs:
               ]
             }
 
-  # Notify on failure
+  # Notify on failure. Scheduled runs only, so branch dispatches do not alert.
   notify-failure:
     needs: [test-integration, conformance-tests-main]
     runs-on: ubuntu-latest
-    if: failure()
+    if: failure() && github.event_name == 'schedule'
     steps:
       - name: Notify Slack
         uses: slackapi/slack-github-action@v3.0.3
