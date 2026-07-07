@@ -1,0 +1,76 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.cognitiveservices.account
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::CognitiveServices::Account"
+const apiVersion = "2025-06-01"
+
+open class AccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AccountResolvable = (this) {
+        property = "name"
+    }
+    hidden endpoint: AccountResolvable = (this) {
+        property = "endpoint"
+    }
+}
+
+/// SKU configuration for a Cognitive Services account
+class AccountSKU {
+    /// SKU name (e.g. S0, F0)
+    name: String
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Account extends formae.Resource {
+
+    // Required properties
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 2 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    kind: String
+
+    @azure.FieldHint { required = true }
+    sku: AccountSKU
+
+    // Optional properties
+    @azure.FieldHint { createOnly = true }
+    customSubDomainName: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

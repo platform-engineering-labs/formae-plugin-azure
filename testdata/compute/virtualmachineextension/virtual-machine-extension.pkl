@@ -1,0 +1,125 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/networkinterface.pkl"
+import "@azure/compute/virtualmachine.pkl"
+import "@azure/compute/virtualmachineextension.pkl"
+
+local stackName = "plugin-sdk-test-vmext-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vmext-test-rg"
+  name = "formae-plugin-sdk-test-vmext-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing { "10.0.0.0/16" }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vmext-test-vnet"
+  name = "formae-plugin-sdk-test-vmext-vnet-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+local snet = new subnet.Subnet {
+  label = "vmext-test-snet"
+  name = "vmext-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+local nic = new networkinterface.NetworkInterface {
+  label = "vmext-test-nic"
+  name = "formae-plugin-sdk-test-vmext-nic-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  ipConfigurations = new Listing {
+    new networkinterface.IPConfiguration {
+      name = "vmext-ipcfg"
+      subnet = snet.res.id
+      privateIPAllocationMethod = "Dynamic"
+    }
+  }
+}
+
+local vm = new virtualmachine.VirtualMachine {
+  label = "vmext-test-vm"
+  name = "formae-plugin-sdk-test-vmext-vm-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  vmSize = "Standard_D2s_v4"
+  adminUsername = "azureuser"
+  adminPassword = "Formae!ConformanceTest42"
+  networkInterfaces = new Listing {
+    new virtualmachine.NetworkInterfaceReference {
+      id = nic.res.id
+      primary = true
+    }
+  }
+  imageReference = new virtualmachine.ImageReference {
+    publisher = "Canonical"
+    offer = "0001-com-ubuntu-server-jammy"
+    sku = "22_04-lts-gen2"
+    version = "latest"
+  }
+  osDisk = new virtualmachine.OSDisk {
+    createOption = "FromImage"
+    caching = "ReadWrite"
+    diskSizeGB = 30
+    managedDisk = new virtualmachine.ManagedDiskParameters {
+      storageAccountType = "Standard_LRS"
+    }
+  }
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure Virtual Machine Extension"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  vnet
+  snet
+  nic
+  vm
+
+  new virtualmachineextension.VirtualMachineExtension {
+    label = "plugin-sdk-test-vmext"
+    name = "vmext-customscript"
+    resourceGroupName = rg.res.name
+    virtualMachineName = vm.res.name
+    location = "eastus"
+    publisher = "Microsoft.Azure.Extensions"
+    type = "CustomScript"
+    typeHandlerVersion = "2.1"
+    autoUpgradeMinorVersion = true
+    settings = new Mapping {
+      ["commandToExecute"] = "echo hello"
+    }
+  }
+}
