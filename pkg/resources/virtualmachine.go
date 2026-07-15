@@ -156,7 +156,23 @@ func serializeVirtualMachineProperties(result armcompute.VirtualMachine, rgName,
 				if linuxConfig.ProvisionVMAgent != nil {
 					lc["provisionVMAgent"] = *linuxConfig.ProvisionVMAgent
 				}
-				// We don't serialize SSH keys back (security)
+				// Serialize SSH public keys: keyData is the public half (not a
+				// secret; Azure returns it on GET). Omitting it made every
+				// reconcile plan an add of linuxConfiguration.ssh forever.
+				if linuxConfig.SSH != nil && len(linuxConfig.SSH.PublicKeys) > 0 {
+					keys := make([]any, 0, len(linuxConfig.SSH.PublicKeys))
+					for _, k := range linuxConfig.SSH.PublicKeys {
+						key := make(map[string]any)
+						if k.Path != nil {
+							key["path"] = *k.Path
+						}
+						if k.KeyData != nil {
+							key["keyData"] = *k.KeyData
+						}
+						keys = append(keys, key)
+					}
+					lc["ssh"] = map[string]any{"publicKeys": keys}
+				}
 				props["linuxConfiguration"] = lc
 			}
 
