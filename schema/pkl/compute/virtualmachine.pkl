@@ -163,10 +163,13 @@ open class VirtualMachine extends formae.Resource {
     @azure.FieldHint { createOnly = true }
     adminPassword: String?
 
-    @azure.FieldHint {}
+    // ARM treats osProfile as immutable after creation (SSH key changes go
+    // through the VMAccess extension, not a PUT), so a changed value must
+    // plan a replace, not an update Azure would reject.
+    @azure.FieldHint { createOnly = true }
     linuxConfiguration: LinuxConfiguration?
 
-    @azure.FieldHint {}
+    @azure.FieldHint { createOnly = true }
     windowsConfiguration: WindowsConfiguration?
 
     // Optional properties - other
