@@ -100,6 +100,7 @@ jobs:
           - user-assigned-identity
           - federated-identity-credential
           - load-balancer
+          - application-gateway
           - private-dns-zone
           - private-dns-vnet-link
           - private-endpoint
