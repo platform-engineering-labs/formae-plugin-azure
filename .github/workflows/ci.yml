@@ -6,12 +6,13 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      run_conformance:
-        description: 'Run conformance tests'
-        required: false
-        default: 'false'
-        type: boolean
+
+# Serialize conformance across CI runs (and with nightly) so matrix jobs
+# don't race for the same Azure test subscription. cancel-in-progress=false
+# lets an in-flight run finish and cleanup rather than being killed mid-create.
+concurrency:
+  group: azure-conformance-tests
+  cancel-in-progress: false
 
 jobs:
   reuse-compliance:
@@ -57,10 +58,10 @@ jobs:
         run: make verify-schema
 
   # Integration tests are mock-based (fake SDK clients) and need no cloud creds.
+  # Run on PRs too so they gate merges alongside conformance.
   test-integration:
     needs: [checks]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -74,15 +75,42 @@ jobs:
       - name: Run integration tests
         run: make test-integration
 
-  conformance-tests:
+  # Clear stale test resources before the conformance matrix runs, so a prior
+  # aborted run can't collide with this one.
+  pre-cleanup:
     needs: [checks, test-integration]
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.run_conformance == 'true' }}
-    timeout-minutes: 30
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clean up test resources
+        run: ./scripts/ci/clean-environment.sh
+
+  # Conformance runs the full CRUD + discovery lifecycle against real Azure
+  # resources on every push, PR, and manual dispatch — so it gates merges.
+  # The matrix is curated (not auto-discovered) to exclude resources with known
+  # formae-core discovery bugs; see the exclusions below.
+  conformance-tests:
+    needs: [checks, test-integration, pre-cleanup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: production
 
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
         resource:
           - resource-group
@@ -141,16 +169,33 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
-          FORMAE_TEST_FILTER: ${{ matrix.resource }}
           FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: make conformance-test
+        run: |
+          set -euo pipefail
+          TIMEOUT_ARG=""
+          if [ "${{ matrix.resource }}" = "application-gateway" ]; then
+            # App Gateway needs an operator PFX for the HTTPS listener. CI has no
+            # cert secret, so mint a throwaway self-signed one the fixture reads
+            # via FORMAE_TEST_APPGW_PFX_*. v2 provisioning is slow — raise timeout.
+            openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+              -keyout /tmp/appgw-key.pem -out /tmp/appgw-cert.pem \
+              -subj "/CN=app.example.com" >/dev/null 2>&1
+            openssl pkcs12 -export -out /tmp/appgw-cert.pfx \
+              -inkey /tmp/appgw-key.pem -in /tmp/appgw-cert.pem \
+              -passout pass:formae-test
+            export FORMAE_TEST_APPGW_PFX_BASE64="$(base64 -w0 /tmp/appgw-cert.pfx)"
+            export FORMAE_TEST_APPGW_PFX_PASSWORD="formae-test"
+            TIMEOUT_ARG="TIMEOUT=20"
+            export FORMAE_TEST_DISCOVERY_TIMEOUT=20
+          fi
+          make conformance-test $TIMEOUT_ARG
 
-  # Clean up Azure resources after all matrix jobs complete
+  # Clean up Azure resources after all matrix jobs complete (always runs).
   conformance-cleanup:
     needs: [conformance-tests]
     runs-on: ubuntu-latest
-    if: always() && github.event.inputs.run_conformance == 'true'
+    if: always()
     environment: production
     permissions:
       id-token: write

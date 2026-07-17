@@ -19,6 +19,12 @@ on:
         default: false
         type: boolean
 
+# Share the conformance lock with ci.yml so nightly and CI never run
+# conformance against the same Azure test subscription at once.
+concurrency:
+  group: azure-conformance-tests
+  cancel-in-progress: false
+
 jobs:
   # Integration tests are mock-based (fake SDK clients) and need no cloud creds.
   test-integration:
