@@ -80,7 +80,6 @@ jobs:
   pre-cleanup:
     needs: [checks, test-integration]
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       id-token: write
       contents: read
@@ -106,7 +105,6 @@ jobs:
     needs: [checks, test-integration, pre-cleanup]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: production
 
     strategy:
       fail-fast: false
@@ -196,7 +194,6 @@ jobs:
     needs: [conformance-tests]
     runs-on: ubuntu-latest
     if: always()
-    environment: production
     permissions:
       id-token: write
       contents: read
