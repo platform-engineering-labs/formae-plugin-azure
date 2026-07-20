@@ -165,37 +165,56 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests (${{ matrix.resource }})
+      # CRUD and discovery run as separate steps with a fresh azure/login between
+      # them. A single OIDC token stops refreshing partway through a long job
+      # (App Gateway's lifecycle alone is ~35 min), after which every List fails
+      # with "DefaultAzureCredential: failed to acquire a token". Re-authenticating
+      # before discovery keeps each phase inside a fresh ~1h token window.
+      #
+      # FORMAE_TEST_FILTER scopes each job to its one resource — without it the
+      # whole suite runs in every matrix job (20x work) and jobs delete each
+      # other's resources. Cleanup is owned by the pre-/conformance-cleanup jobs;
+      # the Makefile skips its inline cleanup when the filter is set.
+      - name: Run CRUD conformance (${{ matrix.resource }})
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          # Scope this job to its one resource. Without it, make conformance-test
-          # runs the ENTIRE suite in every matrix job (20x work) and each job's
-          # own pre/post cleanup deletes the other jobs' resources on the shared
-          # subscription. The dedicated pre-/conformance-cleanup jobs handle
-          # cleanup; the Makefile skips its inline cleanup when this is set.
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: |
+          set -euo pipefail
+          TIMEOUT_ARG=""
+          if [ "${{ matrix.resource }}" = "application-gateway" ]; then
+            # App Gateway v2 create/update/delete each take 6-8 min. FORMAE_TEST_TIMEOUT
+            # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
+            # go-test timeout for the whole lifecycle.
+            export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
+            TIMEOUT_ARG="TIMEOUT=50"
+          fi
+          make conformance-test-crud-run $TIMEOUT_ARG
+
+      - name: Re-authenticate for discovery
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run discovery conformance (${{ matrix.resource }})
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |
           set -euo pipefail
+          TIMEOUT_ARG=""
           if [ "${{ matrix.resource }}" = "application-gateway" ]; then
-            # App Gateway v2 create/update/delete each take 6-8 min. FORMAE_TEST_TIMEOUT
-            # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
-            # go-test timeout covering the whole create+update+delete lifecycle.
-            export FORMAE_TEST_TIMEOUT=20
-            export FORMAE_TEST_OOB_TIMEOUT=20
-            export FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-            # CRUD only. App Gateway's CRUD + discovery combined runs ~68 min,
-            # which outlives the CI Azure OIDC token — once it can't refresh, every
-            # List fails with "DefaultAzureCredential: failed to acquire a token"
-            # and discovery finds nothing. CRUD alone finishes inside the token
-            # window. Discovery itself is correct (List verified against live Azure);
-            # this is a runtime/credential-lifetime limit, not a plugin/schema defect.
-            make conformance-test-crud TIMEOUT=50
-          else
-            make conformance-test
+            export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
+            TIMEOUT_ARG="TIMEOUT=50"
           fi
+          make conformance-test-discovery-run $TIMEOUT_ARG
 
   # Clean up Azure resources after all matrix jobs complete (always runs).
   conformance-cleanup:
