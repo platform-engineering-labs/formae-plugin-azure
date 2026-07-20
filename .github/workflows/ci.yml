@@ -104,7 +104,9 @@ jobs:
   conformance-tests:
     needs: [checks, test-integration, pre-cleanup]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 90 min: App Gateway v2 runs both the CRUD lifecycle and discovery, each
+    # provisioning a gateway (6-8 min per op). Fast resources finish well under this.
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
@@ -192,8 +194,14 @@ jobs:
               -passout pass:formae-test
             export FORMAE_TEST_APPGW_PFX_BASE64="$(base64 -w0 /tmp/appgw-cert.pfx)"
             export FORMAE_TEST_APPGW_PFX_PASSWORD="formae-test"
-            TIMEOUT_ARG="TIMEOUT=20"
+            # App Gateway v2 create/update/delete each take 6-8 min. FORMAE_TEST_TIMEOUT
+            # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
+            # go-test timeout covering the whole create+update+delete lifecycle.
+            export FORMAE_TEST_TIMEOUT=20
+            export FORMAE_TEST_OOB_TIMEOUT=20
+            export FORMAE_TEST_OOB_DELETE_TIMEOUT=20
             export FORMAE_TEST_DISCOVERY_TIMEOUT=20
+            TIMEOUT_ARG="TIMEOUT=50"
           fi
           make conformance-test $TIMEOUT_ARG
 
