@@ -274,10 +274,13 @@ open class ApplicationGateway extends formae.Resource {
     @azure.FieldHint { requiredOnCreate = true }
     requestRoutingRules: Listing<RequestRoutingRule>
 
+    @azure.FieldHint {}
     probes: Listing<Probe>?
 
+    @azure.FieldHint {}
     sslCertificates: Listing<SSLCertificate>?
 
+    @azure.FieldHint {}
     identity: Identity?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }

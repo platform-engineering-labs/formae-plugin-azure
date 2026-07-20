@@ -392,15 +392,15 @@ func buildApplicationGatewaySSLCertificates(props map[string]any) ([]*armnetwork
 	return certs, nil
 }
 
-// opaqueString extracts a secret value that may be a plain string or a formae
-// opaque wrapper (which unmarshals to a map carrying the value). Returns the
-// underlying string when present.
+// opaqueString extracts a secret value that may arrive as a plain string (formae
+// core unwraps opaque values for top-level fields) or, for nested list fields, as
+// the opaque wrapper object carrying the value under "$value" (or "value"/"Value").
 func opaqueString(v any) (string, bool) {
 	switch t := v.(type) {
 	case string:
 		return t, t != ""
 	case map[string]any:
-		for _, key := range []string{"value", "Value"} {
+		for _, key := range []string{"$value", "value", "Value"} {
 			if s, ok := t[key].(string); ok && s != "" {
 				return s, true
 			}

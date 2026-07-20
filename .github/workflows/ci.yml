@@ -185,7 +185,9 @@ jobs:
             openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
               -keyout /tmp/appgw-key.pem -out /tmp/appgw-cert.pem \
               -subj "/CN=app.example.com" >/dev/null 2>&1
-            openssl pkcs12 -export -out /tmp/appgw-cert.pfx \
+            # -legacy: Application Gateway can't parse openssl-3's default
+            # AES-256/PBKDF2 PKCS#12; it needs the legacy SHA1/3DES encoding.
+            openssl pkcs12 -export -legacy -out /tmp/appgw-cert.pfx \
               -inkey /tmp/appgw-key.pem -in /tmp/appgw-cert.pem \
               -passout pass:formae-test
             export FORMAE_TEST_APPGW_PFX_BASE64="$(base64 -w0 /tmp/appgw-cert.pfx)"
