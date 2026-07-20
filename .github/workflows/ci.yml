@@ -186,9 +186,12 @@ jobs:
             export FORMAE_TEST_TIMEOUT=20
             export FORMAE_TEST_OOB_TIMEOUT=20
             export FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-            # CRUD only: App Gateway discovery hits the same formae-core discovery
-            # persistence bug as flexible-server/firewall-rule (discovered resources
-            # never appear in inventory). CRUD + zero-drift is fully covered.
+            # CRUD only. App Gateway's CRUD + discovery combined runs ~68 min,
+            # which outlives the CI Azure OIDC token — once it can't refresh, every
+            # List fails with "DefaultAzureCredential: failed to acquire a token"
+            # and discovery finds nothing. CRUD alone finishes inside the token
+            # window. Discovery itself is correct (List verified against live Azure);
+            # this is a runtime/credential-lifetime limit, not a plugin/schema defect.
             make conformance-test-crud TIMEOUT=50
           else
             make conformance-test
