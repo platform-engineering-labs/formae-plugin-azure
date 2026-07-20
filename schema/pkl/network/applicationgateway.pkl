@@ -1,0 +1,295 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.applicationgateway
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::ApplicationGateway"
+const apiVersion = "2023-05-01"
+
+open class ApplicationGatewayResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApplicationGatewayResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApplicationGatewayResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// SKU name for Application Gateway v2. Standard_v2 only in this version.
+typealias ApplicationGatewaySKUName = "Standard_v2"|"WAF_v2"
+
+/// SKU tier for Application Gateway v2.
+typealias ApplicationGatewaySKUTier = "Standard_v2"|"WAF_v2"
+
+/// Backend / probe protocol.
+typealias ApplicationGatewayProtocol = "Http"|"Https"
+
+/// Request routing rule type.
+typealias RequestRoutingRuleType = "Basic"|"PathBasedRouting"
+
+/// Cookie-based affinity setting.
+typealias CookieBasedAffinity = "Enabled"|"Disabled"
+
+/// Managed identity type.
+typealias IdentityType = "None"|"SystemAssigned"|"UserAssigned"|"SystemAssigned,UserAssigned"
+
+/// SKU configuration for the Application Gateway.
+class ApplicationGatewaySKU {
+    /// SKU name (Standard_v2 or WAF_v2).
+    name: ApplicationGatewaySKUName
+
+    /// SKU tier (Standard_v2 or WAF_v2).
+    tier: ApplicationGatewaySKUTier
+
+    /// Fixed instance count. Omit only when autoscale is configured (deferred).
+    capacity: Int(this >= 1)?
+}
+
+/// Gateway IP configuration. App Gateway v2 requires a dedicated (non-delegated)
+/// subnet; reference it here, typically `subnet.res.id`.
+class GatewayIPConfiguration {
+    /// Name of the gateway IP configuration.
+    name: String(length >= 1 && length <= 80)
+
+    /// Reference to the dedicated subnet.
+    subnetId: String|formae.Resolvable
+}
+
+/// Frontend IP configuration. Public gateways reference a Public IP; private
+/// (ILB) frontends reference a subnet + private IP.
+class FrontendIPConfiguration {
+    /// Name of the frontend IP configuration.
+    name: String(length >= 1 && length <= 80)
+
+    /// Reference to the PublicIPAddress that fronts this configuration
+    /// (typically `pip.res.id`). Set for a public frontend.
+    publicIPAddressId: (String|formae.Resolvable)?
+
+    /// Static private IP for an internal (ILB) frontend.
+    privateIPAddress: String?
+
+    /// Subnet for an internal (ILB) frontend.
+    subnetId: (String|formae.Resolvable)?
+}
+
+/// Frontend port the gateway listens on.
+class FrontendPort {
+    /// Name of the frontend port.
+    name: String(length >= 1 && length <= 80)
+
+    /// Port number (1-65535).
+    port: Int(this >= 1 && this <= 65535)
+}
+
+/// A backend target address (IP or FQDN).
+class BackendAddress {
+    /// Backend IP address.
+    ipAddress: String?
+
+    /// Backend fully-qualified domain name.
+    fqdn: String?
+}
+
+/// Backend address pool.
+class BackendAddressPool {
+    /// Name of the backend address pool.
+    name: String(length >= 1 && length <= 80)
+
+    /// Backend member addresses.
+    backendAddresses: Listing<BackendAddress>?
+}
+
+/// Backend HTTP settings governing how the gateway talks to the pool.
+class BackendHTTPSettings {
+    /// Name of the backend HTTP settings.
+    name: String(length >= 1 && length <= 80)
+
+    /// Destination port on the backend (1-65535).
+    port: Int(this >= 1 && this <= 65535)
+
+    /// Protocol used to reach the backend.
+    protocol: ApplicationGatewayProtocol
+
+    /// Name of the Probe used for health checks.
+    probeName: String?
+
+    /// Request timeout in seconds (1-86400). Azure default 30.
+    @azure.FieldHint { hasProviderDefault = true }
+    requestTimeout: Int(this >= 1 && this <= 86400)?
+
+    /// Cookie-based affinity. Azure default "Disabled".
+    @azure.FieldHint { hasProviderDefault = true }
+    cookieBasedAffinity: CookieBasedAffinity?
+}
+
+/// Health probe.
+class Probe {
+    /// Probe name.
+    name: String(length >= 1 && length <= 80)
+
+    /// Probe protocol.
+    protocol: ApplicationGatewayProtocol
+
+    /// Relative path to probe (must start with '/').
+    path: String
+
+    /// Host header to send. Omit to pick from backend HTTP settings.
+    host: String?
+
+    /// Probe interval in seconds (1-86400). Azure default 30.
+    @azure.FieldHint { hasProviderDefault = true }
+    interval: Int(this >= 1 && this <= 86400)?
+
+    /// Probe timeout in seconds (1-86400). Azure default 30.
+    @azure.FieldHint { hasProviderDefault = true }
+    timeout: Int(this >= 1 && this <= 86400)?
+
+    /// Consecutive failures before marking unhealthy (1-20). Azure default 3.
+    @azure.FieldHint { hasProviderDefault = true }
+    unhealthyThreshold: Int(this >= 1 && this <= 20)?
+
+    /// Custom probe port. Omit to use the backend HTTP settings port.
+    port: Int(this >= 1 && this <= 65535)?
+}
+
+/// SSL certificate served by the gateway. Provide either an inline PFX
+/// (`data` + `password`) or a Key Vault secret reference (`keyVaultSecretId`).
+class SSLCertificate {
+    /// Name of the SSL certificate.
+    name: String(length >= 1 && length <= 80)
+
+    /// Base-64 encoded PFX. Write-only, immutable after creation; wrap with
+    /// `formae.value(...).opaque` so it is not stored in cleartext.
+    @azure.FieldHint { createOnly = true; writeOnly = true }
+    data: (formae.Value|String)?
+
+    /// Password for the PFX in `data`. Write-only.
+    @azure.FieldHint { writeOnly = true }
+    password: (formae.Value|String)?
+
+    /// Key Vault secret ID of a stored PFX (alternative to inline `data`).
+    keyVaultSecretId: String?
+}
+
+/// HTTP listener binding a frontend IP + port to a protocol (and SSL cert
+/// when HTTPS).
+class HTTPListener {
+    /// Name of the listener.
+    name: String(length >= 1 && length <= 80)
+
+    /// Name of the FrontendIPConfiguration this listener uses.
+    frontendIPConfigurationName: String
+
+    /// Name of the FrontendPort this listener uses.
+    frontendPortName: String
+
+    /// Listener protocol.
+    protocol: ApplicationGatewayProtocol
+
+    /// Name of the SSLCertificate. Required when protocol is Https.
+    sslCertificateName: String?
+
+    /// Host name to match (single-site). Optional.
+    hostName: String?
+}
+
+/// Request routing rule wiring a listener to a backend pool + settings.
+class RequestRoutingRule {
+    /// Name of the routing rule.
+    name: String(length >= 1 && length <= 80)
+
+    /// Rule type.
+    ruleType: RequestRoutingRuleType
+
+    /// Evaluation priority (1-20000). Required for v2 SKUs.
+    priority: Int(this >= 1 && this <= 20000)?
+
+    /// Name of the HTTPListener this rule matches.
+    httpListenerName: String
+
+    /// Name of the BackendAddressPool to route to.
+    backendAddressPoolName: String?
+
+    /// Name of the BackendHTTPSettings to use.
+    backendHTTPSettingsName: String?
+}
+
+/// Managed identity configuration (user-assigned identities to read a Key
+/// Vault certificate). Modeled on sql/server.pkl.
+class Identity {
+    /// Identity type.
+    type: IdentityType
+
+    /// Resource IDs of user-assigned identities to attach.
+    userAssignedIdentityIds: Listing<(String|formae.Resolvable)>?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ApplicationGateway extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { requiredOnCreate = true }
+    sku: ApplicationGatewaySKU
+
+    @azure.FieldHint { requiredOnCreate = true }
+    gatewayIPConfigurations: Listing<GatewayIPConfiguration>
+
+    @azure.FieldHint { requiredOnCreate = true }
+    frontendIPConfigurations: Listing<FrontendIPConfiguration>
+
+    @azure.FieldHint { requiredOnCreate = true }
+    frontendPorts: Listing<FrontendPort>
+
+    @azure.FieldHint { requiredOnCreate = true }
+    backendAddressPools: Listing<BackendAddressPool>
+
+    @azure.FieldHint { requiredOnCreate = true }
+    backendHttpSettingsCollection: Listing<BackendHTTPSettings>
+
+    @azure.FieldHint { requiredOnCreate = true }
+    httpListeners: Listing<HTTPListener>
+
+    @azure.FieldHint { requiredOnCreate = true }
+    requestRoutingRules: Listing<RequestRoutingRule>
+
+    @azure.FieldHint {}
+    probes: Listing<Probe>?
+
+    @azure.FieldHint {}
+    sslCertificates: Listing<SSLCertificate>?
+
+    @azure.FieldHint {}
+    identity: Identity?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ApplicationGatewayResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

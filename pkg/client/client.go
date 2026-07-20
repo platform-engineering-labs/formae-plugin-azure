@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -57,6 +58,7 @@ type Client struct {
 	SecurityGroupsClient                 *armnetwork.SecurityGroupsClient
 	PublicIPAddressesClient              *armnetwork.PublicIPAddressesClient
 	LoadBalancersClient                  *armnetwork.LoadBalancersClient
+	ApplicationGatewaysClient            *armnetwork.ApplicationGatewaysClient
 	InterfacesClient                     *armnetwork.InterfacesClient
 	PrivateEndpointsClient               *armnetwork.PrivateEndpointsClient
 	PrivateDnsZoneGroupsClient           *armnetwork.PrivateDNSZoneGroupsClient
@@ -100,6 +102,31 @@ type Client struct {
 }
 
 // NewClient creates a new Azure client wrapper
+// clientCache holds one *Client per subscription for the plugin process lifetime.
+//
+// The plugin runs as a persistent process and issues many operations against the
+// same target. Rebuilding the Client (and its credential) on every operation
+// discards the Azure SDK's in-credential token cache, forcing a fresh token
+// acquisition each time. Under short-lived federated auth (e.g. GitHub OIDC in
+// CI, where the assertion outlives only ~10 min but the access token it buys
+// lasts ~1 h) that means re-exchanging an assertion that has since expired —
+// every op fails once the assertion ages out. Reusing one credential means the
+// assertion is exchanged once (while fresh) and the SDK rides the ~1 h token
+// across all subsequent operations. For refreshable auth (Managed Identity,
+// service principal, az login) the SDK simply renews as designed.
+var (
+	clientCacheMu sync.Mutex
+	clientCache   = map[string]*Client{}
+)
+
+// newCredential builds the Azure credential for a config. Overridable in tests.
+var newCredential = func(cfg *config.Config) (azcore.TokenCredential, error) {
+	return cfg.ToAzureCredential(context.Background())
+}
+
+// NewClient returns a cached *Client for the config's subscription, building one
+// on first use. The returned Client (and its shared credential) is reused across
+// operations so the SDK's token cache survives — see clientCache.
 func NewClient(cfg *config.Config) (*Client, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("azure config is required")
@@ -108,8 +135,25 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("azure config requires non-empty SubscriptionId")
 	}
 
-	ctx := context.Background()
-	cred, err := cfg.ToAzureCredential(ctx)
+	clientCacheMu.Lock()
+	defer clientCacheMu.Unlock()
+
+	if c, ok := clientCache[cfg.SubscriptionId]; ok {
+		return c, nil
+	}
+
+	c, err := buildClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	clientCache[cfg.SubscriptionId] = c
+	return c, nil
+}
+
+// buildClient constructs a fresh Client with all typed sub-clients sharing one
+// credential. Callers go through NewClient, which caches the result per subscription.
+func buildClient(cfg *config.Config) (*Client, error) {
+	cred, err := newCredential(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +186,11 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	}
 
 	loadBalancersClient, err := armnetwork.NewLoadBalancersClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	applicationGatewaysClient, err := armnetwork.NewApplicationGatewaysClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +389,7 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		SecurityGroupsClient:                 securityGroupsClient,
 		PublicIPAddressesClient:              publicIPAddressesClient,
 		LoadBalancersClient:                  loadBalancersClient,
+		ApplicationGatewaysClient:            applicationGatewaysClient,
 		InterfacesClient:                     interfacesClient,
 		PrivateEndpointsClient:               privateEndpointsClient,
 		PrivateDnsZoneGroupsClient:           privateDnsZoneGroupsClient,
