@@ -161,6 +161,9 @@ forma {
         name = "health"
         protocol = "Http"
         path = "/api/v1/health"
+        // Azure rejects a probe with a null host unless
+        // pickHostNameFromBackendHttpSettings is set; give it an explicit host.
+        host = "localhost"
         port = 49684
         interval = 30
         timeout = 30

@@ -161,6 +161,8 @@ forma {
         protocol = "Http"
         // Update: change probe path + bump interval (non-createOnly).
         path = "/api/v1/healthz"
+        // Host required unless pickHostNameFromBackendHttpSettings is set.
+        host = "localhost"
         port = 49684
         interval = 60
         timeout = 30
