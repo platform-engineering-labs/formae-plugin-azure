@@ -6,12 +6,13 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      run_conformance:
-        description: 'Run conformance tests'
-        required: false
-        default: 'false'
-        type: boolean
+
+# Serialize conformance across CI runs (and with nightly) so matrix jobs
+# don't race for the same Azure test subscription. cancel-in-progress=false
+# lets an in-flight run finish and cleanup rather than being killed mid-create.
+concurrency:
+  group: azure-conformance-tests
+  cancel-in-progress: false
 
 jobs:
   reuse-compliance:
@@ -57,10 +58,10 @@ jobs:
         run: make verify-schema
 
   # Integration tests are mock-based (fake SDK clients) and need no cloud creds.
+  # Run on PRs too so they gate merges alongside conformance.
   test-integration:
     needs: [checks]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -74,15 +75,42 @@ jobs:
       - name: Run integration tests
         run: make test-integration
 
-  conformance-tests:
+  # Clear stale test resources before the conformance matrix runs, so a prior
+  # aborted run can't collide with this one.
+  pre-cleanup:
     needs: [checks, test-integration]
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.run_conformance == 'true' }}
-    timeout-minutes: 30
-    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clean up test resources
+        run: ./scripts/ci/clean-environment.sh
+
+  # Conformance runs the full CRUD + discovery lifecycle against real Azure
+  # resources on every push, PR, and manual dispatch — so it gates merges.
+  # The matrix is curated (not auto-discovered) to exclude resources with known
+  # formae-core discovery bugs; see the exclusions below.
+  conformance-tests:
+    needs: [checks, test-integration, pre-cleanup]
+    runs-on: ubuntu-latest
+    # 90 min: App Gateway v2 runs both the CRUD lifecycle and discovery, each
+    # provisioning a gateway (6-8 min per op). Fast resources finish well under this.
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
         resource:
           - resource-group
@@ -100,6 +128,7 @@ jobs:
           - user-assigned-identity
           - federated-identity-credential
           - load-balancer
+          - application-gateway
           - private-dns-zone
           - private-dns-vnet-link
           - private-endpoint
@@ -136,21 +165,62 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests (${{ matrix.resource }})
+      # CRUD and discovery run as separate steps with a fresh azure/login between
+      # them. A single OIDC token stops refreshing partway through a long job
+      # (App Gateway's lifecycle alone is ~35 min), after which every List fails
+      # with "DefaultAzureCredential: failed to acquire a token". Re-authenticating
+      # before discovery keeps each phase inside a fresh ~1h token window.
+      #
+      # FORMAE_TEST_FILTER scopes each job to its one resource — without it the
+      # whole suite runs in every matrix job (20x work) and jobs delete each
+      # other's resources. Cleanup is owned by the pre-/conformance-cleanup jobs;
+      # the Makefile skips its inline cleanup when the filter is set.
+      - name: Run CRUD conformance (${{ matrix.resource }})
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: |
+          set -euo pipefail
+          TIMEOUT_ARG=""
+          if [ "${{ matrix.resource }}" = "application-gateway" ]; then
+            # App Gateway v2 create/update/delete each take 6-8 min. FORMAE_TEST_TIMEOUT
+            # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
+            # go-test timeout for the whole lifecycle.
+            export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
+            TIMEOUT_ARG="TIMEOUT=50"
+          fi
+          make conformance-test-crud-run $TIMEOUT_ARG
+
+      - name: Re-authenticate for discovery
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run discovery conformance (${{ matrix.resource }})
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: make conformance-test
+        run: |
+          set -euo pipefail
+          TIMEOUT_ARG=""
+          if [ "${{ matrix.resource }}" = "application-gateway" ]; then
+            export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
+            TIMEOUT_ARG="TIMEOUT=50"
+          fi
+          make conformance-test-discovery-run $TIMEOUT_ARG
 
-  # Clean up Azure resources after all matrix jobs complete
+  # Clean up Azure resources after all matrix jobs complete (always runs).
   conformance-cleanup:
     needs: [conformance-tests]
     runs-on: ubuntu-latest
-    if: always() && github.event.inputs.run_conformance == 'true'
-    environment: production
+    if: always()
     permissions:
       id-token: write
       contents: read

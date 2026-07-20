@@ -1,0 +1,170 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "@azure/network/applicationgateway.pkl"
+
+// NOTE: This conformance fixture uses an HTTP listener (no SSL certificate).
+// HTTPS termination needs an inline PFX (sslCertificates[].data/password), which
+// is write-only — Azure never returns it on read, so the conformance harness
+// (which compares desired vs read-back and can't strip write-only fields nested
+// in an array) reports it as drift. The TLS/cert path is covered by the plugin's
+// marshaller round-trip unit test and by the manual live gate (curl https://...
+// per the spec §12). This fixture still exercises the full gateway lifecycle and
+// every intra-gateway child-ID reference (the top correctness risk).
+
+local stackName = "plugin-sdk-test-appgw-stack"
+local testRunID = read("env:FORMAE_TEST_RUN_ID")
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "appgw-test-rg"
+  name = "formae-plugin-sdk-test-appgw-rg-\(testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing {
+    "10.0.0.0/16"
+  }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "appgw-test-vnet"
+  name = "formae-plugin-sdk-test-appgw-vnet-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+// App Gateway v2 requires its own dedicated (non-delegated) subnet.
+local appgwSubnet = new subnet.Subnet {
+  label = "appgw-test-subnet"
+  name = "appgw-subnet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+local pipSku = new publicipaddress.PublicIPAddressSKU {
+  name = "Standard"
+  tier = "Regional"
+}
+
+local pip = new publicipaddress.PublicIPAddress {
+  label = "appgw-test-pip"
+  name = "formae-plugin-sdk-test-appgw-pip-\(testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = pipSku
+  publicIPAllocationMethod = "Static"
+}
+
+forma {
+  new formae.Stack {
+    label = stackName
+    description = "Plugin SDK test for Azure Application Gateway v2"
+  }
+
+  new formae.Target {
+    label = "azure-target"
+    config = new azure.Config {
+      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
+    }
+  }
+
+  rg
+  vnet
+  appgwSubnet
+  pip
+
+  new applicationgateway.ApplicationGateway {
+    label = "plugin-sdk-test-appgw"
+    name = "formae-plugin-sdk-test-appgw-\(testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new applicationgateway.ApplicationGatewaySKU {
+      name = "Standard_v2"
+      tier = "Standard_v2"
+      capacity = 1
+    }
+    gatewayIPConfigurations = new Listing {
+      new applicationgateway.GatewayIPConfiguration {
+        name = "gwip"
+        subnetId = appgwSubnet.res.id
+      }
+    }
+    frontendIPConfigurations = new Listing {
+      new applicationgateway.FrontendIPConfiguration {
+        name = "feip"
+        publicIPAddressId = pip.res.id
+      }
+    }
+    frontendPorts = new Listing {
+      new applicationgateway.FrontendPort {
+        name = "http"
+        port = 80
+      }
+    }
+    backendAddressPools = new Listing {
+      new applicationgateway.BackendAddressPool {
+        name = "agent-pool"
+        backendAddresses = new Listing {
+          new applicationgateway.BackendAddress { ipAddress = "10.0.2.4" }
+        }
+      }
+    }
+    backendHttpSettingsCollection = new Listing {
+      new applicationgateway.BackendHTTPSettings {
+        name = "agent-http"
+        port = 49684
+        protocol = "Http"
+        probeName = "health"
+        requestTimeout = 30
+        cookieBasedAffinity = "Disabled"
+      }
+    }
+    httpListeners = new Listing {
+      new applicationgateway.HTTPListener {
+        name = "l80"
+        frontendIPConfigurationName = "feip"
+        frontendPortName = "http"
+        protocol = "Http"
+      }
+    }
+    requestRoutingRules = new Listing {
+      new applicationgateway.RequestRoutingRule {
+        name = "r1"
+        ruleType = "Basic"
+        priority = 100
+        httpListenerName = "l80"
+        backendAddressPoolName = "agent-pool"
+        backendHTTPSettingsName = "agent-http"
+      }
+    }
+    probes = new Listing {
+      new applicationgateway.Probe {
+        name = "health"
+        protocol = "Http"
+        path = "/api/v1/health"
+        // Azure rejects a probe with a null host unless
+        // pickHostNameFromBackendHttpSettings is set; give it an explicit host.
+        host = "localhost"
+        port = 49684
+        interval = 30
+        timeout = 30
+        unhealthyThreshold = 3
+      }
+    }
+  }
+}
