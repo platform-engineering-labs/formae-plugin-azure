@@ -1,0 +1,44 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/cognitiveservices/account.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cog-test-rg"
+  name = "formae-plugin-sdk-test-cog-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local accountSku = new account.AccountSKU {
+  name = "S0"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new account.Account {
+    label = "plugin-sdk-test-cog"
+    // Replace: change name and kind (createOnly fields trigger delete+create).
+    // The name changes too because Cognitive Services accounts are soft-deleted:
+    // recreating the same name right after delete fails until the old one is purged.
+    name = "fpsdtcogr\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    kind = "TextAnalytics"
+    sku = accountSku
+  }
+}

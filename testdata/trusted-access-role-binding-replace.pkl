@@ -1,0 +1,67 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerservice/managedcluster.pkl"
+import "@azure/containerservice/trustedaccessrolebinding.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "tarb-test-rg"
+  name = "formae-plugin-sdk-test-tarb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local cluster = new managedcluster.ManagedCluster {
+  label = "tarb-test-aks"
+  name = "fpsdt-tarb-aks-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new managedcluster.ManagedClusterSKU {
+    name = "Base"
+    tier = "Free"
+  }
+  identity = new managedcluster.ManagedClusterIdentity {
+    type = "SystemAssigned"
+  }
+  dnsPrefix = "fpsdt-tarb-aks-\(vars.testRunID)"
+  agentPoolProfiles = new Listing {
+    new managedcluster.AgentPoolProfile {
+      name = "nodepool1"
+      count = 1
+      vmSize = "Standard_D2s_v4"
+      mode = "System"
+      osType = "Linux"
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  cluster
+
+  // Replace: Change name (createOnly field triggers delete+create)
+  new trustedaccessrolebinding.TrustedAccessRoleBinding {
+    label = "plugin-sdk-test-tarb"
+    name = "test-tarb-replaced-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    clusterName = cluster.res.name
+    sourceResourceId = "/subscriptions/ddfe7ebf-ba62-442b-b915-24f71b04e63b/resourceGroups/formae-plugin-sdk-test-tarb-rg-\(vars.testRunID)/providers/Microsoft.MachineLearningServices/workspaces/test-workspace"
+    roles = new Listing {
+      "Microsoft.MachineLearningServices/workspaces/mlworkload"
+    }
+  }
+}

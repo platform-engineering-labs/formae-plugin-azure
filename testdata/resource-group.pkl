@@ -1,0 +1,28 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "vars.pkl"
+
+// Read the test run ID from environment variable set by the test harness
+// This ensures consistent naming within a test run but unique names between runs
+
+forma {
+  vars.stack
+
+  vars.target
+
+  new resourcegroup.ResourceGroup {
+    label = "plugin-sdk-test-rg"
+    name = "formae-plugin-sdk-test-rg-\(vars.testRunID)"
+    location = "eastus"
+  }
+}

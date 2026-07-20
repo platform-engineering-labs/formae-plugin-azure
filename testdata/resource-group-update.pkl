@@ -1,0 +1,29 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "vars.pkl"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  new resourcegroup.ResourceGroup {
+    label = "plugin-sdk-test-rg"
+    name = "formae-plugin-sdk-test-rg-\(vars.testRunID)"
+    location = "eastus"
+    // Update: Add tags (non-createOnly field)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

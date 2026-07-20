@@ -1,0 +1,46 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "vars.pkl"
+
+// Read the test run ID from environment variable set by the test harness
+// This ensures consistent naming within a test run but unique names between runs
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sa-test-rg"
+  name = "formae-plugin-sdk-test-sa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Define sku as local to avoid SDK test patch logic targeting it
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // StorageAccount name must be 3-24 chars, lowercase alphanumeric only (no hyphens)
+  new storageaccount.StorageAccount {
+    label = "plugin-sdk-test-sa"
+    name = "fpsdtsa\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = saSku
+    kind = "StorageV2"
+  }
+}
