@@ -181,19 +181,6 @@ jobs:
           set -euo pipefail
           TIMEOUT_ARG=""
           if [ "${{ matrix.resource }}" = "application-gateway" ]; then
-            # App Gateway needs an operator PFX for the HTTPS listener. CI has no
-            # cert secret, so mint a throwaway self-signed one the fixture reads
-            # via FORMAE_TEST_APPGW_PFX_*. v2 provisioning is slow — raise timeout.
-            openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-              -keyout /tmp/appgw-key.pem -out /tmp/appgw-cert.pem \
-              -subj "/CN=app.example.com" >/dev/null 2>&1
-            # -legacy: Application Gateway can't parse openssl-3's default
-            # AES-256/PBKDF2 PKCS#12; it needs the legacy SHA1/3DES encoding.
-            openssl pkcs12 -export -legacy -out /tmp/appgw-cert.pfx \
-              -inkey /tmp/appgw-key.pem -in /tmp/appgw-cert.pem \
-              -passout pass:formae-test
-            export FORMAE_TEST_APPGW_PFX_BASE64="$(base64 -w0 /tmp/appgw-cert.pfx)"
-            export FORMAE_TEST_APPGW_PFX_PASSWORD="formae-test"
             # App Gateway v2 create/update/delete each take 6-8 min. FORMAE_TEST_TIMEOUT
             # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
             # go-test timeout covering the whole create+update+delete lifecycle.

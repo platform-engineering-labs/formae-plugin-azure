@@ -15,11 +15,11 @@ import "@azure/resources/subnet.pkl"
 import "@azure/network/publicipaddress.pkl"
 import "@azure/network/applicationgateway.pkl"
 
+// HTTP listener (no cert) — see application-gateway.pkl for why the TLS/cert
+// path is not in the conformance fixture.
+
 local stackName = "plugin-sdk-test-appgw-stack"
 local testRunID = read("env:FORMAE_TEST_RUN_ID")
-
-local pfxBase64 = read("env:FORMAE_TEST_APPGW_PFX_BASE64")
-local pfxPassword = read("env:FORMAE_TEST_APPGW_PFX_PASSWORD")
 
 local rg = new resourcegroup.ResourceGroup {
   label = "appgw-test-rg"
@@ -105,8 +105,8 @@ forma {
     }
     frontendPorts = new Listing {
       new applicationgateway.FrontendPort {
-        name = "https"
-        port = 443
+        name = "http"
+        port = 80
       }
     }
     backendAddressPools = new Listing {
@@ -129,20 +129,12 @@ forma {
         cookieBasedAffinity = "Disabled"
       }
     }
-    sslCertificates = new Listing {
-      new applicationgateway.SSLCertificate {
-        name = "cert"
-        data = formae.value(pfxBase64).opaque
-        password = formae.value(pfxPassword).opaque
-      }
-    }
     httpListeners = new Listing {
       new applicationgateway.HTTPListener {
-        name = "l443"
+        name = "l80"
         frontendIPConfigurationName = "feip"
-        frontendPortName = "https"
-        protocol = "Https"
-        sslCertificateName = "cert"
+        frontendPortName = "http"
+        protocol = "Http"
       }
     }
     requestRoutingRules = new Listing {
@@ -150,7 +142,7 @@ forma {
         name = "r1"
         ruleType = "Basic"
         priority = 100
-        httpListenerName = "l443"
+        httpListenerName = "l80"
         backendAddressPoolName = "agent-pool"
         backendHTTPSettingsName = "agent-http"
       }
@@ -161,7 +153,6 @@ forma {
         protocol = "Http"
         // Update: change probe path + bump interval (non-createOnly).
         path = "/api/v1/healthz"
-        // Host required unless pickHostNameFromBackendHttpSettings is set.
         host = "localhost"
         port = 49684
         interval = 60
