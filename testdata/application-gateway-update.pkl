@@ -15,21 +15,14 @@ import "@azure/resources/subnet.pkl"
 import "@azure/network/publicipaddress.pkl"
 import "@azure/network/applicationgateway.pkl"
 
-// NOTE: This conformance fixture uses an HTTP listener (no SSL certificate).
-// HTTPS termination needs an inline PFX (sslCertificates[].data/password), which
-// is write-only — Azure never returns it on read, so the conformance harness
-// (which compares desired vs read-back and can't strip write-only fields nested
-// in an array) reports it as drift. The TLS/cert path is covered by the plugin's
-// marshaller round-trip unit test and by the manual live gate (curl https://...
-// per the spec §12). This fixture still exercises the full gateway lifecycle and
-// every intra-gateway child-ID reference (the top correctness risk).
+import "vars.pkl"
 
-local stackName = "plugin-sdk-test-appgw-stack"
-local testRunID = read("env:FORMAE_TEST_RUN_ID")
+// HTTP listener (no cert) — see application-gateway.pkl for why the TLS/cert
+// path is not in the conformance fixture.
 
 local rg = new resourcegroup.ResourceGroup {
   label = "appgw-test-rg"
-  name = "formae-plugin-sdk-test-appgw-rg-\(testRunID)"
+  name = "formae-plugin-sdk-test-appgw-rg-\(vars.testRunID)"
   location = "eastus"
 }
 
@@ -41,13 +34,12 @@ local vnetAddressSpace = new virtualnetwork.AddressSpace {
 
 local vnet = new virtualnetwork.VirtualNetwork {
   label = "appgw-test-vnet"
-  name = "formae-plugin-sdk-test-appgw-vnet-\(testRunID)"
+  name = "formae-plugin-sdk-test-appgw-vnet-\(vars.testRunID)"
   location = "eastus"
   resourceGroupName = rg.res.name
   addressSpace = vnetAddressSpace
 }
 
-// App Gateway v2 requires its own dedicated (non-delegated) subnet.
 local appgwSubnet = new subnet.Subnet {
   label = "appgw-test-subnet"
   name = "appgw-subnet"
@@ -63,7 +55,7 @@ local pipSku = new publicipaddress.PublicIPAddressSKU {
 
 local pip = new publicipaddress.PublicIPAddress {
   label = "appgw-test-pip"
-  name = "formae-plugin-sdk-test-appgw-pip-\(testRunID)"
+  name = "formae-plugin-sdk-test-appgw-pip-\(vars.testRunID)"
   location = "eastus"
   resourceGroupName = rg.res.name
   sku = pipSku
@@ -71,17 +63,8 @@ local pip = new publicipaddress.PublicIPAddress {
 }
 
 forma {
-  new formae.Stack {
-    label = stackName
-    description = "Plugin SDK test for Azure Application Gateway v2"
-  }
-
-  new formae.Target {
-    label = "azure-target"
-    config = new azure.Config {
-      subscriptionId = "ddfe7ebf-ba62-442b-b915-24f71b04e63b"
-    }
-  }
+  vars.stack
+  vars.target
 
   rg
   vnet
@@ -90,7 +73,7 @@ forma {
 
   new applicationgateway.ApplicationGateway {
     label = "plugin-sdk-test-appgw"
-    name = "formae-plugin-sdk-test-appgw-\(testRunID)"
+    name = "formae-plugin-sdk-test-appgw-\(vars.testRunID)"
     location = "eastus"
     resourceGroupName = rg.res.name
     sku = new applicationgateway.ApplicationGatewaySKU {
@@ -119,8 +102,10 @@ forma {
     backendAddressPools = new Listing {
       new applicationgateway.BackendAddressPool {
         name = "agent-pool"
+        // Update: add a second backend member (reconcilable).
         backendAddresses = new Listing {
           new applicationgateway.BackendAddress { ipAddress = "10.0.2.4" }
+          new applicationgateway.BackendAddress { ipAddress = "10.0.2.5" }
         }
       }
     }
@@ -156,15 +141,18 @@ forma {
       new applicationgateway.Probe {
         name = "health"
         protocol = "Http"
-        path = "/api/v1/health"
-        // Azure rejects a probe with a null host unless
-        // pickHostNameFromBackendHttpSettings is set; give it an explicit host.
+        // Update: change probe path + bump interval (non-createOnly).
+        path = "/api/v1/healthz"
         host = "localhost"
         port = 49684
-        interval = 30
+        interval = 60
         timeout = 30
         unhealthyThreshold = 3
       }
+    }
+    // Update: add tags (non-createOnly).
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
     }
   }
 }
