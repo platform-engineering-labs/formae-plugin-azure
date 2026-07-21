@@ -1,0 +1,48 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/app/managedenvironment.pkl"
+
+import "vars.pkl"
+
+// NOTE: This fixture creates a CONSUMPTION-ONLY managed environment with NO
+// appLogsConfiguration. Log-analytics needs a logAnalyticsConfiguration.sharedKey
+// which is write-only — Azure never returns it on read, so the conformance
+// harness (desired vs read-back, cannot strip write-only fields nested in an
+// object) would report false drift. The log-analytics path is covered by the
+// plugin's marshaller round-trip unit test and by a manual live gate.
+//
+// SLOW + BILLED: a managed environment takes ~5 minutes to provision and may
+// exceed the CI 10-minute command timeout (like the AKS extension). Likely
+// warrants exclusion from the default CI matrix; validate via `make
+// test-integration` + a manual `make conformance-test-crud TEST=managed-environment`.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "managed-env-test-rg"
+  name = "formae-plugin-sdk-test-menv-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new managedenvironment.ManagedEnvironment {
+    label = "plugin-sdk-test-managed-env"
+    name = "formae-plugin-sdk-test-menv-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+  }
+}

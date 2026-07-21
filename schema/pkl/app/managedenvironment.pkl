@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.app.managedenvironment
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::App::ManagedEnvironment"
+const apiVersion = "2023-05-01"
+
+open class ManagedEnvironmentResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagedEnvironmentResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ManagedEnvironmentResolvable = (this) {
+        property = "name"
+    }
+    hidden defaultDomain: ManagedEnvironmentResolvable = (this) {
+        property = "defaultDomain"
+    }
+    hidden staticIp: ManagedEnvironmentResolvable = (this) {
+        property = "staticIp"
+    }
+}
+
+/// Log Analytics workspace configuration used when appLogsConfiguration.destination
+/// is "log-analytics".
+class LogAnalyticsConfiguration {
+    /// Log Analytics workspace customer (workspace) ID.
+    customerId: String
+
+    /// Log Analytics workspace shared key. Write-only: Azure never returns it,
+    /// so wrap with `formae.value(...).opaque` to keep it out of stored state.
+    @azure.FieldHint { writeOnly = true }
+    sharedKey: (formae.Value|String)?
+}
+
+/// App logs configuration. Omit entirely for a consumption-only environment with
+/// no log destination.
+class AppLogsConfiguration {
+    /// Logs destination (e.g. "log-analytics").
+    destination: String?
+
+    /// Log Analytics configuration (required when destination is "log-analytics").
+    logAnalyticsConfiguration: LogAnalyticsConfiguration?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ManagedEnvironment extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 60)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Optional app-logs configuration. Leave unset for a consumption-only
+    /// environment (no log-analytics secret required).
+    @azure.FieldHint {}
+    appLogsConfiguration: AppLogsConfiguration?
+
+    /// Whether the environment is zone-redundant.
+    @azure.FieldHint { createOnly = true }
+    zoneRedundant: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultDomain: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    staticIp: String?
+
+    hidden parent = this
+
+    hidden res: ManagedEnvironmentResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

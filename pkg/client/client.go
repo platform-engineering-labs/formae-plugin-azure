@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
@@ -99,6 +100,7 @@ type Client struct {
 	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
 	GrafanaClient                        *armdashboard.GrafanaClient
 	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
+	ManagedEnvironmentsClient            *armappcontainers.ManagedEnvironmentsClient
 	credential                           azcore.TokenCredential
 	clientOptions                        *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
@@ -394,6 +396,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	managedEnvironmentsClient, err := armappcontainers.NewManagedEnvironmentsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -448,6 +455,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		CognitiveAccountsClient:              cognitiveAccountsClient,
 		GrafanaClient:                        grafanaClient,
 		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
+		ManagedEnvironmentsClient:            managedEnvironmentsClient,
 		credential:                           cred,
 		clientOptions:                        clientOptions,
 		armClient:                            armClient,
