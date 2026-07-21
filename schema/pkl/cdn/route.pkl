@@ -77,11 +77,13 @@ open class Route extends formae.Resource {
     httpsRedirect: ("Enabled"|"Disabled") = "Enabled"
 
     /// Whether the route is enabled. Permitted values are 'Enabled' or 'Disabled'.
-    @azure.FieldHint {}
+    // Azure defaults this (Enabled) and always returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
     enabledState: ("Enabled"|"Disabled")?
 
     /// Directory path on the origin used to retrieve content.
-    @azure.FieldHint {}
+    // Azure may return this; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
     originPath: String?
 
     hidden parent = this

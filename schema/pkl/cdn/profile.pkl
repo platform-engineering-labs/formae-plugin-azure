@@ -54,7 +54,9 @@ open class Profile extends formae.Resource {
     sku: SKU = new SKU {}
 
     /// Send/receive timeout (seconds) when forwarding a request to the origin.
-    @azure.FieldHint {}
+    /// Azure defaults this (Front Door Standard: 120s) and always returns it,
+    /// so omitting it must not read as drift.
+    @azure.FieldHint { hasProviderDefault = true }
     originResponseTimeoutSeconds: Int(this >= 16 && this <= 240)?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }

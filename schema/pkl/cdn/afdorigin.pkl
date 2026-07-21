@@ -64,7 +64,8 @@ open class AFDOrigin extends formae.Resource {
     httpsPort: Int(this >= 1 && this <= 65535) = 443
 
     /// Host header sent to the origin. Defaults to the request hostname if blank.
-    @azure.FieldHint {}
+    // Azure echoes/derives this and returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
     originHostHeader: String?
 
     /// Load-balancing priority. Must be between 1 and 5.
@@ -80,7 +81,8 @@ open class AFDOrigin extends formae.Resource {
     enabledState: ("Enabled"|"Disabled") = "Enabled"
 
     /// Whether to enforce certificate name check at origin level.
-    @azure.FieldHint {}
+    // Azure defaults this (true) and always returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
     enforceCertificateNameCheck: Boolean?
 
     hidden parent = this

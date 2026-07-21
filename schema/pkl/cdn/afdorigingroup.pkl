@@ -75,7 +75,8 @@ open class AFDOriginGroup extends formae.Resource {
     healthProbeSettings: HealthProbeSettings
 
     /// Whether to allow session affinity. Permitted values are 'Enabled' or 'Disabled'.
-    @azure.FieldHint {}
+    // Azure defaults this (Disabled) and always returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
     sessionAffinityState: ("Enabled"|"Disabled")?
 
     hidden parent = this
