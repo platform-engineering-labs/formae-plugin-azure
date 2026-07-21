@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/sql/server.pkl"
+import "@azure/sql/sqldatabase.pkl" as database
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sql-database-test-rg"
+  name = "formae-plugin-sdk-test-sql-database-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+local srv = new server.Server {
+  label = "plugin-sdk-test-sql-database-server"
+  name = "fpsdt-sqldb-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  administratorLogin = "sqladmin"
+  administratorLoginPassword = "T3stP@ssw0rd!"
+  version = "12.0"
+  minimalTlsVersion = "1.2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  srv
+
+  new database.Database {
+    label = "plugin-sdk-test-sql-database"
+    name = "fpsdt-db-\(vars.testRunID)"
+    location = "westus2"
+    resourceGroupName = rg.res.name
+    serverName = srv.res.name
+    collation = "SQL_Latin1_General_CP1_CI_AS"
+    // Azure normalizes a DTU service objective to its tier name in the SKU it
+    // returns, so name is "Standard" (capacity distinguishes S0=10 from S1=20).
+    sku = new database.SKU {
+      name = "Standard"
+      tier = "Standard"
+      capacity = 10
+    }
+  }
+}

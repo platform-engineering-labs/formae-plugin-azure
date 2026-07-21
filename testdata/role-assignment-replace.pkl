@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/managedidentity/userassignedidentity.pkl"
+import "@azure/authorization/roleassignment.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ra-test-rg"
+  name = "formae-plugin-sdk-test-ra-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local uai = new userassignedidentity.UserAssignedIdentity {
+  label = "ra-test-uai"
+  name = "formae-plugin-sdk-test-ra-uai-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Replace: Change roleDefinitionId (createOnly field triggers delete+create)
+// Contributor built-in role: b24988ac-6180-42a0-ab88-20f7382dd24c
+local contributorRoleId = "/subscriptions/\(vars.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  uai
+
+  // Replace: Switch from Reader to Contributor role
+  new roleassignment.RoleAssignment {
+    label = "plugin-sdk-test-ra"
+    scope = rg.res.id
+    principalId = uai.res.principalId
+    roleDefinitionId = contributorRoleId
+    principalType = "ServicePrincipal"
+  }
+}

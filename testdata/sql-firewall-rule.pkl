@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/sql/server.pkl"
+import "@azure/sql/sqlfirewallrule.pkl" as firewallrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sql-fw-test-rg"
+  name = "formae-plugin-sdk-test-sql-fw-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+local srv = new server.Server {
+  label = "plugin-sdk-test-sql-fw-server"
+  name = "fpsdt-sqlfw-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  administratorLogin = "sqladmin"
+  administratorLoginPassword = "T3stP@ssw0rd!"
+  version = "12.0"
+  minimalTlsVersion = "1.2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  srv
+
+  new firewallrule.FirewallRule {
+    label = "plugin-sdk-test-sql-firewall-rule"
+    name = "fpsdt-sqlfw-rule-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    serverName = srv.res.name
+    startIpAddress = "0.0.0.0"
+    endIpAddress = "0.0.0.0"
+  }
+}

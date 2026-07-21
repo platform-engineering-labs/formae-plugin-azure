@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "pip-test-rg"
+  name = "formae-plugin-sdk-test-pip-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local pipSku = new publicipaddress.PublicIPAddressSKU {
+  name = "Standard"
+  tier = "Regional"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new publicipaddress.PublicIPAddress {
+    label = "plugin-sdk-test-pip"
+    // Replace: Change name (createOnly field triggers delete+create)
+    name = "formae-plugin-sdk-test-pip-replaced-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = pipSku
+    publicIPAllocationMethod = "Static"
+  }
+}

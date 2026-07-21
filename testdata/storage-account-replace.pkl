@@ -1,0 +1,42 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sa-test-rg"
+  name = "formae-plugin-sdk-test-sa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Replace: Change name (createOnly field triggers delete+create)
+  new storageaccount.StorageAccount {
+    label = "plugin-sdk-test-sa"
+    name = "fpsdtsarpl\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = saSku
+    kind = "StorageV2"
+  }
+}

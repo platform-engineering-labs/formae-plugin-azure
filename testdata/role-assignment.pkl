@@ -1,0 +1,48 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/managedidentity/userassignedidentity.pkl"
+import "@azure/authorization/roleassignment.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ra-test-rg"
+  name = "formae-plugin-sdk-test-ra-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local uai = new userassignedidentity.UserAssignedIdentity {
+  label = "ra-test-uai"
+  name = "formae-plugin-sdk-test-ra-uai-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Reader built-in role: acdd72a7-3385-48ef-bd42-f606fba81ae7
+local readerRoleId = "/subscriptions/\(vars.subscriptionId)/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  uai
+
+  new roleassignment.RoleAssignment {
+    label = "plugin-sdk-test-ra"
+    scope = rg.res.id
+    principalId = uai.res.principalId
+    roleDefinitionId = readerRoleId
+    principalType = "ServicePrincipal"
+  }
+}
