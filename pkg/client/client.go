@@ -101,6 +101,7 @@ type Client struct {
 	GrafanaClient                        *armdashboard.GrafanaClient
 	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
 	ManagedEnvironmentsClient            *armappcontainers.ManagedEnvironmentsClient
+	ContainerAppsClient                  *armappcontainers.ContainerAppsClient
 	credential                           azcore.TokenCredential
 	clientOptions                        *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
@@ -401,6 +402,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	containerAppsClient, err := armappcontainers.NewContainerAppsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -456,6 +462,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		GrafanaClient:                        grafanaClient,
 		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
 		ManagedEnvironmentsClient:            managedEnvironmentsClient,
+		ContainerAppsClient:                  containerAppsClient,
 		credential:                           cred,
 		clientOptions:                        clientOptions,
 		armClient:                            armClient,
