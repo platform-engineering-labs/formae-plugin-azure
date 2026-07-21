@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/cdn/profile.pkl"
+import "@azure/cdn/afdendpoint.pkl"
+import "vars.pkl"
+
+// NOTE: Stands up a Front Door profile + endpoint. Profile provisioning is slow
+// and billed; CI-coverable (no secrets, no real domain). Use a generous TIMEOUT.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cdn-test-rg"
+  name = "formae-plugin-sdk-test-cdn-ep-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local afdProfile = new profile.Profile {
+  label = "plugin-sdk-test-cdn-ep-profile"
+  name = "formae-sdk-afd-ep-\(vars.testRunID)"
+  location = "global"
+  sku = new profile.SKU { name = "Standard_AzureFrontDoor" }
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  afdProfile
+
+  new afdendpoint.AFDEndpoint {
+    label = "plugin-sdk-test-cdn-endpoint"
+    name = "ep-\(vars.testRunID)"
+    location = "global"
+    resourceGroupName = rg.res.name
+    profileName = afdProfile.res.name
+    enabledState = "Enabled"
+  }
+}
