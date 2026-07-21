@@ -45,7 +45,7 @@ open class AFDEndpoint extends formae.Resource {
 
     /// Always "global" for Azure Front Door endpoints.
     @azure.FieldHint { required = true; createOnly = true }
-    location: azure.Location = "global"
+    location: azure.Location = "Global"
 
     @azure.FieldHint { required = true; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable

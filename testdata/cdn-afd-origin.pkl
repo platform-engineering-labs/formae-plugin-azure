@@ -27,7 +27,7 @@ local rg = new resourcegroup.ResourceGroup {
 local afdProfile = new profile.Profile {
   label = "plugin-sdk-test-cdn-origin-profile"
   name = "formae-sdk-afd-origin-\(vars.testRunID)"
-  location = "global"
+  location = "Global"
   sku = new profile.SKU { name = "Standard_AzureFrontDoor" }
   resourceGroupName = rg.res.name
 }

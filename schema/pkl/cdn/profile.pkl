@@ -44,7 +44,7 @@ open class Profile extends formae.Resource {
 
     /// Always "global" for Azure Front Door Standard profiles.
     @azure.FieldHint { required = true; createOnly = true }
-    location: azure.Location = "global"
+    location: azure.Location = "Global"
 
     @azure.FieldHint { required = true; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
