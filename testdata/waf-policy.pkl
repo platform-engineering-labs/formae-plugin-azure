@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/webapplicationfirewallpolicy.pkl"
+
+import "vars.pkl"
+
+// A WAF policy has no secret/write-only fields, so the full CRUD lifecycle is
+// covered in CI. It exercises the OWASP managed rule set plus a custom rule with
+// nested match conditions/variables (the top marshaller risk).
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "waf-test-rg"
+  name = "formae-plugin-sdk-test-waf-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+  vars.target
+
+  rg
+
+  new webapplicationfirewallpolicy.WebApplicationFirewallPolicy {
+    label = "plugin-sdk-test-waf"
+    name = "formae-plugin-sdk-test-waf-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    policySettings = new webapplicationfirewallpolicy.PolicySettings {
+      state = "Enabled"
+      mode = "Prevention"
+      requestBodyCheck = true
+      maxRequestBodySizeInKb = 128
+    }
+    managedRules = new webapplicationfirewallpolicy.ManagedRules {
+      managedRuleSets = new Listing {
+        new webapplicationfirewallpolicy.ManagedRuleSet {
+          ruleSetType = "OWASP"
+          ruleSetVersion = "3.2"
+        }
+      }
+    }
+    customRules = new Listing {
+      new webapplicationfirewallpolicy.CustomRule {
+        name = "blockBadIp"
+        priority = 100
+        ruleType = "MatchRule"
+        action = "Block"
+        matchConditions = new Listing {
+          new webapplicationfirewallpolicy.MatchCondition {
+            matchVariables = new Listing {
+              new webapplicationfirewallpolicy.MatchVariable { variableName = "RemoteAddr" }
+            }
+            operator = "IPMatch"
+            matchValues = new Listing {
+              "192.0.2.0/24"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -283,6 +283,11 @@ open class ApplicationGateway extends formae.Resource {
     @azure.FieldHint {}
     identity: Identity?
 
+    /// ARM ID of a WebApplicationFirewallPolicy to attach (requires a WAF_v2 SKU),
+    /// e.g. `firewallPolicyId = waf.res.id`.
+    @azure.FieldHint {}
+    firewallPolicyId: (String|formae.Resolvable)?
+
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
