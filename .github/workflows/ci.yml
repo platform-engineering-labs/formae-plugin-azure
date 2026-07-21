@@ -144,6 +144,28 @@ jobs:
           - blob-container
           - disk
           - virtual-machine-scale-set
+          # Azure Front Door Standard (Microsoft.Cdn AFD). Profile provisioning is
+          # minutes-slow + billed; each fixture stands up the chain up to its own
+          # resource (cdn-route brings up the full profile→endpoint→origin-group→
+          # origin→route AFD). Uses TIMEOUT overrides in the run step.
+          - cdn-profile
+          - cdn-afd-endpoint
+          - cdn-afd-origin-group
+          - cdn-afd-origin
+          - cdn-route
+          # cdn-afd-custom-domain and cdn-secret excluded: custom-domain needs a REAL
+          # owned domain (Azure _dnsauth TXT ownership challenge) and secret needs a
+          # real Key Vault certificate + AFD service-principal vault access — neither
+          # is available to the CI principal. CRUD validated via test-integration
+          # (mocked) + marshaller round-trip; run live locally with a real domain/cert:
+          #   make conformance-test-crud TEST=cdn-afd-custom-domain
+          #   make conformance-test-crud TEST=cdn-secret
+          # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
+          # a managed environment takes ~5 min to provision (container-app builds on top),
+          # exceeding the CI command timeout — same class as the AKS extension. Both are
+          # billed. CRUD validated via test-integration (mocked); run live locally with:
+          #   make conformance-test-crud TEST=managed-environment TIMEOUT=15
+          #   make conformance-test-crud TEST=container-app TIMEOUT=15
 
     permissions:
       id-token: write
@@ -192,13 +214,15 @@ jobs:
         run: |
           set -euo pipefail
           TIMEOUT_ARG=""
-          if [ "${{ matrix.resource }}" = "application-gateway" ]; then
-            # App Gateway v2 create/update/delete each take 6-8 min. FORMAE_TEST_TIMEOUT
-            # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
-            # go-test timeout for the whole lifecycle.
-            export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-            TIMEOUT_ARG="TIMEOUT=50"
-          fi
+          # App Gateway v2 and Front Door profiles are slow to provision (6-8 min per
+          # op / minutes per profile). FORMAE_TEST_TIMEOUT is the per-command poll
+          # (default 5 min — too short); TIMEOUT is the overall go-test timeout.
+          case "${{ matrix.resource }}" in
+            application-gateway|cdn-*)
+              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
+              TIMEOUT_ARG="TIMEOUT=50"
+              ;;
+          esac
           make conformance-test-crud-run $TIMEOUT_ARG
 
       - name: Re-authenticate for discovery
@@ -218,10 +242,12 @@ jobs:
         run: |
           set -euo pipefail
           TIMEOUT_ARG=""
-          if [ "${{ matrix.resource }}" = "application-gateway" ]; then
-            export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
-            TIMEOUT_ARG="TIMEOUT=50"
-          fi
+          case "${{ matrix.resource }}" in
+            application-gateway|cdn-*)
+              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
+              TIMEOUT_ARG="TIMEOUT=50"
+              ;;
+          esac
           make conformance-test-discovery-run $TIMEOUT_ARG
 
   # Clean up Azure resources after all matrix jobs complete (always runs).

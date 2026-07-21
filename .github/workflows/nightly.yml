@@ -162,6 +162,21 @@ jobs:
           - blob-container
           - disk
           - virtual-machine-scale-set
+          # Azure Front Door Standard (Microsoft.Cdn AFD) — profile provisioning is
+          # minutes-slow + billed. cdn-route stands up the full AFD chain.
+          - cdn-profile
+          - cdn-afd-endpoint
+          - cdn-afd-origin-group
+          - cdn-afd-origin
+          - cdn-route
+          # cdn-afd-custom-domain and cdn-secret excluded from nightly: custom-domain
+          # needs a REAL owned domain (Azure _dnsauth TXT challenge), secret needs a real
+          # Key Vault cert + AFD SP vault access. CRUD validated via test-integration
+          # (mocked) + round-trip; run live locally with a real domain/cert.
+          # Container Apps (managed-environment, container-app) excluded from nightly:
+          # environment provisioning (~5 min, container-app builds on top) exceeds the
+          # command timeout, same class as the AKS extension; both billed. CRUD validated
+          # via test-integration (mocked); run live locally with TIMEOUT=15.
           # extension and flux-configuration excluded: each requires AKS cluster (~8m) +
           # extension install (~5m), exceeding the 10m command timeout. CRUD validated locally.
           # maintenance-configuration and trusted-access-role-binding excluded: Create returns
