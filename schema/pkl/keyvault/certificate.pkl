@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.keyvault.certificate
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::KeyVault::Certificate"
+// Data-plane API version (metadata only; the azcertificates SDK pins its own).
+const apiVersion = "7.5"
+
+open class CertificateResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: CertificateResolvable = (this) {
+        property = "id"
+    }
+    hidden name: CertificateResolvable = (this) {
+        property = "name"
+    }
+    hidden secretId: CertificateResolvable = (this) {
+        property = "secretId"
+    }
+    hidden thumbprint: CertificateResolvable = (this) {
+        property = "thumbprint"
+    }
+}
+
+/// Minimal issue policy for the self-signed / issuer path. Import via `data`
+/// takes precedence over `policy` when both are set.
+class Policy {
+    /// Issuer name, e.g. "Self" for a self-signed certificate.
+    issuerName: String = "Self"
+
+    /// X509 subject distinguished name, e.g. "CN=formae-test".
+    subject: String
+
+    /// Key type, e.g. "RSA" or "EC". Defaults to the vault's default when unset.
+    keyType: String?
+
+    /// Certificate validity in months.
+    validityMonths: Int?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::KeyVault::Vault"
+    // Discovery passes the vault's vaultUri to List as AdditionalProperties["vaultUri"].
+    listParam = new formae.ListProperty {
+        parentProperty = "vaultUri"
+        listParameter = "vaultUri"
+    }
+}
+open class Certificate extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(matches(Regex("^[0-9a-zA-Z-]+$")) && length >= 1 && length <= 127)
+
+    /// Data-plane URI of the parent Key Vault, e.g. `vaultUri = kv.res.vaultUri`.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultUri: String(length >= 1)|formae.Resolvable
+
+    /// Base64-encoded PFX/PEM for bring-your-own import; write-only, never surfaced.
+    /// When set, the import path is used and `policy` is ignored.
+    @azure.FieldHint { createOnly = true; writeOnly = true }
+    data: (formae.Value|String)?
+
+    /// Password protecting the imported PFX; write-only, never surfaced.
+    @azure.FieldHint { writeOnly = true }
+    password: (formae.Value|String)?
+
+    /// Issue policy for the self-signed / issuer path (used when `data` is absent).
+    @azure.FieldHint {}
+    policy: Policy?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: CertificateResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
