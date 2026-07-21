@@ -147,6 +147,14 @@ jobs:
           - federated-identity-credential
           - load-balancer
           - application-gateway
+          - waf-policy
+          # certificate (AZURE::KeyVault::Certificate) excluded from nightly for the same
+          # reason as `secret`: it is a Key Vault DATA-PLANE resource and the CI principal
+          # lacks the "Key Vault Certificates Officer" role. CRUD validated via
+          # test-integration (mocked); run live locally with:
+          # make conformance-test-crud TEST=certificate
+          - dns-zone
+          - dns-record-set
           - private-dns-zone
           - private-dns-vnet-link
           - private-endpoint

@@ -129,6 +129,14 @@ jobs:
           - federated-identity-credential
           - load-balancer
           - application-gateway
+          - waf-policy
+          # certificate (AZURE::KeyVault::Certificate) excluded: like `secret`, it is a
+          # Key Vault DATA-PLANE resource — the CI principal can create the vault via ARM
+          # but cannot write certificates without the "Key Vault Certificates Officer"
+          # role. CRUD is validated via test-integration (mocked); run live locally with:
+          # make conformance-test-crud TEST=certificate
+          - dns-zone
+          - dns-record-set
           - private-dns-zone
           - private-dns-vnet-link
           - private-endpoint
