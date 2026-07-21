@@ -1,0 +1,40 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/dnszone.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dns-test-rg"
+  name = "formae-plugin-sdk-test-dns-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new dnszone.DnsZone {
+    label = "plugin-sdk-test-dns-zone"
+    name = "formae-plugin-sdk-test-\(vars.testRunID).example.com"
+    location = "global"
+    zoneType = "Public"
+    resourceGroupName = rg.res.name
+    // Update: add tags (non-createOnly)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
