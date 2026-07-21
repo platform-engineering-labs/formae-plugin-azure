@@ -1,0 +1,25 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+import "@formae/formae.pkl"
+import "@azure/azure.pkl"
+
+local stackName = "plugin-sdk-test-stack"
+
+testRunID = read("env:FORMAE_TEST_RUN_ID")
+subscriptionId = read("env:AZURE_SUBSCRIPTION_ID")
+
+stack = new formae.Stack {
+  label = stackName
+  description = "Plugin SDK test for Azure resources"
+}
+
+target = new formae.Target {
+  label = "azure-target"
+  config = new azure.Config {
+    subscriptionId = module.subscriptionId
+  }
+}

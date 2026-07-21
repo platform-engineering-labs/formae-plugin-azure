@@ -1,0 +1,113 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/compute/virtualmachinescaleset.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vmss-test-rg"
+  name = "formae-plugin-sdk-test-vmss-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing { "10.0.0.0/16" }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vmss-test-vnet"
+  name = "formae-plugin-sdk-test-vmss-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+local snet = new subnet.Subnet {
+  label = "vmss-test-snet"
+  name = "vmss-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  snet
+
+  new virtualmachinescaleset.VirtualMachineScaleSet {
+    label = "plugin-sdk-test-vmss"
+    name = "fpsdtvmss\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new virtualmachinescaleset.VMSSSku {
+      name = "Standard_D2s_v4"
+      // Update: scale out from 1 to 2 instances (uses 4 vCPUs total — within 10 quota)
+      capacity = 2
+      tier = "Standard"
+    }
+    upgradePolicy = new virtualmachinescaleset.VMSSUpgradePolicy {
+      mode = "Manual"
+    }
+    orchestrationMode = "Uniform"
+    virtualMachineProfile = new virtualmachinescaleset.VMSSVirtualMachineProfile {
+      osProfile = new virtualmachinescaleset.VMSSOSProfile {
+        computerNamePrefix = "vmss"
+        adminUsername = "azureuser"
+        adminPassword = "Formae!ConformanceTest42"
+        linuxConfiguration = new virtualmachinescaleset.VMSSLinuxConfiguration {
+          disablePasswordAuthentication = false
+        }
+      }
+      storageProfile = new virtualmachinescaleset.VMSSStorageProfile {
+        imageReference = new virtualmachinescaleset.VMSSImageReference {
+          publisher = "Canonical"
+          offer = "0001-com-ubuntu-server-jammy"
+          sku = "22_04-lts-gen2"
+          version = "latest"
+        }
+        osDisk = new virtualmachinescaleset.VMSSOSDisk {
+          createOption = "FromImage"
+          caching = "ReadWrite"
+          diskSizeGB = 30
+          managedDisk = new virtualmachinescaleset.VMSSManagedDiskParameters {
+            storageAccountType = "Standard_LRS"
+          }
+        }
+      }
+      networkProfile = new virtualmachinescaleset.VMSSNetworkProfile {
+        networkInterfaceConfigurations = new Listing {
+          new virtualmachinescaleset.VMSSNICConfiguration {
+            name = "vmss-nic"
+            primary = true
+            ipConfigurations = new Listing {
+              new virtualmachinescaleset.VMSSIPConfiguration {
+                name = "vmss-ipcfg"
+                subnetId = snet.res.id
+              }
+            }
+          }
+        }
+      }
+    }
+    // Update: add tags
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

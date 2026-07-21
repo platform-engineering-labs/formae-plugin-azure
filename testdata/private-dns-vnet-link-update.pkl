@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/privatednszone.pkl"
+import "@azure/network/privatednsvnetlink.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "pdvnl-test-rg"
+  name = "formae-plugin-sdk-test-pdvnl-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "pdvnl-test-vnet"
+  name = "formae-plugin-sdk-test-pdvnl-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+local zone = new privatednszone.PrivateDnsZone {
+  label = "pdvnl-test-zone"
+  name = "formae-plugin-sdk-test-pdvnl-\(vars.testRunID).internal"
+  location = "global"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  zone
+
+  new privatednsvnetlink.PrivateDnsZoneVirtualNetworkLink {
+    label = "plugin-sdk-test-pdvnl"
+    name = "formae-plugin-sdk-test-pdvnl-\(vars.testRunID)"
+    location = "global"
+    resourceGroupName = rg.res.name
+    privateZoneName = zone.res.name
+    virtualNetworkId = vnet.res.id
+    // Update: flip registrationEnabled
+    registrationEnabled = true
+    // Update: add tags
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

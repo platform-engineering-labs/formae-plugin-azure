@@ -1,0 +1,45 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/cognitiveservices/account.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cog-test-rg"
+  name = "formae-plugin-sdk-test-cog-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local accountSku = new account.AccountSKU {
+  name = "S0"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new account.Account {
+    label = "plugin-sdk-test-cog"
+    name = "fpsdtcog\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    kind = "OpenAI"
+    sku = accountSku
+    // Update: Add tags (non-createOnly field)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
