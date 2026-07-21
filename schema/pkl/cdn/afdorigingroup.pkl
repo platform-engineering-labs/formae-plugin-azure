@@ -1,0 +1,87 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.cdn.afdorigingroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Cdn::AFDOriginGroup"
+const apiVersion = "2023-05-01"
+
+open class AFDOriginGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AFDOriginGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AFDOriginGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Load-balancing settings for the origin group's backend pool.
+class LoadBalancingSettings {
+    /// Number of samples to consider for load-balancing decisions.
+    sampleSize: Int(this >= 0)
+    /// Number of samples within the sample period that must succeed.
+    successfulSamplesRequired: Int(this >= 0)
+    /// Additional latency in milliseconds for probes to fall into the lowest-latency bucket.
+    additionalLatencyInMilliseconds: Int(this >= 0)
+}
+
+/// Health-probe settings used to determine origin health.
+class HealthProbeSettings {
+    /// Path relative to the origin used to determine health.
+    probePath: String
+    /// Type of health-probe request.
+    probeRequestType: ("GET"|"HEAD"|"NotSet")
+    /// Protocol used for the health probe.
+    probeProtocol: ("Http"|"Https"|"NotSet")
+    /// Seconds between health probes.
+    probeIntervalInSeconds: Int(this >= 1 && this <= 255)
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Cdn::Profile"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "profileName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AFDOriginGroup extends formae.Resource {
+
+    /// Origin group name (unique within the profile).
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Front Door profile that holds this origin group.
+    @azure.FieldHint { required = true; createOnly = true }
+    profileName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    loadBalancingSettings: LoadBalancingSettings
+
+    @azure.FieldHint { required = true }
+    healthProbeSettings: HealthProbeSettings
+
+    /// Whether to allow session affinity. Permitted values are 'Enabled' or 'Disabled'.
+    @azure.FieldHint {}
+    sessionAffinityState: ("Enabled"|"Disabled")?
+
+    hidden parent = this
+
+    hidden res: AFDOriginGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
