@@ -85,7 +85,9 @@ class MatchCondition {
     /// Values to match.
     matchValues: Listing<String>
 
-    /// Whether the condition is negated.
+    /// Whether the condition is negated. Azure defaults this to false and always
+    /// returns it, so it is a provider default (omitting it must not read as drift).
+    @azure.FieldHint { hasProviderDefault = true }
     negationConditon: Boolean?
 }
 

@@ -55,7 +55,7 @@ func fullWAFProps() map[string]any {
 						},
 						"operator":         "IPMatch",
 						"matchValues":      []any{"192.0.2.0/24", "198.51.100.10"},
-						"negationConditon": false,
+						"negationConditon": true,
 					},
 				},
 			},
@@ -117,7 +117,9 @@ func TestWAFPolicy_MarshallerRoundTrip(t *testing.T) {
 	require.Len(t, conditions, 1)
 	cond := conditions[0].(map[string]any)
 	require.Equal(t, "IPMatch", cond["operator"])
-	require.Equal(t, false, cond["negationConditon"])
+	// Explicit true is the non-default and must round-trip; the Azure default
+	// (false) is intentionally omitted from serialized state (see serializeWAFMatchCondition).
+	require.Equal(t, true, cond["negationConditon"])
 
 	vars := cond["matchVariables"].([]any)
 	require.Len(t, vars, 2)

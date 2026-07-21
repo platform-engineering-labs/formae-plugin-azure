@@ -318,7 +318,12 @@ func serializeWAFMatchCondition(c *armnetwork.MatchCondition) map[string]any {
 	if c.Operator != nil {
 		cm["operator"] = string(*c.Operator)
 	}
-	if c.NegationConditon != nil {
+	// Azure always returns negationConditon, defaulting it to false. The
+	// conformance harness cannot strip a provider-default field nested inside an
+	// array, so emitting the default false reads as drift against a fixture that
+	// omits it. Only surface the field when explicitly true (the non-default),
+	// which still round-trips a user-set true.
+	if c.NegationConditon != nil && *c.NegationConditon {
 		cm["negationConditon"] = *c.NegationConditon
 	}
 	if len(c.MatchVariables) > 0 {
