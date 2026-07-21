@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
@@ -99,8 +100,16 @@ type Client struct {
 	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
 	GrafanaClient                        *armdashboard.GrafanaClient
 	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
-	credential                           azcore.TokenCredential
-	clientOptions                        *arm.ClientOptions
+	// Azure Front Door Standard (Microsoft.Cdn AFD) clients.
+	CdnProfilesClient         *armcdn.ProfilesClient
+	CdnAFDEndpointsClient     *armcdn.AFDEndpointsClient
+	CdnAFDOriginGroupsClient  *armcdn.AFDOriginGroupsClient
+	CdnAFDOriginsClient       *armcdn.AFDOriginsClient
+	CdnRoutesClient           *armcdn.RoutesClient
+	CdnAFDCustomDomainsClient *armcdn.AFDCustomDomainsClient
+	CdnSecretsClient          *armcdn.SecretsClient
+	credential                azcore.TokenCredential
+	clientOptions             *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
 	armClient *arm.Client
 }
@@ -394,6 +403,41 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	cdnProfilesClient, err := armcdn.NewProfilesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDEndpointsClient, err := armcdn.NewAFDEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDOriginGroupsClient, err := armcdn.NewAFDOriginGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDOriginsClient, err := armcdn.NewAFDOriginsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnRoutesClient, err := armcdn.NewRoutesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDCustomDomainsClient, err := armcdn.NewAFDCustomDomainsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnSecretsClient, err := armcdn.NewSecretsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -448,6 +492,13 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		CognitiveAccountsClient:              cognitiveAccountsClient,
 		GrafanaClient:                        grafanaClient,
 		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
+		CdnProfilesClient:                    cdnProfilesClient,
+		CdnAFDEndpointsClient:                cdnAFDEndpointsClient,
+		CdnAFDOriginGroupsClient:             cdnAFDOriginGroupsClient,
+		CdnAFDOriginsClient:                  cdnAFDOriginsClient,
+		CdnRoutesClient:                      cdnRoutesClient,
+		CdnAFDCustomDomainsClient:            cdnAFDCustomDomainsClient,
+		CdnSecretsClient:                     cdnSecretsClient,
 		credential:                           cred,
 		clientOptions:                        clientOptions,
 		armClient:                            armClient,
