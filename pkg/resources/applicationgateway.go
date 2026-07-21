@@ -356,6 +356,10 @@ func (gw *ApplicationGateway) buildApplicationGatewayParams(props map[string]any
 		params.Identity = identity
 	}
 
+	if fpID, ok := resolvableString(props["firewallPolicyId"]); ok {
+		params.Properties.FirewallPolicy = &armnetwork.SubResource{ID: stringPtr(fpID)}
+	}
+
 	return params, nil
 }
 
@@ -782,6 +786,12 @@ func serializeApplicationGatewayProperties(result armnetwork.ApplicationGateway,
 				out = append(out, m)
 			}
 			props["sslCertificates"] = out
+		}
+
+		// A full ARM ID reference to a WAF policy; round-trips as-is (no name
+		// normalization needed since it points at a resource in another RG namespace).
+		if p.FirewallPolicy != nil && p.FirewallPolicy.ID != nil {
+			props["firewallPolicyId"] = *p.FirewallPolicy.ID
 		}
 	}
 
