@@ -104,9 +104,10 @@ jobs:
   conformance-tests:
     needs: [checks, test-integration, pre-cleanup]
     runs-on: ubuntu-latest
-    # 90 min: App Gateway v2 runs both the CRUD lifecycle and discovery, each
-    # provisioning a gateway (6-8 min per op). Fast resources finish well under this.
-    timeout-minutes: 90
+    # 120 min: App Gateway and Front Door each run the CRUD lifecycle + discovery.
+    # A single Front Door cdn-* lifecycle measures ~36 min; App Gateway ~35 min.
+    # Fast resources finish well under this.
+    timeout-minutes: 120
 
     strategy:
       fail-fast: false
@@ -214,13 +215,18 @@ jobs:
         run: |
           set -euo pipefail
           TIMEOUT_ARG=""
-          # App Gateway v2 and Front Door profiles are slow to provision (6-8 min per
-          # op / minutes per profile). FORMAE_TEST_TIMEOUT is the per-command poll
-          # (default 5 min — too short); TIMEOUT is the overall go-test timeout.
+          # App Gateway v2 and Front Door are slow to provision. FORMAE_TEST_TIMEOUT
+          # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
+          # go-test timeout. Front Door's full CRUD lifecycle (create+update+destroy+
+          # recreate+OOB-delete) measures ~36 min clean, so cdn-* needs a wide margin.
           case "${{ matrix.resource }}" in
-            application-gateway|cdn-*)
+            application-gateway)
               export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
               TIMEOUT_ARG="TIMEOUT=50"
+              ;;
+            cdn-*)
+              export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25
+              TIMEOUT_ARG="TIMEOUT=75"
               ;;
           esac
           make conformance-test-crud-run $TIMEOUT_ARG
@@ -243,9 +249,13 @@ jobs:
           set -euo pipefail
           TIMEOUT_ARG=""
           case "${{ matrix.resource }}" in
-            application-gateway|cdn-*)
+            application-gateway)
               export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
               TIMEOUT_ARG="TIMEOUT=50"
+              ;;
+            cdn-*)
+              export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25 FORMAE_TEST_DISCOVERY_TIMEOUT=25
+              TIMEOUT_ARG="TIMEOUT=75"
               ;;
           esac
           make conformance-test-discovery-run $TIMEOUT_ARG

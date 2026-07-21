@@ -110,7 +110,8 @@ jobs:
   conformance-tests-main:
     needs: [build-formae]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 120 min: Front Door (cdn-*) and App Gateway lifecycles run ~36 min each.
+    timeout-minutes: 120
     environment: production
 
     strategy:
@@ -286,9 +287,14 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ matrix.resource }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
-          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+          # Wide per-command poll so slow resources (App Gateway, Front Door cdn-*)
+          # don't time out; fast resources return well before these ceilings.
+          FORMAE_TEST_TIMEOUT: "25"
+          FORMAE_TEST_OOB_TIMEOUT: "25"
+          FORMAE_TEST_OOB_DELETE_TIMEOUT: "25"
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "25"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: make conformance-test
+        run: make conformance-test TIMEOUT=75
 
   # Clean up Azure resources after all matrix jobs complete
   cleanup:
