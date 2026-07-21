@@ -19,6 +19,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dashboard/armdashboard"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
@@ -65,6 +66,8 @@ type Client struct {
 	PrivateDnsZoneGroupsClient           *armnetwork.PrivateDNSZoneGroupsClient
 	PrivateDnsZonesClient                *armprivatedns.PrivateZonesClient
 	PrivateDnsVNetLinksClient            *armprivatedns.VirtualNetworkLinksClient
+	DnsZonesClient                       *armdns.ZonesClient
+	RecordSetsClient                     *armdns.RecordSetsClient
 	VirtualMachinesClient                *armcompute.VirtualMachinesClient
 	DisksClient                          *armcompute.DisksClient
 	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
@@ -217,6 +220,16 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	privateDnsVNetLinksClient, err := armprivatedns.NewVirtualNetworkLinksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsZonesClient, err := armdns.NewZonesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	recordSetsClient, err := armdns.NewRecordSetsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -402,6 +415,8 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		PrivateDnsZoneGroupsClient:           privateDnsZoneGroupsClient,
 		PrivateDnsZonesClient:                privateDnsZonesClient,
 		PrivateDnsVNetLinksClient:            privateDnsVNetLinksClient,
+		DnsZonesClient:                       dnsZonesClient,
+		RecordSetsClient:                     recordSetsClient,
 		VirtualMachinesClient:                virtualMachinesClient,
 		DisksClient:                          disksClient,
 		VMScaleSetsClient:                    vmScaleSetsClient,

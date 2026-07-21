@@ -1,0 +1,89 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsrecordset
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsRecordSet"
+const apiVersion = "2018-05-01"
+
+open class DnsRecordSetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsRecordSetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsRecordSetResolvable = (this) {
+        property = "name"
+    }
+    /// Output-only: the fully qualified domain name of this record set.
+    hidden fqdn: DnsRecordSetResolvable = (this) {
+        property = "fqdn"
+    }
+}
+
+/// A single A record (an IPv4 address).
+class ARecord {
+    ipv4Address: String
+}
+
+/// A single TXT record (one or more character strings, concatenated by resolvers).
+class TxtRecord {
+    value: Listing<String>
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsZone"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "zoneName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DnsRecordSet extends formae.Resource {
+
+    /// Relative record set name within the zone (e.g. "www", or "@" for the apex).
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 253)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the public DNS zone this record set belongs to.
+    @azure.FieldHint { required = true; createOnly = true }
+    zoneName: String|formae.Resolvable
+
+    /// DNS record type. The type is immutable; changing it replaces the record set.
+    @azure.FieldHint { required = true; createOnly = true }
+    recordType: ("A"|"CNAME"|"TXT")
+
+    /// Time-to-live in seconds.
+    @azure.FieldHint { required = true }
+    ttl: Int(this >= 0)
+
+    /// A records (only for recordType == "A").
+    @azure.FieldHint {}
+    aRecords: Listing<ARecord>?
+
+    /// Canonical name (only for recordType == "CNAME").
+    @azure.FieldHint {}
+    cname: String?
+
+    /// TXT records (only for recordType == "TXT").
+    @azure.FieldHint {}
+    txtRecords: Listing<TxtRecord>?
+
+    hidden parent = this
+
+    hidden res: DnsRecordSetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
