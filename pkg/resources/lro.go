@@ -72,13 +72,17 @@ func resumePoller[T any](pipeline runtime.Pipeline, token string) (*runtime.Poll
 type lroResumeFunc[T any] func(string) (*runtime.Poller[T], error)
 type lroCompleteFunc[T any] func(context.Context, T, resource.Operation) (string, json.RawMessage, error)
 
-func lroFailure(operation resource.Operation, requestID string, code resource.OperationErrorCode) *resource.StatusResult {
+// lroFailure builds a failure result. msg carries the underlying provider error
+// text into ProgressResult.StatusMessage so the reason surfaces in status output
+// (and across retries) instead of only an opaque error code.
+func lroFailure(operation resource.Operation, requestID string, code resource.OperationErrorCode, msg string) *resource.StatusResult {
 	return &resource.StatusResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       operation,
 			OperationStatus: resource.OperationStatusFailure,
 			RequestID:       requestID,
 			ErrorCode:       code,
+			StatusMessage:   msg,
 		},
 	}
 }
@@ -120,11 +124,11 @@ func lroDeleteSuccess(requestID, nativeID string) *resource.StatusResult {
 func statusLRO[T any](ctx context.Context, request *resource.StatusRequest, reqID *lroRequestID, operation resource.Operation, resume lroResumeFunc[T], complete lroCompleteFunc[T]) (*resource.StatusResult, error) {
 	poller, err := resume(reqID.ResumeToken)
 	if err != nil {
-		return lroFailure(operation, request.RequestID, resource.OperationErrorCodeGeneralServiceException), fmt.Errorf("failed to resume poller: %w", err)
+		return lroFailure(operation, request.RequestID, resource.OperationErrorCodeGeneralServiceException, fmt.Sprintf("failed to resume poller: %v", err)), fmt.Errorf("failed to resume poller: %w", err)
 	}
 	if !poller.Done() {
 		if _, err := poller.Poll(ctx); err != nil {
-			return lroFailure(operation, request.RequestID, operationErrorCode(err)), nil
+			return lroFailure(operation, request.RequestID, operationErrorCode(err), err.Error()), nil
 		}
 		if !poller.Done() {
 			return lroInProgress(operation, request.RequestID, reqID.NativeID), nil
@@ -133,7 +137,7 @@ func statusLRO[T any](ctx context.Context, request *resource.StatusRequest, reqI
 
 	result, err := poller.Result(ctx)
 	if err != nil {
-		return lroFailure(operation, request.RequestID, operationErrorCode(err)), nil
+		return lroFailure(operation, request.RequestID, operationErrorCode(err), err.Error()), nil
 	}
 	nativeID, properties, err := complete(ctx, result, operation)
 	if err != nil {
@@ -155,11 +159,11 @@ func statusDeleteLRO[T any](ctx context.Context, request *resource.StatusRequest
 		if isDeleteSuccessError(err) {
 			return success(), nil
 		}
-		return lroFailure(resource.OperationDelete, request.RequestID, resource.OperationErrorCodeGeneralServiceException), fmt.Errorf("failed to resume poller: %w", err)
+		return lroFailure(resource.OperationDelete, request.RequestID, resource.OperationErrorCodeGeneralServiceException, fmt.Sprintf("failed to resume poller: %v", err)), fmt.Errorf("failed to resume poller: %w", err)
 	}
 	if poller.Done() {
 		if _, err := poller.Result(ctx); err != nil && !isDeleteSuccessError(err) {
-			return lroFailure(resource.OperationDelete, request.RequestID, operationErrorCode(err)), nil
+			return lroFailure(resource.OperationDelete, request.RequestID, operationErrorCode(err), err.Error()), nil
 		}
 		return success(), nil
 	}
@@ -167,11 +171,11 @@ func statusDeleteLRO[T any](ctx context.Context, request *resource.StatusRequest
 		if isDeleteSuccessError(err) {
 			return success(), nil
 		}
-		return lroFailure(resource.OperationDelete, request.RequestID, operationErrorCode(err)), nil
+		return lroFailure(resource.OperationDelete, request.RequestID, operationErrorCode(err), err.Error()), nil
 	}
 	if poller.Done() {
 		if _, err := poller.Result(ctx); err != nil && !isDeleteSuccessError(err) {
-			return lroFailure(resource.OperationDelete, request.RequestID, operationErrorCode(err)), nil
+			return lroFailure(resource.OperationDelete, request.RequestID, operationErrorCode(err), err.Error()), nil
 		}
 		return success(), nil
 	}
