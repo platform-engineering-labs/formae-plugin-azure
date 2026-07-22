@@ -175,8 +175,10 @@ class SSLCertificate {
     @azure.FieldHint { writeOnly = true }
     password: (formae.Value|String)?
 
-    /// Key Vault secret ID of a stored PFX (alternative to inline `data`).
-    keyVaultSecretId: String?
+    /// Key Vault secret ID of a stored PFX/certificate (alternative to inline
+    /// `data`). Accepts a resolvable so it can point at e.g. `cert.res.secretId`
+    /// of an AZURE::KeyVault::Certificate.
+    keyVaultSecretId: (String|formae.Resolvable)?
 }
 
 /// HTTP listener binding a frontend IP + port to a protocol (and SSL cert
