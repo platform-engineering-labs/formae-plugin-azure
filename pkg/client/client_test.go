@@ -31,10 +31,10 @@ func resetClientCache(t *testing.T) *int {
 		builds++
 		return fakeCredential{}, nil
 	}
-	clientCache = map[string]*Client{}
+	clientCache = map[string]*clientEntry{}
 	t.Cleanup(func() {
 		newCredential = orig
-		clientCache = map[string]*Client{}
+		clientCache = map[string]*clientEntry{}
 	})
 	return &builds
 }

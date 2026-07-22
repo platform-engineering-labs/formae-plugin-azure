@@ -130,9 +130,22 @@ type Client struct {
 // assertion is exchanged once (while fresh) and the SDK rides the ~1 h token
 // across all subsequent operations. For refreshable auth (Managed Identity,
 // service principal, az login) the SDK simply renews as designed.
+// clientEntry carries a per-subscription lock so the (slow) first build of a
+// subscription's Client serializes only same-subscription callers on entry.mu,
+// never the global clientCacheMu. Holding the global lock through buildClient
+// (credential construction + the first token acquisition, which shells out to
+// `az` and can take seconds) stalls EVERY NewClient caller across the plugin
+// process during a cold apply burst — enough to starve the plugin node and time
+// out concurrent operator spawns. The global lock now guards only the tiny
+// map get-or-create.
+type clientEntry struct {
+	mu     sync.Mutex
+	client *Client
+}
+
 var (
 	clientCacheMu sync.Mutex
-	clientCache   = map[string]*Client{}
+	clientCache   = map[string]*clientEntry{}
 )
 
 // newCredential builds the Azure credential for a config. Overridable in tests.
@@ -151,18 +164,28 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("azure config requires non-empty SubscriptionId")
 	}
 
+	// Global lock guards only the map get-or-create — released immediately.
 	clientCacheMu.Lock()
-	defer clientCacheMu.Unlock()
-
-	if c, ok := clientCache[cfg.SubscriptionId]; ok {
-		return c, nil
+	entry, ok := clientCache[cfg.SubscriptionId]
+	if !ok {
+		entry = &clientEntry{}
+		clientCache[cfg.SubscriptionId] = entry
 	}
+	clientCacheMu.Unlock()
 
+	// Build (or reuse) under the per-subscription lock, NOT the global one, so a
+	// cold build never blocks callers for other subscriptions or the node's other
+	// work. A failed build is not cached, so the next operation retries it.
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.client != nil {
+		return entry.client, nil
+	}
 	c, err := buildClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	clientCache[cfg.SubscriptionId] = c
+	entry.client = c
 	return c, nil
 }
 
