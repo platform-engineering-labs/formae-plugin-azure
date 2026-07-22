@@ -477,14 +477,6 @@ func canonicalIdentityType(s string) string {
 	}
 }
 
-// canonicalUserAssignedIdentityID normalizes the resource-group segment of a
-// user-assigned identity ARM ID. Azure lower-cases "resourceGroups" to
-// "resourcegroups" inside the gateway's identity block, which would otherwise
-// drift against the resolvable (which carries the canonical "resourceGroups").
-func canonicalUserAssignedIdentityID(id string) string {
-	return strings.Replace(id, "/resourcegroups/", "/resourceGroups/", 1)
-}
-
 func buildApplicationGatewayIdentity(props map[string]any) *armnetwork.ManagedServiceIdentity {
 	raw, ok := props["identity"].(map[string]any)
 	if !ok {
@@ -830,7 +822,11 @@ func serializeApplicationGatewayProperties(result armnetwork.ApplicationGateway,
 		if len(id.UserAssignedIdentities) > 0 {
 			ids := make([]string, 0, len(id.UserAssignedIdentities))
 			for k := range id.UserAssignedIdentities {
-				ids = append(ids, canonicalUserAssignedIdentityID(k))
+				// Emit the ID exactly as Azure returns it (MSI resource IDs use a
+				// lowercase "resourcegroups" segment) — this matches the resolvable's
+				// value, which resolves to the identity resource's own id. Do NOT
+				// re-case it, or read-back diverges from desired and drifts.
+				ids = append(ids, k)
 			}
 			identity["userAssignedIdentityIds"] = ids
 		}
