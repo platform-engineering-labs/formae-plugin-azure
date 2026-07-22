@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -458,6 +459,32 @@ func buildApplicationGatewayProbes(props map[string]any) ([]*armnetwork.Applicat
 	return probes, nil
 }
 
+// canonicalIdentityType maps Azure's returned identity type (lower-camel, e.g.
+// "userAssigned", "systemAssigned, userAssigned") back to the schema's casing so
+// read-back equals the desired value instead of drifting every reconcile.
+func canonicalIdentityType(s string) string {
+	switch strings.ToLower(strings.ReplaceAll(s, " ", "")) {
+	case "none":
+		return "None"
+	case "systemassigned":
+		return "SystemAssigned"
+	case "userassigned":
+		return "UserAssigned"
+	case "systemassigned,userassigned":
+		return "SystemAssigned,UserAssigned"
+	default:
+		return s
+	}
+}
+
+// canonicalUserAssignedIdentityID normalizes the resource-group segment of a
+// user-assigned identity ARM ID. Azure lower-cases "resourceGroups" to
+// "resourcegroups" inside the gateway's identity block, which would otherwise
+// drift against the resolvable (which carries the canonical "resourceGroups").
+func canonicalUserAssignedIdentityID(id string) string {
+	return strings.Replace(id, "/resourcegroups/", "/resourceGroups/", 1)
+}
+
 func buildApplicationGatewayIdentity(props map[string]any) *armnetwork.ManagedServiceIdentity {
 	raw, ok := props["identity"].(map[string]any)
 	if !ok {
@@ -798,12 +825,12 @@ func serializeApplicationGatewayProperties(result armnetwork.ApplicationGateway,
 	if id := result.Identity; id != nil {
 		identity := make(map[string]any)
 		if id.Type != nil {
-			identity["type"] = string(*id.Type)
+			identity["type"] = canonicalIdentityType(string(*id.Type))
 		}
 		if len(id.UserAssignedIdentities) > 0 {
 			ids := make([]string, 0, len(id.UserAssignedIdentities))
 			for k := range id.UserAssignedIdentities {
-				ids = append(ids, k)
+				ids = append(ids, canonicalUserAssignedIdentityID(k))
 			}
 			identity["userAssignedIdentityIds"] = ids
 		}
