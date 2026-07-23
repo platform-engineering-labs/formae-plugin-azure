@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
+## [0.1.10]
+
+Ingress/TLS resources — terminate HTTPS at a managed Azure ingress, manage the
+certificate and DNS, and (optionally) run the workload on Container Apps.
+
+### Added
+
+- `KeyVault::Certificate`. Data-plane certificate lifecycle (vaultUri-based, like
+  `KeyVault::Secret`): import a BYO PFX/PEM (`data` + `password`, write-only) or
+  issue a self-signed cert via a minimal `policy` (issuerName / subject / keyType
+  / validityMonths). The resolvable exposes `id`, `secretId`, and `thumbprint`, so
+  `secretId` can be wired into an Application Gateway or Front Door listener.
+- `Network::ApplicationGatewayWebApplicationFirewallPolicy` — WAF policy
+  (policySettings, managed OWASP rule sets, custom rules). Attach it to an
+  Application Gateway via the new `firewallPolicyId` field on
+  `Network::ApplicationGateway`.
+- `Network::DnsZone` and `Network::DnsRecordSet` — public DNS. One polymorphic
+  record-set resource covers A / CNAME / TXT via `recordType`.
+- Azure Front Door Standard family (`Microsoft.Cdn`): `Cdn::Profile`,
+  `Cdn::AFDEndpoint`, `Cdn::AFDOriginGroup`, `Cdn::AFDOrigin`, `Cdn::Route`,
+  `Cdn::AFDCustomDomain`, and `Cdn::Secret` (BYO Key Vault TLS certificate).
+- Azure Container Apps (`Microsoft.App`): `App::ManagedEnvironment` and
+  `App::ContainerApp` (ingress, containers, scale; secrets are write-only).
+- `Network::ApplicationGateway` `sslCertificates[].keyVaultSecretId` now accepts a
+  resolvable, so a listener can point at a `KeyVault::Certificate`'s `secretId`.
+
+### Changed
+
+- Long-running-operation failures now carry the underlying provider error in
+  `StatusMessage`, so a retrying resource reports *why* it failed instead of a
+  bare error code.
+- The per-subscription Azure client is now built under a per-subscription lock
+  rather than the global cache lock, so a cold apply burst no longer serializes
+  every operation behind one credential/client construction.
+- Conformance matrix (CI + nightly) extended with the new resources, with widened
+  timeouts for the slow Front Door (`cdn-*`) lane. `cdn-route` is excluded pending
+  a formae-core resolve-cache fix; `certificate`, `cdn-afd-custom-domain`,
+  `cdn-secret`, `managed-environment`, and `container-app` are excluded because
+  they need a real certificate/domain/data-plane role or are too slow to
+  provision in CI — all are covered by mocked integration + marshaller round-trip
+  tests and a manual live gate.
+
+### Fixed
+
+- Zero-drift read-back for the new resources: the WAF custom-rule
+  `negationConditon` default, Front Door provider-defaulted optional fields,
+  Front Door's canonical `location` (`"Global"`), and the Application Gateway
+  managed-identity `type` casing (`userAssigned` → `UserAssigned`) no longer
+  reconcile as phantom updates.
+
 ## [0.1.6]
 
 ### Added
