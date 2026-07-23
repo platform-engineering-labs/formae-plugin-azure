@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.cdn.afdcustomdomain
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Cdn::AFDCustomDomain"
+const apiVersion = "2023-05-01"
+
+open class AFDCustomDomainResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AFDCustomDomainResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AFDCustomDomainResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// TLS configuration for the custom domain. Managed certificate is the default.
+class TlsSettings {
+    /// Source of the SSL certificate. ManagedCertificate is Azure-managed;
+    /// CustomerCertificate uses a BYO cert referenced via secretId.
+    certificateType: ("ManagedCertificate"|"CustomerCertificate") = "ManagedCertificate"
+    /// Minimum TLS protocol version.
+    minimumTlsVersion: ("TLS10"|"TLS12") = "TLS12"
+    /// Full ARM id of an AZURE::Cdn::Secret (BYO TLS only; e.g. secret.res.id).
+    secretId: (String|formae.Resolvable)?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Cdn::Profile"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "profileName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AFDCustomDomain extends formae.Resource {
+
+    /// Custom domain resource name (unique within the profile).
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Front Door profile that holds this custom domain.
+    @azure.FieldHint { required = true; createOnly = true }
+    profileName: String|formae.Resolvable
+
+    /// The domain host name (e.g. www.contoso.com). Requires DNS ownership
+    /// validation before the domain becomes active.
+    @azure.FieldHint { required = true; createOnly = true }
+    hostName: String
+
+    /// HTTPS/TLS configuration. Defaults to an Azure-managed certificate.
+    @azure.FieldHint {}
+    tlsSettings: TlsSettings = new TlsSettings {}
+
+    /// Optional full ARM id of an Azure DNS zone used for pre-validated domains.
+    @azure.FieldHint {}
+    azureDnsZoneId: (String|formae.Resolvable)?
+
+    hidden parent = this
+
+    hidden res: AFDCustomDomainResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

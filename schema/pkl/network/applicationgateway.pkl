@@ -175,8 +175,10 @@ class SSLCertificate {
     @azure.FieldHint { writeOnly = true }
     password: (formae.Value|String)?
 
-    /// Key Vault secret ID of a stored PFX (alternative to inline `data`).
-    keyVaultSecretId: String?
+    /// Key Vault secret ID of a stored PFX/certificate (alternative to inline
+    /// `data`). Accepts a resolvable so it can point at e.g. `cert.res.secretId`
+    /// of an AZURE::KeyVault::Certificate.
+    keyVaultSecretId: (String|formae.Resolvable)?
 }
 
 /// HTTP listener binding a frontend IP + port to a protocol (and SSL cert
@@ -282,6 +284,11 @@ open class ApplicationGateway extends formae.Resource {
 
     @azure.FieldHint {}
     identity: Identity?
+
+    /// ARM ID of a WebApplicationFirewallPolicy to attach (requires a WAF_v2 SKU),
+    /// e.g. `firewallPolicyId = waf.res.id`.
+    @azure.FieldHint {}
+    firewallPolicyId: (String|formae.Resolvable)?
 
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?

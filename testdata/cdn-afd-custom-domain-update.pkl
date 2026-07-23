@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/cdn/profile.pkl"
+import "@azure/cdn/afdcustomdomain.pkl"
+import "vars.pkl"
+
+// MANUAL-GATE (NOT CI-coverable): A Front Door custom domain requires a REAL
+// domain the test principal controls, because Azure issues a DNS TXT challenge
+// (_dnsauth.<host>) and the domain stays in "Pending"/"Submitting" validation
+// until that TXT record is published — the managed certificate is only issued
+// after DNS ownership is proven. The conformance harness cannot publish DNS for
+// an arbitrary host, so this fixture will never reach a validated/Succeeded
+// state in CI. Set FORMAE_TEST_CUSTOM_DOMAIN to a host in a zone you control and
+// pre-create the _dnsauth TXT record, then run manually. The tlsSettings
+// marshalling (managed + BYO customer-certificate) is covered by the plugin's
+// marshaller round-trip unit test.
+
+local host = read?("env:FORMAE_TEST_CUSTOM_DOMAIN") ?? "www.example.com"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cdn-test-rg"
+  name = "formae-plugin-sdk-test-cdn-cd-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local afdProfile = new profile.Profile {
+  label = "plugin-sdk-test-cdn-cd-profile"
+  name = "formae-sdk-afd-cd-\(vars.testRunID)"
+  location = "Global"
+  sku = new profile.SKU { name = "Standard_AzureFrontDoor" }
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  afdProfile
+
+  new afdcustomdomain.AFDCustomDomain {
+    label = "plugin-sdk-test-cdn-custom-domain"
+    name = "cd-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    profileName = afdProfile.res.name
+    hostName = host
+    tlsSettings = new afdcustomdomain.TlsSettings {
+      certificateType = "ManagedCertificate"
+      minimumTlsVersion = "TLS10"
+    }
+  }
+}

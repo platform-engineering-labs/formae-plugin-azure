@@ -1,0 +1,166 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.app.containerapp
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::App::ContainerApp"
+const apiVersion = "2023-05-01"
+
+open class ContainerAppResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ContainerAppResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ContainerAppResolvable = (this) {
+        property = "name"
+    }
+    hidden fqdn: ContainerAppResolvable = (this) {
+        property = "fqdn"
+    }
+}
+
+/// Ingress transport protocol.
+typealias IngressTransportMethod = "auto"|"http"|"http2"
+
+/// Ingress configuration for the Container App.
+class Ingress {
+    /// Whether the app exposes an external HTTP endpoint.
+    `external`: Boolean
+
+    /// Target port in containers for traffic from ingress.
+    targetPort: Int(this >= 1 && this <= 65535)
+
+    /// Ingress transport protocol.
+    @azure.FieldHint { hasProviderDefault = true }
+    transport: IngressTransportMethod?
+
+    /// Whether insecure (HTTP) connections are allowed. When false, HTTP is
+    /// redirected to HTTPS.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowInsecure: Boolean?
+}
+
+/// A secret used by the Container App. The value is write-only.
+class Secret {
+    /// Secret name.
+    name: String
+
+    /// Secret value. Write-only: Azure never returns it, so wrap with
+    /// `formae.value(...).opaque` to keep it out of stored state.
+    @azure.FieldHint { writeOnly = true }
+    value: (formae.Value|String)?
+}
+
+/// Non-versioned Container App configuration.
+class Configuration {
+    /// Ingress configuration.
+    ingress: Ingress?
+
+    /// Collection of secrets used by the Container App.
+    secrets: Listing<Secret>?
+}
+
+/// Container resource requirements.
+class ContainerResources {
+    /// Required CPU in cores, e.g. 0.5.
+    cpu: Number
+
+    /// Required memory, e.g. "1Gi".
+    memory: String
+}
+
+/// A container environment variable. Provide either a literal `value` or a
+/// `secretRef` naming a Container App secret.
+class EnvironmentVar {
+    /// Environment variable name.
+    name: String
+
+    /// Non-secret environment variable value.
+    value: String?
+
+    /// Name of the Container App secret to pull the value from.
+    secretRef: String?
+}
+
+/// A container definition.
+class Container {
+    /// Container name.
+    name: String
+
+    /// Container image tag.
+    image: String
+
+    /// Container resource requirements.
+    resources: ContainerResources?
+
+    /// Container environment variables.
+    env: Listing<EnvironmentVar>?
+}
+
+/// Scaling properties for the Container App.
+class Scale {
+    /// Minimum number of container replicas.
+    minReplicas: Int?
+
+    /// Maximum number of container replicas.
+    maxReplicas: Int?
+}
+
+/// Versioned application definition.
+class Template {
+    /// List of container definitions (at least one).
+    containers: Listing<Container>
+
+    /// Scaling properties.
+    scale: Scale?
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::App::ManagedEnvironment"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ContainerApp extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 32)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM ID of the parent managed environment, e.g. `env.res.id`.
+    @azure.FieldHint { required = true; createOnly = true }
+    managedEnvironmentId: String|formae.Resolvable
+
+    @azure.FieldHint { requiredOnCreate = true }
+    configuration: Configuration
+
+    @azure.FieldHint { requiredOnCreate = true }
+    template: Template
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output: fully qualified domain name of the app's ingress.
+    @azure.FieldHint { hasProviderDefault = true }
+    fqdn: String?
+
+    hidden parent = this
+
+    hidden res: ContainerAppResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

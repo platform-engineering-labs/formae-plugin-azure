@@ -24,6 +24,7 @@ const testAGWNativeID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Micr
 const testAGWPipID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/publicIPAddresses/pip-1"
 const testAGWSubnetID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/agw-subnet"
 const testAGWUAIID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/uai-1"
+const testAGWWAFPolicyID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-1"
 
 // fullAGWProps is a maximal, cross-referencing property map used by both the
 // round-trip test and the CRUD test. Every child-ID reference (listener→port/
@@ -69,6 +70,7 @@ func fullAGWProps() map[string]any {
 			"type":                    "UserAssigned",
 			"userAssignedIdentityIds": []any{testAGWUAIID},
 		},
+		"firewallPolicyId": testAGWWAFPolicyID,
 	}
 }
 
@@ -178,6 +180,9 @@ func TestApplicationGateway_MarshallerRoundTrip(t *testing.T) {
 	ids := identity["userAssignedIdentityIds"].([]any)
 	require.Len(t, ids, 1)
 	require.Equal(t, testAGWUAIID, ids[0])
+
+	// WAF policy reference is a full ARM ID that round-trips as-is.
+	require.Equal(t, testAGWWAFPolicyID, got["firewallPolicyId"], "WAF policy ref must round-trip as a full ARM ID")
 }
 
 func TestApplicationGateway_CRUD(t *testing.T) {

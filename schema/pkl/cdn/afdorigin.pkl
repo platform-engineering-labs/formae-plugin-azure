@@ -1,0 +1,94 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.cdn.afdorigin
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Cdn::AFDOrigin"
+const apiVersion = "2023-05-01"
+
+open class AFDOriginResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AFDOriginResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AFDOriginResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Cdn::AFDOriginGroup"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "originGroupName" },
+        new formae.ListProperty { parentProperty = "profileName" listParameter = "profileName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AFDOrigin extends formae.Resource {
+
+    /// Origin name (unique within the origin group).
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Front Door profile.
+    @azure.FieldHint { required = true; createOnly = true }
+    profileName: String|formae.Resolvable
+
+    /// Name of the origin group that holds this origin.
+    @azure.FieldHint { required = true; createOnly = true }
+    originGroupName: String|formae.Resolvable
+
+    /// Address of the origin (domain, IPv4 or IPv6). Unique within the endpoint.
+    @azure.FieldHint { required = true }
+    hostName: String
+
+    /// HTTP port. Must be between 1 and 65535.
+    @azure.FieldHint {}
+    httpPort: Int(this >= 1 && this <= 65535) = 80
+
+    /// HTTPS port. Must be between 1 and 65535.
+    @azure.FieldHint {}
+    httpsPort: Int(this >= 1 && this <= 65535) = 443
+
+    /// Host header sent to the origin. Defaults to the request hostname if blank.
+    // Azure echoes/derives this and returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
+    originHostHeader: String?
+
+    /// Load-balancing priority. Must be between 1 and 5.
+    @azure.FieldHint {}
+    priority: Int(this >= 1 && this <= 5) = 1
+
+    /// Load-balancing weight. Must be between 1 and 1000.
+    @azure.FieldHint {}
+    weight: Int(this >= 1 && this <= 1000) = 1000
+
+    /// Whether the origin is enabled. Permitted values are 'Enabled' or 'Disabled'.
+    @azure.FieldHint {}
+    enabledState: ("Enabled"|"Disabled") = "Enabled"
+
+    /// Whether to enforce certificate name check at origin level.
+    // Azure defaults this (true) and always returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
+    enforceCertificateNameCheck: Boolean?
+
+    hidden parent = this
+
+    hidden res: AFDOriginResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

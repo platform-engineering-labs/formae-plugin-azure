@@ -1,0 +1,52 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/dnszone.pkl"
+import "@azure/network/dnsrecordset.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dns-test-rg"
+  name = "formae-plugin-sdk-test-dns-rs-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local zone = new dnszone.DnsZone {
+  label = "plugin-sdk-test-dns-rs-zone"
+  name = "formae-plugin-sdk-test-rs-\(vars.testRunID).example.com"
+  location = "global"
+  zoneType = "Public"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  zone
+
+  new dnsrecordset.DnsRecordSet {
+    label = "plugin-sdk-test-dns-a-record"
+    name = "www"
+    recordType = "A"
+    // Update: change ttl and the A record value (both non-createOnly).
+    ttl = 7200
+    resourceGroupName = rg.res.name
+    zoneName = zone.res.name
+    aRecords = new Listing {
+      new dnsrecordset.ARecord { ipv4Address = "10.0.0.2" }
+    }
+  }
+}

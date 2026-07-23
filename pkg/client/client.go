@@ -13,12 +13,15 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dashboard/armdashboard"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
@@ -59,11 +62,14 @@ type Client struct {
 	PublicIPAddressesClient              *armnetwork.PublicIPAddressesClient
 	LoadBalancersClient                  *armnetwork.LoadBalancersClient
 	ApplicationGatewaysClient            *armnetwork.ApplicationGatewaysClient
+	WebApplicationFirewallPoliciesClient *armnetwork.WebApplicationFirewallPoliciesClient
 	InterfacesClient                     *armnetwork.InterfacesClient
 	PrivateEndpointsClient               *armnetwork.PrivateEndpointsClient
 	PrivateDnsZoneGroupsClient           *armnetwork.PrivateDNSZoneGroupsClient
 	PrivateDnsZonesClient                *armprivatedns.PrivateZonesClient
 	PrivateDnsVNetLinksClient            *armprivatedns.VirtualNetworkLinksClient
+	DnsZonesClient                       *armdns.ZonesClient
+	RecordSetsClient                     *armdns.RecordSetsClient
 	VirtualMachinesClient                *armcompute.VirtualMachinesClient
 	DisksClient                          *armcompute.DisksClient
 	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
@@ -95,8 +101,18 @@ type Client struct {
 	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
 	GrafanaClient                        *armdashboard.GrafanaClient
 	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
-	credential                           azcore.TokenCredential
-	clientOptions                        *arm.ClientOptions
+	ManagedEnvironmentsClient            *armappcontainers.ManagedEnvironmentsClient
+	ContainerAppsClient                  *armappcontainers.ContainerAppsClient
+	// Azure Front Door Standard (Microsoft.Cdn AFD) clients.
+	CdnProfilesClient         *armcdn.ProfilesClient
+	CdnAFDEndpointsClient     *armcdn.AFDEndpointsClient
+	CdnAFDOriginGroupsClient  *armcdn.AFDOriginGroupsClient
+	CdnAFDOriginsClient       *armcdn.AFDOriginsClient
+	CdnRoutesClient           *armcdn.RoutesClient
+	CdnAFDCustomDomainsClient *armcdn.AFDCustomDomainsClient
+	CdnSecretsClient          *armcdn.SecretsClient
+	credential                azcore.TokenCredential
+	clientOptions             *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
 	armClient *arm.Client
 }
@@ -114,9 +130,22 @@ type Client struct {
 // assertion is exchanged once (while fresh) and the SDK rides the ~1 h token
 // across all subsequent operations. For refreshable auth (Managed Identity,
 // service principal, az login) the SDK simply renews as designed.
+// clientEntry carries a per-subscription lock so the (slow) first build of a
+// subscription's Client serializes only same-subscription callers on entry.mu,
+// never the global clientCacheMu. Holding the global lock through buildClient
+// (credential construction + the first token acquisition, which shells out to
+// `az` and can take seconds) stalls EVERY NewClient caller across the plugin
+// process during a cold apply burst — enough to starve the plugin node and time
+// out concurrent operator spawns. The global lock now guards only the tiny
+// map get-or-create.
+type clientEntry struct {
+	mu     sync.Mutex
+	client *Client
+}
+
 var (
 	clientCacheMu sync.Mutex
-	clientCache   = map[string]*Client{}
+	clientCache   = map[string]*clientEntry{}
 )
 
 // newCredential builds the Azure credential for a config. Overridable in tests.
@@ -135,18 +164,28 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("azure config requires non-empty SubscriptionId")
 	}
 
+	// Global lock guards only the map get-or-create — released immediately.
 	clientCacheMu.Lock()
-	defer clientCacheMu.Unlock()
-
-	if c, ok := clientCache[cfg.SubscriptionId]; ok {
-		return c, nil
+	entry, ok := clientCache[cfg.SubscriptionId]
+	if !ok {
+		entry = &clientEntry{}
+		clientCache[cfg.SubscriptionId] = entry
 	}
+	clientCacheMu.Unlock()
 
+	// Build (or reuse) under the per-subscription lock, NOT the global one, so a
+	// cold build never blocks callers for other subscriptions or the node's other
+	// work. A failed build is not cached, so the next operation retries it.
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.client != nil {
+		return entry.client, nil
+	}
 	c, err := buildClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	clientCache[cfg.SubscriptionId] = c
+	entry.client = c
 	return c, nil
 }
 
@@ -195,6 +234,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	webApplicationFirewallPoliciesClient, err := armnetwork.NewWebApplicationFirewallPoliciesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	privateEndpointsClient, err := armnetwork.NewPrivateEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -211,6 +255,16 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	privateDnsVNetLinksClient, err := armprivatedns.NewVirtualNetworkLinksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsZonesClient, err := armdns.NewZonesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	recordSetsClient, err := armdns.NewRecordSetsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -375,6 +429,51 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	managedEnvironmentsClient, err := armappcontainers.NewManagedEnvironmentsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	containerAppsClient, err := armappcontainers.NewContainerAppsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnProfilesClient, err := armcdn.NewProfilesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDEndpointsClient, err := armcdn.NewAFDEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDOriginGroupsClient, err := armcdn.NewAFDOriginGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDOriginsClient, err := armcdn.NewAFDOriginsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnRoutesClient, err := armcdn.NewRoutesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnAFDCustomDomainsClient, err := armcdn.NewAFDCustomDomainsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cdnSecretsClient, err := armcdn.NewSecretsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -390,11 +489,14 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		PublicIPAddressesClient:              publicIPAddressesClient,
 		LoadBalancersClient:                  loadBalancersClient,
 		ApplicationGatewaysClient:            applicationGatewaysClient,
+		WebApplicationFirewallPoliciesClient: webApplicationFirewallPoliciesClient,
 		InterfacesClient:                     interfacesClient,
 		PrivateEndpointsClient:               privateEndpointsClient,
 		PrivateDnsZoneGroupsClient:           privateDnsZoneGroupsClient,
 		PrivateDnsZonesClient:                privateDnsZonesClient,
 		PrivateDnsVNetLinksClient:            privateDnsVNetLinksClient,
+		DnsZonesClient:                       dnsZonesClient,
+		RecordSetsClient:                     recordSetsClient,
 		VirtualMachinesClient:                virtualMachinesClient,
 		DisksClient:                          disksClient,
 		VMScaleSetsClient:                    vmScaleSetsClient,
@@ -426,6 +528,15 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		CognitiveAccountsClient:              cognitiveAccountsClient,
 		GrafanaClient:                        grafanaClient,
 		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
+		ManagedEnvironmentsClient:            managedEnvironmentsClient,
+		ContainerAppsClient:                  containerAppsClient,
+		CdnProfilesClient:                    cdnProfilesClient,
+		CdnAFDEndpointsClient:                cdnAFDEndpointsClient,
+		CdnAFDOriginGroupsClient:             cdnAFDOriginGroupsClient,
+		CdnAFDOriginsClient:                  cdnAFDOriginsClient,
+		CdnRoutesClient:                      cdnRoutesClient,
+		CdnAFDCustomDomainsClient:            cdnAFDCustomDomainsClient,
+		CdnSecretsClient:                     cdnSecretsClient,
 		credential:                           cred,
 		clientOptions:                        clientOptions,
 		armClient:                            armClient,

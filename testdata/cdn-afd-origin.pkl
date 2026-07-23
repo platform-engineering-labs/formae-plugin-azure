@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/cdn/profile.pkl"
+import "@azure/cdn/afdorigingroup.pkl"
+import "@azure/cdn/afdorigin.pkl"
+import "vars.pkl"
+
+// NOTE: Stands up profile + origin group + origin. Profile provisioning is slow
+// and billed; CI-coverable (no secrets, no real domain).
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cdn-test-rg"
+  name = "formae-plugin-sdk-test-cdn-origin-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local afdProfile = new profile.Profile {
+  label = "plugin-sdk-test-cdn-origin-profile"
+  name = "formae-sdk-afd-origin-\(vars.testRunID)"
+  location = "Global"
+  sku = new profile.SKU { name = "Standard_AzureFrontDoor" }
+  resourceGroupName = rg.res.name
+}
+
+local originGroup = new afdorigingroup.AFDOriginGroup {
+  label = "plugin-sdk-test-cdn-origin-og"
+  name = "og-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  profileName = afdProfile.res.name
+  loadBalancingSettings = new afdorigingroup.LoadBalancingSettings {
+    sampleSize = 4
+    successfulSamplesRequired = 3
+    additionalLatencyInMilliseconds = 50
+  }
+  healthProbeSettings = new afdorigingroup.HealthProbeSettings {
+    probePath = "/"
+    probeRequestType = "HEAD"
+    probeProtocol = "Https"
+    probeIntervalInSeconds = 100
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  afdProfile
+
+  originGroup
+
+  new afdorigin.AFDOrigin {
+    label = "plugin-sdk-test-cdn-origin"
+    name = "origin-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    profileName = afdProfile.res.name
+    originGroupName = originGroup.res.name
+    hostName = "www.example.com"
+    httpPort = 80
+    httpsPort = 443
+    originHostHeader = "www.example.com"
+    priority = 1
+    weight = 1000
+    enabledState = "Enabled"
+  }
+}

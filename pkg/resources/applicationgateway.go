@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -356,6 +357,10 @@ func (gw *ApplicationGateway) buildApplicationGatewayParams(props map[string]any
 		params.Identity = identity
 	}
 
+	if fpID, ok := resolvableString(props["firewallPolicyId"]); ok {
+		params.Properties.FirewallPolicy = &armnetwork.SubResource{ID: stringPtr(fpID)}
+	}
+
 	return params, nil
 }
 
@@ -452,6 +457,24 @@ func buildApplicationGatewayProbes(props map[string]any) ([]*armnetwork.Applicat
 		})
 	}
 	return probes, nil
+}
+
+// canonicalIdentityType maps Azure's returned identity type (lower-camel, e.g.
+// "userAssigned", "systemAssigned, userAssigned") back to the schema's casing so
+// read-back equals the desired value instead of drifting every reconcile.
+func canonicalIdentityType(s string) string {
+	switch strings.ToLower(strings.ReplaceAll(s, " ", "")) {
+	case "none":
+		return "None"
+	case "systemassigned":
+		return "SystemAssigned"
+	case "userassigned":
+		return "UserAssigned"
+	case "systemassigned,userassigned":
+		return "SystemAssigned,UserAssigned"
+	default:
+		return s
+	}
 }
 
 func buildApplicationGatewayIdentity(props map[string]any) *armnetwork.ManagedServiceIdentity {
@@ -783,16 +806,26 @@ func serializeApplicationGatewayProperties(result armnetwork.ApplicationGateway,
 			}
 			props["sslCertificates"] = out
 		}
+
+		// A full ARM ID reference to a WAF policy; round-trips as-is (no name
+		// normalization needed since it points at a resource in another RG namespace).
+		if p.FirewallPolicy != nil && p.FirewallPolicy.ID != nil {
+			props["firewallPolicyId"] = *p.FirewallPolicy.ID
+		}
 	}
 
 	if id := result.Identity; id != nil {
 		identity := make(map[string]any)
 		if id.Type != nil {
-			identity["type"] = string(*id.Type)
+			identity["type"] = canonicalIdentityType(string(*id.Type))
 		}
 		if len(id.UserAssignedIdentities) > 0 {
 			ids := make([]string, 0, len(id.UserAssignedIdentities))
 			for k := range id.UserAssignedIdentities {
+				// Emit the ID exactly as Azure returns it (MSI resource IDs use a
+				// lowercase "resourcegroups" segment) — this matches the resolvable's
+				// value, which resolves to the identity resource's own id. Do NOT
+				// re-case it, or read-back diverges from desired and drifts.
 				ids = append(ids, k)
 			}
 			identity["userAssignedIdentityIds"] = ids
