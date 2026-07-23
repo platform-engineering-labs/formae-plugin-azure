@@ -8,22 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
-## [0.1.9]
+## [0.1.8]
 
-Ingress/TLS resources — terminate HTTPS at a managed Azure ingress, manage the
-certificate and DNS, and (optionally) run the workload on Container Apps.
+Managed HTTPS ingress on Azure — an Application Gateway (optionally WAF-fronted)
+or Front Door terminating TLS, the certificate and DNS to go with it,
+per-subscription credential caching, and (optionally) running the workload on
+Container Apps.
 
 ### Added
 
+- `Network::ApplicationGateway` — Application Gateway v2 (L7 load balancer / HTTPS
+  ingress): gateway/frontend IP configurations, frontend ports, backend address
+  pools, backend HTTP settings, health probes, HTTP listeners, request routing
+  rules, SSL certificates (inline PFX or a Key Vault secret reference), an optional
+  user-assigned managed identity, and a `firewallPolicyId` to attach a WAF policy.
+- `Network::ApplicationGatewayWebApplicationFirewallPolicy` — WAF policy
+  (policySettings, managed OWASP rule sets, custom rules).
 - `KeyVault::Certificate`. Data-plane certificate lifecycle (vaultUri-based, like
   `KeyVault::Secret`): import a BYO PFX/PEM (`data` + `password`, write-only) or
   issue a self-signed cert via a minimal `policy` (issuerName / subject / keyType
   / validityMonths). The resolvable exposes `id`, `secretId`, and `thumbprint`, so
   `secretId` can be wired into an Application Gateway or Front Door listener.
-- `Network::ApplicationGatewayWebApplicationFirewallPolicy` — WAF policy
-  (policySettings, managed OWASP rule sets, custom rules). Attach it to an
-  Application Gateway via the new `firewallPolicyId` field on
-  `Network::ApplicationGateway`.
 - `Network::DnsZone` and `Network::DnsRecordSet` — public DNS. One polymorphic
   record-set resource covers A / CNAME / TXT via `recordType`.
 - Azure Front Door Standard family (`Microsoft.Cdn`): `Cdn::Profile`,
@@ -31,50 +36,34 @@ certificate and DNS, and (optionally) run the workload on Container Apps.
   `Cdn::AFDCustomDomain`, and `Cdn::Secret` (BYO Key Vault TLS certificate).
 - Azure Container Apps (`Microsoft.App`): `App::ManagedEnvironment` and
   `App::ContainerApp` (ingress, containers, scale; secrets are write-only).
-- `Network::ApplicationGateway` `sslCertificates[].keyVaultSecretId` now accepts a
-  resolvable, so a listener can point at a `KeyVault::Certificate`'s `secretId`.
-
-### Changed
-
-- Long-running-operation failures now carry the underlying provider error in
-  `StatusMessage`, so a retrying resource reports *why* it failed instead of a
-  bare error code.
-- The per-subscription Azure client is now built under a per-subscription lock
-  rather than the global cache lock, so a cold apply burst no longer serializes
-  every operation behind one credential/client construction.
-- Conformance matrix (CI + nightly) extended with the new resources, with widened
-  timeouts for the slow Front Door (`cdn-*`) lane. `cdn-route` is excluded pending
-  a formae-core resolve-cache fix; `certificate`, `cdn-afd-custom-domain`,
-  `cdn-secret`, `managed-environment`, and `container-app` are excluded because
-  they need a real certificate/domain/data-plane role or are too slow to
-  provision in CI — all are covered by mocked integration + marshaller round-trip
-  tests and a manual live gate.
-
-### Fixed
-
-- Zero-drift read-back for the new resources: the WAF custom-rule
-  `negationConditon` default, Front Door provider-defaulted optional fields,
-  Front Door's canonical `location` (`"Global"`), and the Application Gateway
-  managed-identity `type` casing (`userAssigned` → `UserAssigned`) no longer
-  reconcile as phantom updates.
-
-## [0.1.8]
-
-### Added
-
-- `Network::ApplicationGateway` — Application Gateway v2 (L7 load balancer / HTTPS
-  ingress). Supports gateway/frontend IP configurations, frontend ports, backend
-  address pools, backend HTTP settings, health probes, HTTP listeners, request
-  routing rules, SSL certificates (inline PFX or a Key Vault secret reference),
-  and an optional user-assigned managed identity for reading a Key Vault cert.
 
 ### Changed
 
 - The Azure client and its credential are now cached per subscription for the
-  plugin process lifetime instead of being rebuilt on every operation. A token is
-  acquired once (while the credential is fresh) and reused, which fixes
-  short-lived federated-auth failures — e.g. GitHub OIDC in CI, where rebuilding
-  the credential per operation re-exchanges an assertion that has since expired.
+  plugin process lifetime instead of being rebuilt on every operation — a token
+  is acquired once (while fresh) and reused, which fixes short-lived federated-auth
+  failures (e.g. GitHub OIDC in CI, where rebuilding the credential per operation
+  re-exchanges an assertion that has since expired). The cached client is built
+  under a per-subscription lock, so a cold apply burst does not serialize every
+  operation behind one credential/client construction.
+- Long-running-operation failures now carry the underlying provider error in
+  `StatusMessage`, so a retrying resource reports *why* it failed instead of a
+  bare error code.
+- Conformance matrix (CI + nightly) extended with the new resources, with widened
+  timeouts for the slow Front Door (`cdn-*`) lane. `cdn-route` is excluded pending
+  a formae-core resolve-cache fix; `certificate`, `cdn-afd-custom-domain`,
+  `cdn-secret`, `managed-environment`, and `container-app` are excluded because
+  they need a real certificate/domain/data-plane role or are too slow to provision
+  in CI — all covered by mocked integration + marshaller round-trip tests and a
+  manual live gate.
+
+### Fixed
+
+- Zero-drift read-back for the ingress resources: the WAF custom-rule
+  `negationConditon` default, Front Door provider-defaulted optional fields, Front
+  Door's canonical `location` (`"Global"`), and the Application Gateway
+  managed-identity `type` casing (`userAssigned` → `UserAssigned`) no longer
+  reconcile as phantom updates.
 
 ## [0.1.7]
 
