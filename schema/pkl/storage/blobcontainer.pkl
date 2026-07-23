@@ -50,6 +50,7 @@ open class BlobContainer extends formae.Resource {
     publicAccess: ("None"|"Blob"|"Container") = "None"
 
     /// Container metadata as name/value pairs.
+    @azure.FieldHint { outputField = "metadata"; updateMethod = "EntitySet"; indexField = "Key" }
     metadata: Listing<azure.Tag>?
 
     /// Default the container to use this encryption scope for all writes.
