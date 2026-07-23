@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
-## [0.1.10]
+## [0.1.9]
 
 Ingress/TLS resources — terminate HTTPS at a managed Azure ingress, manage the
 certificate and DNS, and (optionally) run the workload on Container Apps.
@@ -57,6 +57,40 @@ certificate and DNS, and (optionally) run the workload on Container Apps.
   Front Door's canonical `location` (`"Global"`), and the Application Gateway
   managed-identity `type` casing (`userAssigned` → `UserAssigned`) no longer
   reconcile as phantom updates.
+
+## [0.1.8]
+
+### Added
+
+- `Network::ApplicationGateway` — Application Gateway v2 (L7 load balancer / HTTPS
+  ingress). Supports gateway/frontend IP configurations, frontend ports, backend
+  address pools, backend HTTP settings, health probes, HTTP listeners, request
+  routing rules, SSL certificates (inline PFX or a Key Vault secret reference),
+  and an optional user-assigned managed identity for reading a Key Vault cert.
+
+### Changed
+
+- The Azure client and its credential are now cached per subscription for the
+  plugin process lifetime instead of being rebuilt on every operation. A token is
+  acquired once (while the credential is fresh) and reused, which fixes
+  short-lived federated-auth failures — e.g. GitHub OIDC in CI, where rebuilding
+  the credential per operation re-exchanges an assertion that has since expired.
+
+## [0.1.7]
+
+### Added
+
+- Eight resource types to shore up common Azure coverage:
+  `CognitiveServices::Account`, `Compute::VirtualMachineExtension`,
+  `Dashboard::Grafana`, `Dashboard::GrafanaManagedPrivateEndpoint`,
+  `EventGrid::SystemTopic`, `EventHub::Namespace`, `Network::RouteTable`, and
+  `ServiceBus::Namespace`.
+
+### Fixed
+
+- `Compute::VirtualMachine` now serializes SSH public keys on Read, and its OS /
+  configuration fields are marked create-only, so changing an immutable field
+  plans a replace instead of an update the provider would reject.
 
 ## [0.1.6]
 

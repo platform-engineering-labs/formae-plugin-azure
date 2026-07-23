@@ -5,7 +5,7 @@
  */
 
 name = "azure"
-version = "0.1.10-dev"
+version = "0.1.9-dev"
 namespace = "AZURE"
 summary = "Azure resource plugin (ARM-based)"
 description = "Azure Resource Manager (ARM) plugin for Formae"
