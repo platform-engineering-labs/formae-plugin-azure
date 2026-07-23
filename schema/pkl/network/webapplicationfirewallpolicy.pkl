@@ -1,0 +1,148 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.webapplicationfirewallpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::ApplicationGatewayWebApplicationFirewallPolicy"
+const apiVersion = "2023-05-01"
+
+open class WebApplicationFirewallPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WebApplicationFirewallPolicyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WebApplicationFirewallPolicyResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Enabled/disabled state of the policy.
+typealias WAFEnabledState = "Enabled"|"Disabled"
+
+/// Policy mode: actively block (Prevention) or only log (Detection).
+typealias WAFMode = "Prevention"|"Detection"
+
+/// Custom rule action.
+typealias WAFAction = "Allow"|"Block"|"Log"
+
+/// Custom rule type.
+typealias WAFRuleType = "MatchRule"|"RateLimitRule"
+
+/// Policy-wide settings (mode, request body inspection).
+class PolicySettings {
+    /// Whether the policy is enabled.
+    state: WAFEnabledState?
+
+    /// Prevention actively blocks; Detection only logs.
+    mode: WAFMode?
+
+    /// Whether the WAF inspects the request body.
+    requestBodyCheck: Boolean?
+
+    /// Maximum request body size in Kb the WAF inspects.
+    maxRequestBodySizeInKb: Int(this >= 1)?
+}
+
+/// A managed rule set (e.g. OWASP) applied by the policy.
+class ManagedRuleSet {
+    /// Rule set type, e.g. "OWASP".
+    ruleSetType: String(length >= 1)
+
+    /// Rule set version, e.g. "3.2".
+    ruleSetVersion: String(length >= 1)
+}
+
+/// The managed rules the policy enforces.
+class ManagedRules {
+    /// Managed rule sets associated with the policy (at least one required).
+    managedRuleSets: Listing<ManagedRuleSet>
+}
+
+/// A match variable a custom rule inspects.
+class MatchVariable {
+    /// Variable to match, e.g. "RemoteAddr", "RequestHeaders".
+    variableName: String(length >= 1)
+
+    /// Optional selector (e.g. a specific header name) within the variable.
+    selector: String?
+}
+
+/// A single match condition inside a custom rule.
+class MatchCondition {
+    /// Variables to match against.
+    matchVariables: Listing<MatchVariable>
+
+    /// Comparison operator, e.g. "IPMatch", "Contains", "Equal".
+    operator: String(length >= 1)
+
+    /// Values to match.
+    matchValues: Listing<String>
+
+    /// Whether the condition is negated. Azure defaults this to false and always
+    /// returns it, so it is a provider default (omitting it must not read as drift).
+    @azure.FieldHint { hasProviderDefault = true }
+    negationConditon: Boolean?
+}
+
+/// A custom WAF rule evaluated before managed rules.
+class CustomRule {
+    /// Name of the custom rule.
+    name: String(length >= 1 && length <= 128)
+
+    /// Evaluation priority (lower runs first).
+    priority: Int
+
+    /// Rule type.
+    ruleType: WAFRuleType
+
+    /// Action taken when the rule matches.
+    action: WAFAction
+
+    /// Conditions that must match for the rule to fire.
+    matchConditions: Listing<MatchCondition>
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class WebApplicationFirewallPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint {}
+    policySettings: PolicySettings?
+
+    @azure.FieldHint { requiredOnCreate = true }
+    managedRules: ManagedRules
+
+    @azure.FieldHint {}
+    customRules: Listing<CustomRule>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: WebApplicationFirewallPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

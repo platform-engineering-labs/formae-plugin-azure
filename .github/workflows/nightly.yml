@@ -110,7 +110,8 @@ jobs:
   conformance-tests-main:
     needs: [build-formae]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 120 min: Front Door (cdn-*) and App Gateway lifecycles run ~36 min each.
+    timeout-minutes: 120
     environment: production
 
     strategy:
@@ -147,6 +148,14 @@ jobs:
           - federated-identity-credential
           - load-balancer
           - application-gateway
+          - waf-policy
+          # certificate (AZURE::KeyVault::Certificate) excluded from nightly for the same
+          # reason as `secret`: it is a Key Vault DATA-PLANE resource and the CI principal
+          # lacks the "Key Vault Certificates Officer" role. CRUD validated via
+          # test-integration (mocked); run live locally with:
+          # make conformance-test-crud TEST=certificate
+          - dns-zone
+          - dns-record-set
           - private-dns-zone
           - private-dns-vnet-link
           - private-endpoint
@@ -154,6 +163,25 @@ jobs:
           - blob-container
           - disk
           - virtual-machine-scale-set
+          # Azure Front Door Standard (Microsoft.Cdn AFD) — profile provisioning is
+          # minutes-slow + billed. cdn-route stands up the full AFD chain.
+          - cdn-profile
+          - cdn-afd-endpoint
+          - cdn-afd-origin-group
+          - cdn-afd-origin
+          # cdn-route excluded: Route references two siblings (origin group + endpoint)
+          # created in the same apply, reliably tripping the formae core resolve-cache
+          # race (ResolveCacheMissingInAction) on first apply — 3/3 live attempts failed
+          # while siblings succeeded. Not a plugin bug (round-trip unit test + the other
+          # 4 cdn resources pass live). Re-enable when the core race is fixed.
+          # cdn-afd-custom-domain and cdn-secret excluded from nightly: custom-domain
+          # needs a REAL owned domain (Azure _dnsauth TXT challenge), secret needs a real
+          # Key Vault cert + AFD SP vault access. CRUD validated via test-integration
+          # (mocked) + round-trip; run live locally with a real domain/cert.
+          # Container Apps (managed-environment, container-app) excluded from nightly:
+          # environment provisioning (~5 min, container-app builds on top) exceeds the
+          # command timeout, same class as the AKS extension; both billed. CRUD validated
+          # via test-integration (mocked); run live locally with TIMEOUT=15.
           # extension and flux-configuration excluded: each requires AKS cluster (~8m) +
           # extension install (~5m), exceeding the 10m command timeout. CRUD validated locally.
           # maintenance-configuration and trusted-access-role-binding excluded: Create returns
@@ -263,9 +291,14 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ matrix.resource }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
-          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+          # Wide per-command poll so slow resources (App Gateway, Front Door cdn-*)
+          # don't time out; fast resources return well before these ceilings.
+          FORMAE_TEST_TIMEOUT: "25"
+          FORMAE_TEST_OOB_TIMEOUT: "25"
+          FORMAE_TEST_OOB_DELETE_TIMEOUT: "25"
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "25"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: make conformance-test
+        run: make conformance-test TIMEOUT=75
 
   # Clean up Azure resources after all matrix jobs complete
   cleanup:

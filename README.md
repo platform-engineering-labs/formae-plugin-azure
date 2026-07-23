@@ -39,6 +39,20 @@ Formae plugin for managing Azure resources.
 | `AZURE::Storage::BlobContainer` | Blob containers |
 | `AZURE::Compute::Disk` | Managed disks |
 | `AZURE::Compute::VirtualMachineScaleSet` | Virtual machine scale sets |
+| `AZURE::Network::ApplicationGateway` | Application Gateway v2 (L7 load balancer / HTTPS ingress) |
+| `AZURE::Network::ApplicationGatewayWebApplicationFirewallPolicy` | WAF policy for Application Gateway |
+| `AZURE::KeyVault::Certificate` | Key Vault certificates (BYO import or self-signed policy) |
+| `AZURE::Network::DnsZone` | Public DNS zones |
+| `AZURE::Network::DnsRecordSet` | Public DNS record sets (A / CNAME / TXT) |
+| `AZURE::Cdn::Profile` | Front Door Standard/Premium profiles |
+| `AZURE::Cdn::AFDEndpoint` | Front Door endpoints |
+| `AZURE::Cdn::AFDOriginGroup` | Front Door origin groups |
+| `AZURE::Cdn::AFDOrigin` | Front Door origins |
+| `AZURE::Cdn::Route` | Front Door routes |
+| `AZURE::Cdn::AFDCustomDomain` | Front Door custom domains |
+| `AZURE::Cdn::Secret` | Front Door secrets (BYO Key Vault TLS certificate) |
+| `AZURE::App::ManagedEnvironment` | Container Apps managed environments |
+| `AZURE::App::ContainerApp` | Container Apps |
 
 ## Configuration
 

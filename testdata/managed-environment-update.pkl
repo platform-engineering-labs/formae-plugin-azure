@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/app/managedenvironment.pkl"
+
+import "vars.pkl"
+
+// Consumption-only environment — see managed-environment.pkl for why
+// log-analytics is not in the conformance fixture. Update: add tags.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "managed-env-test-rg"
+  name = "formae-plugin-sdk-test-menv-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new managedenvironment.ManagedEnvironment {
+    label = "plugin-sdk-test-managed-env"
+    name = "formae-plugin-sdk-test-menv-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    // Update: add tags (non-createOnly).
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.cdn.route
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Cdn::Route"
+const apiVersion = "2023-05-01"
+
+open class RouteResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RouteResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RouteResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Cdn::AFDEndpoint"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "endpointName" },
+        new formae.ListProperty { parentProperty = "profileName" listParameter = "profileName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Route extends formae.Resource {
+
+    /// Route name (unique within the endpoint).
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Front Door profile.
+    @azure.FieldHint { required = true; createOnly = true }
+    profileName: String|formae.Resolvable
+
+    /// Name of the endpoint that holds this route.
+    @azure.FieldHint { required = true; createOnly = true }
+    endpointName: String|formae.Resolvable
+
+    /// Full ARM id of the origin group this route forwards traffic to
+    /// (e.g. originGroup.res.id).
+    @azure.FieldHint { required = true }
+    originGroupId: String|formae.Resolvable
+
+    /// Route match patterns (e.g. "/*").
+    @azure.FieldHint { required = true }
+    patternsToMatch: Listing<String>
+
+    /// Protocols this route accepts. Permitted values are 'Http' and 'Https'.
+    @azure.FieldHint { required = true }
+    supportedProtocols: Listing<("Http"|"Https")>
+
+    /// Protocol used when forwarding traffic to backends.
+    @azure.FieldHint {}
+    forwardingProtocol: ("HttpOnly"|"HttpsOnly"|"MatchRequest") = "MatchRequest"
+
+    /// Whether the route is linked to the endpoint's default domain.
+    @azure.FieldHint {}
+    linkToDefaultDomain: ("Enabled"|"Disabled") = "Enabled"
+
+    /// Whether to redirect HTTP traffic to HTTPS.
+    @azure.FieldHint {}
+    httpsRedirect: ("Enabled"|"Disabled") = "Enabled"
+
+    /// Whether the route is enabled. Permitted values are 'Enabled' or 'Disabled'.
+    // Azure defaults this (Enabled) and always returns it; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
+    enabledState: ("Enabled"|"Disabled")?
+
+    /// Directory path on the origin used to retrieve content.
+    // Azure may return this; omitting must not drift.
+    @azure.FieldHint { hasProviderDefault = true }
+    originPath: String?
+
+    hidden parent = this
+
+    hidden res: RouteResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

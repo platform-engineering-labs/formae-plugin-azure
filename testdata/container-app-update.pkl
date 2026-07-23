@@ -1,0 +1,76 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/app/managedenvironment.pkl"
+import "@azure/app/containerapp.pkl"
+
+import "vars.pkl"
+
+// Public image, no secrets — see container-app.pkl for why the secret path is
+// not in the conformance fixture. Update: bump maxReplicas and change an env value.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "container-app-test-rg"
+  name = "formae-plugin-sdk-test-capp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local env = new managedenvironment.ManagedEnvironment {
+  label = "container-app-test-env"
+  name = "formae-plugin-sdk-test-capp-env-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  env
+
+  new containerapp.ContainerApp {
+    label = "plugin-sdk-test-container-app"
+    name = "capp-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    managedEnvironmentId = env.res.id
+    configuration = new containerapp.Configuration {
+      ingress = new containerapp.Ingress {
+        `external` = true
+        targetPort = 80
+      }
+    }
+    template = new containerapp.Template {
+      containers = new Listing {
+        new containerapp.Container {
+          name = "main"
+          image = "mcr.microsoft.com/k8se/quickstart:latest"
+          resources = new containerapp.ContainerResources {
+            cpu = 0.5
+            memory = "1Gi"
+          }
+          env = new Listing {
+            // Update: change the env value (non-createOnly).
+            new containerapp.EnvironmentVar { name = "GREETING"; value = "bonjour" }
+          }
+        }
+      }
+      scale = new containerapp.Scale {
+        minReplicas = 0
+        // Update: bump maxReplicas.
+        maxReplicas = 3
+      }
+    }
+  }
+}
