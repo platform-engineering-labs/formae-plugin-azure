@@ -5,13 +5,13 @@
  */
 
 name = "azure"
-version = "0.1.8-dev"
+version = "0.1.9"
 namespace = "AZURE"
 summary = "Azure resource plugin (ARM-based)"
 description = "Azure Resource Manager (ARM) plugin for Formae"
 category = "cloud"
 license = "FSL-1.1-ALv2"
-minFormaeVersion = "0.86.0"
+minFormaeVersion = "0.88.0"
 
 output {
   renderer = new JsonRenderer {}

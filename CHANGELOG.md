@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
+## [0.1.9]
+
+### Changed
+
+- Genuine secret-value fields are now typed `formae.SecretValue` so their values are hashed at rest end-to-end (previously stored in cleartext on the read/actual-state path). Covers `Azure::Compute::VirtualMachine` and `Azure::Compute::VirtualMachineScaleSet` `adminPassword`, `Azure::DBforPostgreSQL::FlexibleServer` and `Azure::Sql::Server` `administratorLoginPassword`, `Azure::KeyVault::Secret` `value`, and `Azure::KubernetesConfiguration::FluxConfiguration` `accessKey`. Requires a formae agent on the matching release; `minFormaeVersion` is bumped to 0.88.0.
+
 ## [0.1.8]
 
 Managed HTTPS ingress on Azure — an Application Gateway (optionally WAF-fronted)
