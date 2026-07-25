@@ -69,7 +69,7 @@ class VMSSOSProfile {
     adminUsername: String
 
     /// Password for `adminUsername`. Required unless SSH keys are configured.
-    adminPassword: String?
+    adminPassword: (String|formae.Resolvable|formae.Value|formae.SecretValue)?
 
     /// Base64-encoded cloud-init / custom-data script.
     customData: String?

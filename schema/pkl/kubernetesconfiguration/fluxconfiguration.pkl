@@ -86,7 +86,7 @@ class Bucket {
     timeoutInSeconds: Int?
 
     /// Access key for bucket
-    accessKey: String?
+    accessKey: (String|formae.Resolvable|formae.Value|formae.SecretValue)?
 
     /// Use insecure communication
     insecure: Boolean?

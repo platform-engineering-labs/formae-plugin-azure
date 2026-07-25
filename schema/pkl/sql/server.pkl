@@ -95,7 +95,7 @@ open class Server extends formae.Resource {
     administratorLogin: String(length >= 1)?
 
     @azure.FieldHint {}
-    administratorLoginPassword: String(length >= 8)?
+    administratorLoginPassword: (String(length >= 8)|formae.Resolvable|formae.Value|formae.SecretValue)?
 
     @azure.FieldHint { createOnly = true }
     version: ServerVersion?

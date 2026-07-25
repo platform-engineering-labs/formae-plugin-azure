@@ -163,7 +163,7 @@ open class FlexibleServer extends formae.Resource {
     administratorLogin: String(length >= 1)
 
     @azure.FieldHint { requiredOnCreate = true; createOnly = true }
-    administratorLoginPassword: String(length >= 8)
+    administratorLoginPassword: (String(length >= 8)|formae.Resolvable|formae.Value|formae.SecretValue)
 
     // Optional properties
     @azure.FieldHint { createOnly = true }
