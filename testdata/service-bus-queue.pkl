@@ -1,0 +1,56 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/servicebus/servicebusnamespace.pkl" as namespace
+import "@azure/servicebus/queue.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "service-bus-queue-test-rg"
+  name = "formae-plugin-sdk-test-sbq-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local namespaceSku = new namespace.NamespaceSKU {
+  name = "Standard"
+}
+
+local ns = new namespace.Namespace {
+  label = "service-bus-queue-test-ns"
+  name = "fpsdt-sbq-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = namespaceSku
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  ns
+
+  new queue.Queue {
+    label = "plugin-sdk-test-service-bus-queue"
+    name = "formae-plugin-sdk-test-sbq-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    // ISO-8601 durations
+    lockDuration = "PT1M"
+    defaultMessageTimeToLive = "P14D"
+    maxDeliveryCount = 10
+    deadLetteringOnMessageExpiration = true
+    enableBatchedOperations = true
+  }
+}

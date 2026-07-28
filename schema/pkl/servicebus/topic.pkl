@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.servicebus.topic
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ServiceBus::Topic"
+const apiVersion = "2021-11-01"
+
+/// Entity lifecycle state. `Active` accepts sends and receives; the `*Disabled`
+/// values fence the entity off without deleting it.
+typealias EntityStatus = "Active"|"Disabled"|"Restoring"|"SendDisabled"|"ReceiveDisabled"|"Creating"|"Deleting"|"Renaming"|"Unknown"
+
+open class TopicResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TopicResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TopicResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Service Bus topic — the publish side of publish/subscribe. Readers attach as
+/// AZURE::ServiceBus::Subscription.
+///
+/// Durations are ISO-8601, e.g. `"P14D"`.
+///
+/// Topic-scoped authorization rules are a separate ARM sub-resource and are not
+/// modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ServiceBus::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Topic extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: (String|formae.Resolvable)
+
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultMessageTimeToLive: String?
+
+    /// Only meaningful when `requiresDuplicateDetection` is true.
+    @azure.FieldHint { hasProviderDefault = true }
+    duplicateDetectionHistoryTimeWindow: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    autoDeleteOnIdle: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxSizeInMegabytes: Int?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxMessageSizeInKilobytes: Int?
+
+    /// Immutable after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    requiresDuplicateDetection: Boolean?
+
+    /// Immutable after creation; not available on Premium namespaces.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    enablePartitioning: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enableBatchedOperations: Boolean?
+
+    /// Standard namespaces only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableExpress: Boolean?
+
+    /// Preserve ordering of messages sent to the topic.
+    @azure.FieldHint { hasProviderDefault = true }
+    supportOrdering: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    status: EntityStatus?
+
+    hidden parent = this
+
+    hidden res: TopicResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

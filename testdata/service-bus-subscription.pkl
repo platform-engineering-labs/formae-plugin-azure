@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/servicebus/servicebusnamespace.pkl" as namespace
+import "@azure/servicebus/topic.pkl"
+import "@azure/servicebus/subscription.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "service-bus-subscription-test-rg"
+  name = "formae-plugin-sdk-test-sbsub-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local namespaceSku = new namespace.NamespaceSKU {
+  name = "Standard"
+}
+
+local ns = new namespace.Namespace {
+  label = "service-bus-subscription-test-ns"
+  name = "fpsdt-sbsub-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = namespaceSku
+}
+
+local tp = new topic.Topic {
+  label = "service-bus-subscription-test-topic"
+  name = "formae-plugin-sdk-test-sbsubtopic-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  ns
+
+  tp
+
+  new subscription.Subscription {
+    label = "plugin-sdk-test-service-bus-subscription"
+    name = "formae-plugin-sdk-test-sbsub-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    topicName = tp.res.name
+    lockDuration = "PT1M"
+    defaultMessageTimeToLive = "P14D"
+    maxDeliveryCount = 10
+    deadLetteringOnMessageExpiration = true
+    enableBatchedOperations = true
+  }
+}

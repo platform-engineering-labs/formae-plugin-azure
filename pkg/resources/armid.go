@@ -70,6 +70,52 @@ func armIDParts(resourceID string, resourceTypes ...string) (rgName string, name
 	return rgName, names, nil
 }
 
+// armExactIDParts parses an ARM ID whose leaf resource type chain must match
+// resourceTypes exactly, and returns the resource group plus the name of each
+// level in the same order.
+//
+// Use this instead of armIDParts whenever one of the wanted type segments is
+// "subscriptions": ARM IDs begin with the /subscriptions/{id} *scope*, which
+// arm.ParseResourceID exposes as a parent with ResourceType.Types ==
+// ["subscriptions"]. armIDParts walks parents by type name, so asking it for
+// "subscriptions" silently matches that scope and hands back the subscription
+// GUID — every ID would parse, including ones that name no subscription resource
+// at all.
+func armExactIDParts(resourceID string, resourceTypes ...string) (rgName string, names []string, err error) {
+	id, err := parseARMResourceID(resourceID)
+	if err != nil {
+		return "", nil, err
+	}
+	rgName, err = armResourceGroup(id, resourceID)
+	if err != nil {
+		return "", nil, err
+	}
+
+	got := id.ResourceType.Types
+	if len(got) != len(resourceTypes) {
+		return "", nil, fmt.Errorf("ARM ID %q is not a %s: got type chain %v",
+			resourceID, strings.Join(resourceTypes, "/"), got)
+	}
+	for i := range resourceTypes {
+		if !strings.EqualFold(got[i], resourceTypes[i]) {
+			return "", nil, fmt.Errorf("ARM ID %q is not a %s: got type chain %v",
+				resourceID, strings.Join(resourceTypes, "/"), got)
+		}
+	}
+
+	// Walk from the leaf back up, collecting one name per level.
+	names = make([]string, len(resourceTypes))
+	cur := id
+	for i := len(resourceTypes) - 1; i >= 0; i-- {
+		if cur == nil || cur.Name == "" {
+			return "", nil, fmt.Errorf("ARM ID %q missing %s name", resourceID, resourceTypes[i])
+		}
+		names[i] = cur.Name
+		cur = cur.Parent
+	}
+	return rgName, names, nil
+}
+
 func diskIDParts(resourceID string) (rgName, diskName string, err error) {
 	rgName, names, err := armIDParts(resourceID, "disks")
 	if err != nil {

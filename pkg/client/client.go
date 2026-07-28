@@ -97,6 +97,9 @@ type Client struct {
 	VirtualMachineExtensionsClient       *armcompute.VirtualMachineExtensionsClient
 	EventHubNamespacesClient             *armeventhub.NamespacesClient
 	ServiceBusNamespacesClient           *armservicebus.NamespacesClient
+	ServiceBusQueuesClient               *armservicebus.QueuesClient
+	ServiceBusTopicsClient               *armservicebus.TopicsClient
+	ServiceBusSubscriptionsClient        *armservicebus.SubscriptionsClient
 	EventGridSystemTopicsClient          *armeventgrid.SystemTopicsClient
 	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
 	GrafanaClient                        *armdashboard.GrafanaClient
@@ -409,6 +412,21 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	serviceBusQueuesClient, err := armservicebus.NewQueuesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	serviceBusTopicsClient, err := armservicebus.NewTopicsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	serviceBusSubscriptionsClient, err := armservicebus.NewSubscriptionsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	eventGridSystemTopicsClient, err := armeventgrid.NewSystemTopicsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -524,6 +542,9 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		VirtualMachineExtensionsClient:       virtualMachineExtensionsClient,
 		EventHubNamespacesClient:             eventHubNamespacesClient,
 		ServiceBusNamespacesClient:           serviceBusNamespacesClient,
+		ServiceBusQueuesClient:               serviceBusQueuesClient,
+		ServiceBusTopicsClient:               serviceBusTopicsClient,
+		ServiceBusSubscriptionsClient:        serviceBusSubscriptionsClient,
 		EventGridSystemTopicsClient:          eventGridSystemTopicsClient,
 		CognitiveAccountsClient:              cognitiveAccountsClient,
 		GrafanaClient:                        grafanaClient,
