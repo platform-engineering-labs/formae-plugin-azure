@@ -1,0 +1,44 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/ipgroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ip-group-test-rg"
+  name = "formae-plugin-sdk-test-ipg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new ipgroup.IpGroup {
+    label = "plugin-sdk-test-ip-group"
+    name = "formae-plugin-sdk-test-ipg-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    // Update: add a member and tags
+    ipAddresses = new Listing {
+      "10.10.0.0/24"
+      "10.20.0.0/24"
+      "10.30.0.0/24"
+    }
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
