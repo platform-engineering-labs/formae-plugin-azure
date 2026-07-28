@@ -26,6 +26,10 @@ local rg = new resourcegroup.ResourceGroup {
 local namespaceSku = new namespace.NamespaceSKU {
   name = "Standard"
   tier = "Standard"
+  // Pinned explicitly: Azure always returns sku.capacity, and nested
+  // hasProviderDefault is not honoured by the conformance framework, so omitting
+  // it fails Verify with "Property sku.capacity is not expected".
+  capacity = 1
 }
 
 forma {
