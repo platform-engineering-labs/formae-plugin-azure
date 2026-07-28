@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.outboundfirewallrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::OutboundFirewallRule"
+const apiVersion = "2020-11-01-preview"
+
+open class OutboundFirewallRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OutboundFirewallRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OutboundFirewallRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An outbound firewall rule on an Azure SQL server: one permitted destination FQDN
+/// for server-initiated connections when outbound network restriction is enabled.
+///
+/// The rule *is* its name — the resource name is the allowed FQDN and there are no
+/// other writable fields, so changing the destination is a replace, not an update.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Sql::Server"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "serverName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class OutboundFirewallRule extends formae.Resource {
+
+    /// The permitted destination FQDN, e.g. `"storage.blob.core.windows.net"`.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 253)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: (String|formae.Resolvable)
+
+    hidden parent = this
+
+    hidden res: OutboundFirewallRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

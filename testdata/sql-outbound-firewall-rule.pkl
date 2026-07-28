@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/sql/server.pkl"
+import "@azure/sql/outboundfirewallrule.pkl" as outboundrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sql-outbound-firewall-rule-test-rg"
+  name = "formae-plugin-sdk-test-sqlout-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+local srv = new server.Server {
+  label = "sql-outbound-firewall-rule-test-server"
+  name = "fpsdt-sqlout-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  administratorLogin = "sqladmin"
+  administratorLoginPassword = "T3stP@ssw0rd!"
+  version = "12.0"
+  minimalTlsVersion = "1.2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  srv
+
+  new outboundrule.OutboundFirewallRule {
+    label = "plugin-sdk-test-sql-outbound-firewall-rule"
+    // The rule name IS the permitted destination FQDN.
+    name = "storage.blob.core.windows.net"
+    resourceGroupName = rg.res.name
+    serverName = srv.res.name
+  }
+}
