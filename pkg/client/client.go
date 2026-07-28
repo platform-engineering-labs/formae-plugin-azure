@@ -98,6 +98,9 @@ type Client struct {
 	EventHubNamespacesClient             *armeventhub.NamespacesClient
 	ServiceBusNamespacesClient           *armservicebus.NamespacesClient
 	EventGridSystemTopicsClient          *armeventgrid.SystemTopicsClient
+	EventGridTopicsClient                *armeventgrid.TopicsClient
+	EventGridDomainsClient               *armeventgrid.DomainsClient
+	EventGridDomainTopicsClient          *armeventgrid.DomainTopicsClient
 	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
 	GrafanaClient                        *armdashboard.GrafanaClient
 	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
@@ -414,6 +417,21 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	eventGridTopicsClient, err := armeventgrid.NewTopicsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	eventGridDomainsClient, err := armeventgrid.NewDomainsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	eventGridDomainTopicsClient, err := armeventgrid.NewDomainTopicsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	cognitiveAccountsClient, err := armcognitiveservices.NewAccountsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -525,6 +543,9 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		EventHubNamespacesClient:             eventHubNamespacesClient,
 		ServiceBusNamespacesClient:           serviceBusNamespacesClient,
 		EventGridSystemTopicsClient:          eventGridSystemTopicsClient,
+		EventGridTopicsClient:                eventGridTopicsClient,
+		EventGridDomainsClient:               eventGridDomainsClient,
+		EventGridDomainTopicsClient:          eventGridDomainTopicsClient,
 		CognitiveAccountsClient:              cognitiveAccountsClient,
 		GrafanaClient:                        grafanaClient,
 		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
