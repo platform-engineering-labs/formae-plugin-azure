@@ -1,0 +1,40 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/proximityplacementgroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "proximity-placement-group-test-rg"
+  name = "formae-plugin-sdk-test-ppg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new proximityplacementgroup.ProximityPlacementGroup {
+    label = "plugin-sdk-test-proximity-placement-group"
+    name = "formae-plugin-sdk-test-ppg-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    proximityPlacementGroupType = "Standard"
+    // Update: add tags (ARM's PPG PATCH body carries tags only)
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
