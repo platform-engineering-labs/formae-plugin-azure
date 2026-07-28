@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.publicipprefix
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::PublicIPPrefix"
+const apiVersion = "2023-05-01"
+
+/// Only `Standard` public IP prefixes exist — Basic SKU prefixes are not offered.
+typealias PublicIPPrefixSkuName = "Standard"
+
+/// `Regional` pins the prefix to the resource's region; `Global` is used for
+/// cross-region load balancer frontends.
+typealias PublicIPPrefixSkuTier = "Regional"|"Global"
+
+typealias IPVersion = "IPv4"|"IPv6"
+
+class PublicIPPrefixSku {
+    @azure.FieldHint { required = true }
+    name: PublicIPPrefixSkuName
+
+    @azure.FieldHint { }
+    tier: PublicIPPrefixSkuTier?
+}
+
+/// An IP tag restricts what the allocated addresses may be used for
+/// (e.g. `ipTagType = "FirstPartyUsage"`, `tag = "/Sql"`).
+class IPTag {
+    @azure.FieldHint { required = true }
+    ipTagType: String
+
+    @azure.FieldHint { required = true }
+    tag: String
+}
+
+open class PublicIPPrefixResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PublicIPPrefixResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PublicIPPrefixResolvable = (this) {
+        property = "name"
+    }
+    /// The CIDR Azure allocated for this prefix (read-only).
+    hidden ipPrefix: PublicIPPrefixResolvable = (this) {
+        property = "ipPrefix"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class PublicIPPrefix extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: PublicIPPrefixSku
+
+    /// Prefix size. Immutable — a resize means a new prefix and new addresses.
+    /// IPv4 allows /28..../31 (16 down to 2 addresses); IPv6 allows /124..../127.
+    @azure.FieldHint { required = true; createOnly = true }
+    prefixLength: Int(this >= 21 && this <= 127)
+
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    publicIPAddressVersion: IPVersion?
+
+    @azure.FieldHint { createOnly = true }
+    ipTags: Listing<IPTag>?
+
+    /// Availability zones the addresses are drawn from (e.g. `Listing { "1"; "2"; "3" }`).
+    @azure.FieldHint { createOnly = true }
+    zones: Listing<String>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PublicIPPrefixResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
