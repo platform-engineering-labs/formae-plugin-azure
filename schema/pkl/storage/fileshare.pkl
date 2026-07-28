@@ -1,0 +1,90 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.fileshare
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::FileShare"
+const apiVersion = "2023-05-01"
+
+/// GpV2 accounts choose between `TransactionOptimized` (default), `Hot` and `Cool`;
+/// FileStorage (premium) accounts use `Premium`.
+typealias ShareAccessTier = "TransactionOptimized"|"Hot"|"Cool"|"Premium"
+
+/// `SMB` (default) or `NFS`. NFS requires a premium FileStorage account.
+typealias EnabledProtocols = "SMB"|"NFS"
+
+/// NFS-only. Controls how the root user is mapped.
+typealias RootSquashType = "NoRootSquash"|"RootSquash"|"AllSquash"
+
+open class FileShareResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FileShareResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FileShareResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A file share in a storage account's File service.
+///
+/// Stored access policies and the Files Provisioned v2 knobs (provisioned IOPS /
+/// bandwidth, paid bursting) are not modelled yet — v2 needs a FileStorage account
+/// type to exercise.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class FileShare extends formae.Resource {
+
+    /// Share names are lowercase alphanumeric with single hyphens, 3-63 chars.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex(#"^[a-z0-9]([a-z0-9]|-(?!-))*[a-z0-9]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Provisioned size in GiB. Standard shares allow up to 5120, or 102400 with
+    /// large file shares enabled on the account.
+    @azure.FieldHint { hasProviderDefault = true }
+    shareQuota: Int(this >= 1 && this <= 102400)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    accessTier: ShareAccessTier?
+
+    /// Immutable: ARM only accepts `enabledProtocols` on create, and the plugin
+    /// strips it from updates.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    enabledProtocols: EnabledProtocols?
+
+    /// NFS shares only.
+    @azure.FieldHint { }
+    rootSquash: RootSquashType?
+
+    /// Share metadata as name/value pairs.
+    @azure.FieldHint { outputField = "metadata"; updateMethod = "EntitySet"; indexField = "Key" }
+    metadata: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: FileShareResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
