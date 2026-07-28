@@ -41,3 +41,6 @@ az-progress.md
 SCHEMA-AUDIT.md
 log-audit.md
 examples/tmp/
+
+# Git worktrees
+.worktrees/
