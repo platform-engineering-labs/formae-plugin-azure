@@ -68,6 +68,7 @@ type Client struct {
 	PrivateDnsZoneGroupsClient           *armnetwork.PrivateDNSZoneGroupsClient
 	PrivateDnsZonesClient                *armprivatedns.PrivateZonesClient
 	PrivateDnsVNetLinksClient            *armprivatedns.VirtualNetworkLinksClient
+	PrivateDnsRecordSetsClient           *armprivatedns.RecordSetsClient
 	DnsZonesClient                       *armdns.ZonesClient
 	RecordSetsClient                     *armdns.RecordSetsClient
 	VirtualMachinesClient                *armcompute.VirtualMachinesClient
@@ -255,6 +256,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	privateDnsVNetLinksClient, err := armprivatedns.NewVirtualNetworkLinksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	privateDnsRecordSetsClient, err := armprivatedns.NewRecordSetsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -495,6 +501,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		PrivateDnsZoneGroupsClient:           privateDnsZoneGroupsClient,
 		PrivateDnsZonesClient:                privateDnsZonesClient,
 		PrivateDnsVNetLinksClient:            privateDnsVNetLinksClient,
+		PrivateDnsRecordSetsClient:           privateDnsRecordSetsClient,
 		DnsZonesClient:                       dnsZonesClient,
 		RecordSetsClient:                     recordSetsClient,
 		VirtualMachinesClient:                virtualMachinesClient,

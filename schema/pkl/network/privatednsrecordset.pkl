@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.privatednsrecordset
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::PrivateDnsRecordSet"
+const apiVersion = "2024-06-01"
+
+open class PrivateDnsRecordSetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrivateDnsRecordSetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrivateDnsRecordSetResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A single A record (an IPv4 address).
+class ARecord {
+    ipv4Address: String
+}
+
+/// A single TXT record (one or more character strings, concatenated by resolvers).
+class TxtRecord {
+    value: Listing<String>
+}
+
+/// A record set inside a private DNS zone.
+///
+/// Record type coverage matches the public `AZURE::Network::DnsRecordSet` sibling:
+/// A, CNAME and TXT. Private zones also support AAAA, MX, PTR and SRV; those are not
+/// modelled yet so the two record-set types stay in step.
+///
+/// The SOA record set Azure creates with every private zone is filtered out of
+/// discovery — it cannot be deleted, so do not declare it here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::PrivateDnsZone"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "privateZoneName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class PrivateDnsRecordSet extends formae.Resource {
+
+    /// Relative record set name within the zone (e.g. "www", or "@" for the apex).
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 253)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the private DNS zone this record set belongs to.
+    @azure.FieldHint { required = true; createOnly = true }
+    privateZoneName: String|formae.Resolvable
+
+    /// DNS record type. Immutable; changing it replaces the record set.
+    @azure.FieldHint { required = true; createOnly = true }
+    recordType: ("A"|"CNAME"|"TXT")
+
+    /// Time-to-live in seconds.
+    @azure.FieldHint { required = true }
+    ttl: Int(this >= 0)
+
+    /// A records (only for recordType == "A").
+    @azure.FieldHint {}
+    aRecords: Listing<ARecord>?
+
+    /// Canonical name (only for recordType == "CNAME").
+    @azure.FieldHint {}
+    cname: String?
+
+    /// TXT records (only for recordType == "TXT").
+    @azure.FieldHint {}
+    txtRecords: Listing<TxtRecord>?
+
+    hidden parent = this
+
+    hidden res: PrivateDnsRecordSetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
