@@ -1,0 +1,38 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/sshpublickey.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ssh-public-key-test-rg"
+  name = "formae-plugin-sdk-test-sshkey-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new sshpublickey.SshPublicKey {
+    label = "plugin-sdk-test-ssh-public-key"
+    name = "formae-plugin-sdk-test-sshkey-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    // Throwaway 2048-bit RSA public key generated for conformance testing only;
+    // the matching private key was never retained.
+    publicKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDLvDI0odW/FOJk2S6x4RnXRPS8Ip9mO3HJP90hL7Zb60GP1CYMVN22xMoABT4Bge1lFaCoEojsB1fENT7F3AsWARnq/+8Jdx4IIRQtb7eb0nPAUYFveOsBiEEAjvdgz47pZcgRXM/gwNpt7YZA1lNdFwDW2KWH5VhA3HoMxZa36FXfqF9Z1NENfKEffIDutH2cppl5GppvLd35bBU19FBZZ7/+6vB1yS9pm7hUr4BSAyvkW0P2fpwKsddykCf86f5yzja1ExwObusZsQmoHmEJ5ccjTCNrwf1vGtGi8UXQZKaNf+DrN25kqWJwthlgaJpqgpj6VIbtXyd8IxKI8Pt formae-conformance"
+  }
+}

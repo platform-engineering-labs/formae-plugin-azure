@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.sshpublickey
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::SshPublicKey"
+const apiVersion = "2024-03-01"
+
+open class SshPublicKeyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SshPublicKeyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SshPublicKeyResolvable = (this) {
+        property = "name"
+    }
+    hidden publicKey: SshPublicKeyResolvable = (this) {
+        property = "publicKey"
+    }
+}
+
+/// A stored SSH public key, referenced when provisioning Linux VMs so the key
+/// material lives in one place instead of being pasted into every VM forma.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class SshPublicKey extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// OpenSSH-format public key (`ssh-rsa AAAA... comment`), at least 2048-bit.
+    /// Public key material, not a secret — left plain so drift stays diffable.
+    /// Omit it only if the key pair will be generated out of band via
+    /// `generateKeyPair`, which this plugin does not call.
+    @azure.FieldHint { }
+    publicKey: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: SshPublicKeyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
