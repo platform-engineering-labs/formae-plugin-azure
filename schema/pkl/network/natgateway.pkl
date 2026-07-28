@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.natgateway
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NatGateway"
+const apiVersion = "2023-05-01"
+
+/// Only `Standard` exists; ARM still requires the SKU in the request body, and the
+/// plugin defaults to it when omitted.
+typealias NatGatewaySkuName = "Standard"
+
+class NatGatewaySku {
+    @azure.FieldHint { required = true }
+    name: NatGatewaySkuName
+}
+
+open class NatGatewayResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NatGatewayResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NatGatewayResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Outbound SNAT for a subnet. Attach Standard-SKU public IPs and/or public IP
+/// prefixes here, then point the subnet at this gateway — the references run in
+/// both directions and the subnet owns its side.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class NatGateway extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    sku: NatGatewaySku?
+
+    /// Outbound idle timeout. Azure defaults to 4.
+    @azure.FieldHint { hasProviderDefault = true }
+    idleTimeoutInMinutes: Int(this >= 4 && this <= 120)?
+
+    /// ARM IDs of Standard-SKU public IP addresses to SNAT from. ARM does not
+    /// preserve list order, so the plugin sorts these in both directions.
+    @azure.FieldHint { }
+    publicIpAddressIds: Listing<(String|formae.Resolvable)>?
+
+    /// ARM IDs of Standard-SKU public IP prefixes to SNAT from.
+    @azure.FieldHint { }
+    publicIpPrefixIds: Listing<(String|formae.Resolvable)>?
+
+    /// Availability zone to pin the gateway to (e.g. `Listing { "1" }`). Immutable.
+    @azure.FieldHint { createOnly = true }
+    zones: Listing<String>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NatGatewayResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
