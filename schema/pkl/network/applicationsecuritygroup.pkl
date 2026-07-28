@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.applicationsecuritygroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::ApplicationSecurityGroup"
+const apiVersion = "2023-05-01"
+
+open class ApplicationSecurityGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApplicationSecurityGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApplicationSecurityGroupResolvable = (this) {
+        property = "name"
+    }
+    hidden location: ApplicationSecurityGroupResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// An application security group is a named handle that NSG rules target instead
+/// of an IP range: network interfaces join the group, and rules reference it via
+/// `sourceApplicationSecurityGroups` / `destinationApplicationSecurityGroups`.
+/// It has no writable ARM properties of its own beyond location and tags.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ApplicationSecurityGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ApplicationSecurityGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
