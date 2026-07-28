@@ -96,6 +96,8 @@ type Client struct {
 	RouteTablesClient                    *armnetwork.RouteTablesClient
 	VirtualMachineExtensionsClient       *armcompute.VirtualMachineExtensionsClient
 	EventHubNamespacesClient             *armeventhub.NamespacesClient
+	EventHubsClient                      *armeventhub.EventHubsClient
+	EventHubConsumerGroupsClient         *armeventhub.ConsumerGroupsClient
 	ServiceBusNamespacesClient           *armservicebus.NamespacesClient
 	EventGridSystemTopicsClient          *armeventgrid.SystemTopicsClient
 	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
@@ -404,6 +406,16 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	eventHubsClient, err := armeventhub.NewEventHubsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	eventHubConsumerGroupsClient, err := armeventhub.NewConsumerGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	serviceBusNamespacesClient, err := armservicebus.NewNamespacesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -523,6 +535,8 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		RouteTablesClient:                    routeTablesClient,
 		VirtualMachineExtensionsClient:       virtualMachineExtensionsClient,
 		EventHubNamespacesClient:             eventHubNamespacesClient,
+		EventHubsClient:                      eventHubsClient,
+		EventHubConsumerGroupsClient:         eventHubConsumerGroupsClient,
 		ServiceBusNamespacesClient:           serviceBusNamespacesClient,
 		EventGridSystemTopicsClient:          eventGridSystemTopicsClient,
 		CognitiveAccountsClient:              cognitiveAccountsClient,

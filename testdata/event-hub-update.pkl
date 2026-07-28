@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/eventhub/eventhubnamespace.pkl"
+import "@azure/eventhub/eventhub.pkl"
+import "@azure/eventhub/consumergroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "event-hub-test-rg"
+  name = "formae-plugin-sdk-test-eh-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new eventhubnamespace.Namespace {
+  label = "event-hub-test-namespace"
+  name = "fpsdt-eh-ns-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new eventhubnamespace.NamespaceSKU {
+    name = "Standard"
+    capacity = 1
+  }
+}
+
+local hub = new eventhub.EventHub {
+  label = "plugin-sdk-test-event-hub"
+  name = "formae-plugin-sdk-test-hub-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+  partitionCount = 2
+  // Update: extend retention (mutable on Standard namespaces)
+  messageRetentionInDays = 2
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  ns
+
+  hub
+
+  new consumergroup.ConsumerGroup {
+    label = "plugin-sdk-test-consumer-group"
+    name = "formae-plugin-sdk-test-cg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    eventHubName = hub.res.name
+    // Update: change the consumer group metadata
+    userMetadata = "updated by conformance test"
+  }
+}

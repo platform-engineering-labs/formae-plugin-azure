@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventhub.consumergroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventHub::ConsumerGroup"
+const apiVersion = "2024-01-01"
+
+open class ConsumerGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ConsumerGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ConsumerGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A consumer group is an independent read cursor over an event hub.
+///
+/// Every event hub also has an implicit `$Default` consumer group that Azure
+/// creates and refuses to delete; the plugin filters it out of discovery, so do
+/// not declare it here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::EventHub::EventHub"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "eventHubName" }
+}
+open class ConsumerGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9._\-]*[a-zA-Z0-9]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: (String|formae.Resolvable)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    eventHubName: (String|formae.Resolvable)
+
+    /// Free-form string (max 1024 chars) for callers to stash their own metadata.
+    @azure.FieldHint { }
+    userMetadata: String(length <= 1024)?
+
+    hidden parent = this
+
+    hidden res: ConsumerGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
