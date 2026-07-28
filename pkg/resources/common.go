@@ -127,3 +127,34 @@ func parseTime(s string) (time.Time, error) {
 	}
 	return time.Time{}, fmt.Errorf("cannot parse time: %s", s)
 }
+
+// metadataFromProperties reads the entity-set shaped `metadata` list
+// (`[{Key,Value}, ...]`) used by storage child resources back into the flat
+// map[string]*string that ARM expects. Returns nil when there is nothing to send.
+//
+// Shared by AZURE::Storage::Queue and AZURE::Storage::FileShare; kept here rather
+// than duplicated per resource.
+func metadataFromProperties(props map[string]any) map[string]*string {
+	raw, ok := props["metadata"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]*string, len(raw))
+	for _, entry := range raw {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		key, _ := m["Key"].(string)
+		value, _ := m["Value"].(string)
+		if key == "" {
+			continue
+		}
+		v := value
+		out[key] = &v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}

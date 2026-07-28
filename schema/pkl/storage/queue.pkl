@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.queue
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::Queue"
+const apiVersion = "2023-05-01"
+
+open class QueueResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: QueueResolvable = (this) {
+        property = "id"
+    }
+    hidden name: QueueResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A queue in a storage account's Queue service.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Queue extends formae.Resource {
+
+    /// Queue names are lowercase alphanumeric with single hyphens, 3-63 chars.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex(#"^[a-z0-9]([a-z0-9]|-(?!-))*[a-z0-9]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Queue metadata as name/value pairs.
+    @azure.FieldHint { outputField = "metadata"; updateMethod = "EntitySet"; indexField = "Key" }
+    metadata: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: QueueResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

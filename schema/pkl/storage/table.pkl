@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.table
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::Table"
+const apiVersion = "2023-05-01"
+
+/// Abbreviated table permissions: `r` read, `a` add, `u` update, `d` delete.
+/// Combine them in that order, e.g. `"rau"`.
+class TableAccessPolicy {
+    @azure.FieldHint { required = true }
+    permission: String(matches(Regex("^[raud]+$")))
+
+    /// RFC 3339 timestamp, e.g. `"2026-01-01T00:00:00Z"`.
+    @azure.FieldHint { }
+    startTime: String?
+
+    /// RFC 3339 timestamp, e.g. `"2027-01-01T00:00:00Z"`.
+    @azure.FieldHint { }
+    expiryTime: String?
+}
+
+/// A stored access policy. SAS tokens can reference it by `id` so the policy can be
+/// revoked without reissuing tokens.
+class TableSignedIdentifier {
+    @azure.FieldHint { required = true }
+    id: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { }
+    accessPolicy: TableAccessPolicy?
+}
+
+open class TableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TableResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A table in a storage account's Table service.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Table extends formae.Resource {
+
+    /// Table names are alphanumeric, must start with a letter, 3-63 chars.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[A-Za-z][A-Za-z0-9]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Stored access policies. ARM does not preserve list order, so the plugin sorts
+    /// by `id` in both directions.
+    @azure.FieldHint { }
+    signedIdentifiers: Listing<TableSignedIdentifier>?
+
+    hidden parent = this
+
+    hidden res: TableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
