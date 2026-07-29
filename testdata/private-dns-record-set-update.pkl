@@ -1,0 +1,52 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/privatednszone.pkl"
+import "@azure/network/privatednsrecordset.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "private-dns-record-set-test-rg"
+  name = "formae-plugin-sdk-test-pdrs-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local zone = new privatednszone.PrivateDnsZone {
+  label = "private-dns-record-set-test-zone"
+  name = "formae-plugin-sdk-test-pdrs-\(vars.testRunID).internal"
+  location = "global"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  zone
+
+  new privatednsrecordset.PrivateDnsRecordSet {
+    label = "plugin-sdk-test-private-dns-record-set"
+    name = "www"
+    resourceGroupName = rg.res.name
+    privateZoneName = zone.res.name
+    recordType = "A"
+    // Update: shorten the TTL and add a second A record
+    ttl = 300
+    aRecords = new Listing {
+      new privatednsrecordset.ARecord { ipv4Address = "10.0.0.4" }
+      new privatednsrecordset.ARecord { ipv4Address = "10.0.0.5" }
+    }
+  }
+}
