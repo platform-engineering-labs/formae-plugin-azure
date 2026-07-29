@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/disk.pkl"
+import "@azure/compute/snapshot.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "compute-snapshot-test-rg"
+  name = "formae-plugin-sdk-test-snapshot-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A snapshot needs a source managed disk. The smallest empty disk is enough — the
+// snapshot copies blocks, not contents.
+local sourceDisk = new disk.Disk {
+  label = "compute-snapshot-test-disk"
+  name = "formae-plugin-sdk-test-snapshot-disk-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  creationData = new disk.DiskCreationData {
+    createOption = "Empty"
+  }
+  diskSizeGB = 4
+  sku = new disk.DiskSku {
+    name = "Standard_LRS"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sourceDisk
+
+  new snapshot.Snapshot {
+    label = "plugin-sdk-test-snapshot"
+    name = "formae-plugin-sdk-test-snapshot-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    creationData = new snapshot.SnapshotCreationData {
+      createOption = "Copy"
+      sourceResourceId = sourceDisk.res.id
+    }
+    sku = new snapshot.SnapshotSku {
+      name = "Standard_LRS"
+    }
+    incremental = false
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "test" }
+    }
+  }
+}

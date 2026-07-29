@@ -78,6 +78,8 @@ type Client struct {
 	VirtualMachinesClient                *armcompute.VirtualMachinesClient
 	AvailabilitySetsClient               *armcompute.AvailabilitySetsClient
 	DisksClient                          *armcompute.DisksClient
+	SnapshotsClient                      *armcompute.SnapshotsClient
+	ImagesClient                         *armcompute.ImagesClient
 	ProximityPlacementGroupsClient       *armcompute.ProximityPlacementGroupsClient
 	SSHPublicKeysClient                  *armcompute.SSHPublicKeysClient
 	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
@@ -332,6 +334,16 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	disksClient, err := armcompute.NewDisksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotsClient, err := armcompute.NewSnapshotsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	imagesClient, err := armcompute.NewImagesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -637,6 +649,8 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		VirtualMachinesClient:                virtualMachinesClient,
 		AvailabilitySetsClient:               availabilitySetsClient,
 		DisksClient:                          disksClient,
+		SnapshotsClient:                      snapshotsClient,
+		ImagesClient:                         imagesClient,
 		ProximityPlacementGroupsClient:       proximityPlacementGroupsClient,
 		SSHPublicKeysClient:                  sshPublicKeysClient,
 		VMScaleSetsClient:                    vmScaleSetsClient,
