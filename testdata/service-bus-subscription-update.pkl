@@ -11,8 +11,8 @@ import "@azure/azure.pkl"
 
 import "@azure/resources/resourcegroup.pkl"
 import "@azure/servicebus/servicebusnamespace.pkl" as namespace
-import "@azure/servicebus/topic.pkl"
-import "@azure/servicebus/subscription.pkl"
+import "@azure/servicebus/servicebustopic.pkl" as topic
+import "@azure/servicebus/servicebussubscription.pkl" as subscription
 import "vars.pkl"
 
 local rg = new resourcegroup.ResourceGroup {
