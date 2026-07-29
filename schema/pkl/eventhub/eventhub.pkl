@@ -1,0 +1,100 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventhub.eventhub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventHub::EventHub"
+const apiVersion = "2024-01-01"
+
+/// `Active` accepts sends and receives. `SendDisabled` / `ReceiveDisabled` /
+/// `Disabled` progressively fence off the entity without deleting it.
+typealias EventHubStatus = "Active"|"Disabled"|"Restoring"|"SendDisabled"|"ReceiveDisabled"|"Creating"|"Deleting"|"Renaming"|"Unknown"
+
+/// `Delete` drops events past the retention window; `Compact` keeps the latest
+/// event per partition key (Premium/Dedicated only).
+typealias CleanupPolicy = "Delete"|"Compact"
+
+/// The newer retention model. When set it supersedes `messageRetentionInDays`.
+class RetentionDescription {
+    @azure.FieldHint { }
+    cleanupPolicy: CleanupPolicy?
+
+    /// Only used when `cleanupPolicy = "Delete"`.
+    @azure.FieldHint { }
+    retentionTimeInHours: Int(this >= 1)?
+
+    /// Only used when `cleanupPolicy = "Compact"`.
+    @azure.FieldHint { }
+    tombstoneRetentionTimeInHours: Int(this >= 1 && this <= 168)?
+}
+
+open class EventHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: EventHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: EventHubResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An event hub entity inside an Event Hubs namespace — the Kafka-topic
+/// equivalent that producers send to and consumer groups read from.
+///
+/// `captureDescription` (archiving to Blob/ADLS) is intentionally not modelled
+/// yet: it requires a storage account and container, so it could not be verified
+/// end to end here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::EventHub::Namespace"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" }
+}
+open class EventHub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9._\-]*[a-zA-Z0-9]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: (String|formae.Resolvable)
+
+    /// Partitions are immutable on Basic/Standard namespaces; only Premium and
+    /// Dedicated allow increasing the count in place.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    partitionCount: Int(this >= 1 && this <= 1024)?
+
+    /// Basic namespaces are limited to 1 day; Standard allows up to 7.
+    @azure.FieldHint { hasProviderDefault = true }
+    messageRetentionInDays: Int(this >= 1 && this <= 90)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    status: EventHubStatus?
+
+    /// Free-form string (max 1024 chars) for callers to stash their own metadata.
+    @azure.FieldHint { }
+    userMetadata: String(length <= 1024)?
+
+    /// Azure always returns a retentionDescription (defaulting to
+    /// `cleanupPolicy = "Delete"` with the namespace's retention window), so this
+    /// is provider-defaulted rather than absent.
+    @azure.FieldHint { hasProviderDefault = true }
+    retentionDescription: RetentionDescription?
+
+    hidden parent = this
+
+    hidden res: EventHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

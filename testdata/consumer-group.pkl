@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/eventhub/eventhubnamespace.pkl"
+import "@azure/eventhub/eventhub.pkl"
+import "@azure/eventhub/consumergroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "consumer-group-test-rg"
+  name = "formae-plugin-sdk-test-cg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new eventhubnamespace.Namespace {
+  label = "consumer-group-test-namespace"
+  name = "fpsdt-cg-ns-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new eventhubnamespace.NamespaceSKU {
+    name = "Standard"
+    capacity = 1
+  }
+}
+
+local hub = new eventhub.EventHub {
+  label = "consumer-group-test-hub"
+  name = "formae-plugin-sdk-test-cghub-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+  partitionCount = 2
+  messageRetentionInDays = 1
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  ns
+
+  hub
+
+  new consumergroup.ConsumerGroup {
+    label = "plugin-sdk-test-consumer-group"
+    name = "formae-plugin-sdk-test-cg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    eventHubName = hub.res.name
+    userMetadata = "created by conformance test"
+  }
+}
