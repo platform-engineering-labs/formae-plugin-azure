@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/virtualnetworkpeering.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vnet-peering-test-rg"
+  name = "formae-plugin-sdk-test-vnetpeer-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A peering needs two VNets with non-overlapping address spaces.
+local localVnet = new virtualnetwork.VirtualNetwork {
+  label = "vnet-peering-test-vnet-local"
+  name = "formae-plugin-sdk-test-vnetpeer-local-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing {
+      "10.10.0.0/16"
+    }
+  }
+}
+
+local remoteVnet = new virtualnetwork.VirtualNetwork {
+  label = "vnet-peering-test-vnet-remote"
+  name = "formae-plugin-sdk-test-vnetpeer-remote-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing {
+      "10.20.0.0/16"
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  localVnet
+
+  remoteVnet
+
+  // Peering is one-directional: this declares only the local -> remote half, so
+  // ARM reports peeringState "Initiated" rather than "Connected". A full mesh
+  // would declare the mirror resource on remoteVnet as well.
+  new virtualnetworkpeering.VirtualNetworkPeering {
+    label = "plugin-sdk-test-vnet-peering"
+    name = "formae-plugin-sdk-test-vnetpeer-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    virtualNetworkName = localVnet.res.name
+    remoteVirtualNetworkId = remoteVnet.res.id
+    allowVirtualNetworkAccess = true
+    // Update: start allowing forwarded traffic into the remote VNet
+    allowForwardedTraffic = true
+    allowGatewayTransit = false
+    useRemoteGateways = false
+  }
+}

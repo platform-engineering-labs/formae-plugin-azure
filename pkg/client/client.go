@@ -58,6 +58,7 @@ type Client struct {
 	ResourceGroupsClient                 *armresources.ResourceGroupsClient
 	VirtualNetworksClient                *armnetwork.VirtualNetworksClient
 	SubnetsClient                        *armnetwork.SubnetsClient
+	VirtualNetworkPeeringsClient         *armnetwork.VirtualNetworkPeeringsClient
 	SecurityGroupsClient                 *armnetwork.SecurityGroupsClient
 	ApplicationSecurityGroupsClient      *armnetwork.ApplicationSecurityGroupsClient
 	IPGroupsClient                       *armnetwork.IPGroupsClient
@@ -232,6 +233,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	subnetClient, err := armnetwork.NewSubnetsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNetworkPeeringsClient, err := armnetwork.NewVirtualNetworkPeeringsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -617,6 +623,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		ResourceGroupsClient:                 rgClient,
 		VirtualNetworksClient:                vnetClient,
 		SubnetsClient:                        subnetClient,
+		VirtualNetworkPeeringsClient:         virtualNetworkPeeringsClient,
 		SecurityGroupsClient:                 securityGroupsClient,
 		ApplicationSecurityGroupsClient:      applicationSecurityGroupsClient,
 		IPGroupsClient:                       ipGroupsClient,
