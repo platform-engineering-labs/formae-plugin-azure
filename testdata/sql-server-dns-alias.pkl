@@ -1,0 +1,49 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/sql/server.pkl"
+import "@azure/sql/serverdnsalias.pkl" as dnsalias
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sql-server-dns-alias-test-rg"
+  name = "formae-plugin-sdk-test-sqlalias-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+local srv = new server.Server {
+  label = "sql-server-dns-alias-test-server"
+  name = "fpsdt-sqlalias-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  administratorLogin = "sqladmin"
+  administratorLoginPassword = "T3stP@ssw0rd!"
+  version = "12.0"
+  minimalTlsVersion = "1.2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  srv
+
+  new dnsalias.ServerDnsAlias {
+    label = "plugin-sdk-test-sql-server-dns-alias"
+    name = "fpsdt-alias-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    serverName = srv.res.name
+  }
+}

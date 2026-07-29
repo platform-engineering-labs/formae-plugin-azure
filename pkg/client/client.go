@@ -97,6 +97,9 @@ type Client struct {
 	SQLDatabasesClient                   *armsql.DatabasesClient
 	SQLFirewallRulesClient               *armsql.FirewallRulesClient
 	SQLServerAzureADAdministratorsClient *armsql.ServerAzureADAdministratorsClient
+	SQLServerDNSAliasesClient            *armsql.ServerDNSAliasesClient
+	SQLOutboundFirewallRulesClient       *armsql.OutboundFirewallRulesClient
+	SQLVirtualNetworkRulesClient         *armsql.VirtualNetworkRulesClient
 	RouteTablesClient                    *armnetwork.RouteTablesClient
 	VirtualMachineExtensionsClient       *armcompute.VirtualMachineExtensionsClient
 	EventHubNamespacesClient             *armeventhub.NamespacesClient
@@ -413,6 +416,21 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	sqlServerDNSAliasesClient, err := armsql.NewServerDNSAliasesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	sqlOutboundFirewallRulesClient, err := armsql.NewOutboundFirewallRulesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	sqlVirtualNetworkRulesClient, err := armsql.NewVirtualNetworkRulesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	routeTablesClient, err := armnetwork.NewRouteTablesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -548,6 +566,9 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		SQLDatabasesClient:                   sqlDatabasesClient,
 		SQLFirewallRulesClient:               sqlFirewallRulesClient,
 		SQLServerAzureADAdministratorsClient: sqlServerAzureADAdministratorsClient,
+		SQLServerDNSAliasesClient:            sqlServerDNSAliasesClient,
+		SQLOutboundFirewallRulesClient:       sqlOutboundFirewallRulesClient,
+		SQLVirtualNetworkRulesClient:         sqlVirtualNetworkRulesClient,
 		RouteTablesClient:                    routeTablesClient,
 		VirtualMachineExtensionsClient:       virtualMachineExtensionsClient,
 		EventHubNamespacesClient:             eventHubNamespacesClient,

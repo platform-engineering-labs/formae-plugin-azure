@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.serverdnsalias
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::ServerDnsAlias"
+const apiVersion = "2020-11-01-preview"
+
+open class ServerDnsAliasResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ServerDnsAliasResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ServerDnsAliasResolvable = (this) {
+        property = "name"
+    }
+    /// Fully qualified alias hostname Azure assigned (read-only).
+    hidden azureDnsRecord: ServerDnsAliasResolvable = (this) {
+        property = "azureDnsRecord"
+    }
+}
+
+/// A DNS alias for an Azure SQL server — a stable hostname clients connect to that
+/// can later be repointed at a different server, so a failover or migration does not
+/// change anyone's connection string.
+///
+/// The alias has no writable properties. Repointing an existing alias at another
+/// server is ARM's separate `acquire` operation, which this plugin deliberately does
+/// not wire to update: it would let an edited forma silently take an alias away from
+/// another server. Delete and recreate instead.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Sql::Server"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "serverName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class ServerDnsAlias extends formae.Resource {
+
+    /// Alias name; becomes `<name>.database.windows.net`.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: (String|formae.Resolvable)
+
+    hidden parent = this
+
+    hidden res: ServerDnsAliasResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

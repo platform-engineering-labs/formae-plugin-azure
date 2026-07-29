@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.virtualnetworkrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::VirtualNetworkRule"
+const apiVersion = "2020-11-01-preview"
+
+open class VirtualNetworkRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A virtual network rule on an Azure SQL server: a VNet subnet allowed to reach the
+/// server, as an alternative to IP-range firewall rules.
+///
+/// Azure normally requires the subnet to carry the `Microsoft.Sql` service endpoint.
+/// `AZURE::Network::Subnet` does not model serviceEndpoints yet, so set
+/// `ignoreMissingVnetServiceEndpoint = true` to create the rule against a plain
+/// subnet — ARM accepts it and the rule activates once the endpoint is added.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Sql::Server"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "serverName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class VirtualNetworkRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: (String|formae.Resolvable)
+
+    /// ARM ID of the subnet to allow.
+    @azure.FieldHint { required = true }
+    virtualNetworkSubnetId: (String|formae.Resolvable)
+
+    /// Create the rule even though the subnet has no `Microsoft.Sql` service
+    /// endpoint. The rule stays inactive until the endpoint is added.
+    @azure.FieldHint { hasProviderDefault = true }
+    ignoreMissingVnetServiceEndpoint: Boolean?
+
+    /// Rule state reported by Azure (read-only in practice).
+    @azure.FieldHint { hasProviderDefault = true }
+    state: String?
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

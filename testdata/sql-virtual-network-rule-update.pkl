@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/sql/server.pkl"
+import "@azure/resources/subnet.pkl" as subnetmod
+import "@azure/resources/virtualnetwork.pkl" as virtualnetwork
+import "@azure/sql/virtualnetworkrule.pkl" as vnetrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sql-virtual-network-rule-test-rg"
+  name = "formae-plugin-sdk-test-sqlvnr-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+local srv = new server.Server {
+  label = "sql-virtual-network-rule-test-server"
+  name = "fpsdt-sqlvnr-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  administratorLogin = "sqladmin"
+  administratorLoginPassword = "T3stP@ssw0rd!"
+  version = "12.0"
+  minimalTlsVersion = "1.2"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "sql-vnet-rule-test-vnet"
+  name = "formae-plugin-sdk-test-sqlvnet-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.30.0.0/16" }
+  }
+}
+
+local subnet = new subnetmod.Subnet {
+  label = "sql-vnet-rule-test-subnet"
+  name = "sql"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.30.1.0/24"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  srv
+
+  vnet
+
+  subnet
+
+  new vnetrule.VirtualNetworkRule {
+    label = "plugin-sdk-test-sql-virtual-network-rule"
+    name = "fpsdt-vnetrule-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    serverName = srv.res.name
+    virtualNetworkSubnetId = subnet.res.id
+    // AZURE::Network::Subnet does not model serviceEndpoints yet, so the rule is
+    // created without the Microsoft.Sql endpoint present. ARM accepts this.
+    // Update: flip the missing-endpoint tolerance off
+    ignoreMissingVnetServiceEndpoint = false
+  }
+}
