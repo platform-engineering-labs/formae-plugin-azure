@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.gallery
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::Gallery"
+const apiVersion = "2023-07-03"
+
+open class GalleryResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GalleryResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GalleryResolvable = (this) {
+        property = "name"
+    }
+    hidden location: GalleryResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// A Compute Gallery (formerly Shared Image Gallery) — the container for versioned
+/// image definitions that replaced standalone `AZURE::Compute::Image`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Gallery extends formae.Resource {
+
+    /// Gallery names are stricter than most ARM names: alphanumerics, periods and
+    /// underscores only — **no hyphens**.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9._]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: GalleryResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,41 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/gallery.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "compute-gallery-test-rg"
+  name = "formae-plugin-sdk-test-gallery-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Gallery names allow no hyphens — underscores only.
+  new gallery.Gallery {
+    label = "plugin-sdk-test-gallery"
+    name = "formae_plugin_sdk_test_gallery_\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    // Update: description is one of the few updatable gallery properties.
+    description = "Conformance test gallery (updated)"
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
