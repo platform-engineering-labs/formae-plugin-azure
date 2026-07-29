@@ -80,6 +80,8 @@ type Client struct {
 	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
 	StorageAccountsClient                *armstorage.AccountsClient
 	BlobContainersClient                 *armstorage.BlobContainersClient
+	StorageQueuesClient                  *armstorage.QueueClient
+	StorageTablesClient                  *armstorage.TableClient
 	VaultsClient                         *armkeyvault.VaultsClient
 	ManagedClustersClient                *armcontainerservice.ManagedClustersClient
 	MaintenanceConfigurationsClient      *armcontainerservice.MaintenanceConfigurationsClient
@@ -338,6 +340,16 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	storageQueuesClient, err := armstorage.NewQueueClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	storageTablesClient, err := armstorage.NewTableClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	vaultsClient, err := armkeyvault.NewVaultsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -591,6 +603,8 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		VMScaleSetsClient:                    vmScaleSetsClient,
 		StorageAccountsClient:                storageAccountsClient,
 		BlobContainersClient:                 blobContainersClient,
+		StorageQueuesClient:                  storageQueuesClient,
+		StorageTablesClient:                  storageTablesClient,
 		VaultsClient:                         vaultsClient,
 		ManagedClustersClient:                managedClustersClient,
 		MaintenanceConfigurationsClient:      maintenanceConfigurationsClient,

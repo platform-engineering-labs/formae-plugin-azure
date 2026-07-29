@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/table.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "storage-table-test-rg"
+  name = "formae-plugin-sdk-test-st-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "storage-table-test-sa"
+  name = "fpsdtst\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sa
+
+  new table.Table {
+    label = "plugin-sdk-test-storage-table"
+    name = "fpsdttable\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    signedIdentifiers = new Listing {
+      new table.TableSignedIdentifier {
+        id = "conformance-read"
+        accessPolicy = new table.TableAccessPolicy {
+          permission = "r"
+          startTime = "2026-01-01T00:00:00Z"
+          expiryTime = "2027-01-01T00:00:00Z"
+        }
+      }
+    }
+  }
+}
