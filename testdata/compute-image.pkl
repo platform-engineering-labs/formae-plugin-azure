@@ -1,0 +1,82 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/disk.pkl"
+import "@azure/compute/snapshot.pkl"
+import "@azure/compute/image.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "compute-image-test-rg"
+  name = "formae-plugin-sdk-test-image-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local sourceDisk = new disk.Disk {
+  label = "compute-image-test-disk"
+  name = "formae-plugin-sdk-test-image-disk-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  creationData = new disk.DiskCreationData {
+    createOption = "Empty"
+  }
+  diskSizeGB = 4
+  sku = new disk.DiskSku {
+    name = "Standard_LRS"
+  }
+}
+
+// The image sources its OS disk from a snapshot, which is the normal capture path.
+local sourceSnapshot = new snapshot.Snapshot {
+  label = "compute-image-test-snapshot"
+  name = "formae-plugin-sdk-test-image-snap-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  creationData = new snapshot.SnapshotCreationData {
+    createOption = "Copy"
+    sourceResourceId = sourceDisk.res.id
+  }
+  sku = new snapshot.SnapshotSku {
+    name = "Standard_LRS"
+  }
+  incremental = false
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sourceDisk
+
+  sourceSnapshot
+
+  new image.Image {
+    label = "plugin-sdk-test-image"
+    name = "formae-plugin-sdk-test-image-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    storageProfile = new image.ImageStorageProfile {
+      osDisk = new image.ImageOsDisk {
+        osType = "Linux"
+        osState = "Generalized"
+        snapshotId = sourceSnapshot.res.id
+      }
+    }
+    hyperVGeneration = "V1"
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "test" }
+    }
+  }
+}

@@ -1,0 +1,100 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.snapshot
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::Snapshot"
+const apiVersion = "2023-10-02"
+
+/// Snapshots support a narrower SKU set than disks.
+typealias SnapshotStorageAccountType = "Standard_LRS"|"Premium_LRS"|"Standard_ZRS"
+
+/// Where the snapshot's content comes from. `Copy` takes an existing managed disk
+/// or snapshot by ARM ID; `Import`/`Upload` bring in a VHD.
+typealias SnapshotCreateOption = "Copy"|"CopyStart"|"Import"|"Upload"|"Restore"|"Empty"
+
+class SnapshotCreationData {
+    @azure.FieldHint { required = true; createOnly = true }
+    createOption: SnapshotCreateOption
+
+    /// ARM ID of the source managed disk or snapshot. Required for `Copy`/`CopyStart`
+    /// and `Restore`.
+    sourceResourceId: (String|formae.Resolvable)?
+}
+
+class SnapshotSku {
+    @azure.FieldHint { required = true }
+    name: SnapshotStorageAccountType
+}
+
+open class SnapshotResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SnapshotResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SnapshotResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A read-only point-in-time copy of a managed disk, and the usual source for a
+/// managed `AZURE::Compute::Image`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Snapshot extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Snapshot source. Immutable after creation.
+    @azure.FieldHint { required = true; createOnly = true }
+    creationData: SnapshotCreationData
+
+    /// Storage redundancy for the snapshot. Azure defaults to `Standard_LRS`, or to
+    /// the previous snapshot's SKU for an incremental one.
+    @azure.FieldHint { hasProviderDefault = true }
+    sku: SnapshotSku?
+
+    /// Incremental snapshots of the same disk share a family and store only the
+    /// delta. Immutable; Azure defaults to false.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    incremental: Boolean?
+
+    /// Size in GiB. Azure derives this from the source for every `createOption`
+    /// except `Empty`; setting it on an existing snapshot is a resize.
+    @azure.FieldHint { hasProviderDefault = true }
+    diskSizeGB: Int(this >= 1 && this <= 32767)?
+
+    /// OS the snapshot's content holds. Azure copies this from the source disk when
+    /// the source has one.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    osType: ("Linux"|"Windows")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: SnapshotResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
