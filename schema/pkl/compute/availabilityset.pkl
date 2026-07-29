@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.availabilityset
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::AvailabilitySet"
+const apiVersion = "2024-03-01"
+
+/// Availability set SKU. `Aligned` is required for VMs with managed disks;
+/// `Classic` only applies to VMs with unmanaged disks.
+typealias AvailabilitySetSkuType = "Aligned"|"Classic"
+
+class AvailabilitySetSku {
+    @azure.FieldHint { required = true }
+    name: AvailabilitySetSkuType
+}
+
+open class AvailabilitySetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AvailabilitySetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AvailabilitySetResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class AvailabilitySet extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: AvailabilitySetSku
+
+    /// Number of fault domains. Immutable after creation; the maximum depends on
+    /// the region (2 in regions without three fault domains, otherwise 3).
+    @azure.FieldHint { createOnly = true }
+    platformFaultDomainCount: Int(this >= 1 && this <= 3)?
+
+    /// Number of update domains. Immutable after creation.
+    @azure.FieldHint { createOnly = true }
+    platformUpdateDomainCount: Int(this >= 1 && this <= 20)?
+
+    /// ARM ID of a proximity placement group to assign the availability set to.
+    @azure.FieldHint { }
+    proximityPlacementGroupId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AvailabilitySetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

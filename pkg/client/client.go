@@ -71,6 +71,7 @@ type Client struct {
 	DnsZonesClient                       *armdns.ZonesClient
 	RecordSetsClient                     *armdns.RecordSetsClient
 	VirtualMachinesClient                *armcompute.VirtualMachinesClient
+	AvailabilitySetsClient               *armcompute.AvailabilitySetsClient
 	DisksClient                          *armcompute.DisksClient
 	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
 	StorageAccountsClient                *armstorage.AccountsClient
@@ -275,6 +276,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	virtualMachinesClient, err := armcompute.NewVirtualMachinesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	availabilitySetsClient, err := armcompute.NewAvailabilitySetsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -498,6 +504,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		DnsZonesClient:                       dnsZonesClient,
 		RecordSetsClient:                     recordSetsClient,
 		VirtualMachinesClient:                virtualMachinesClient,
+		AvailabilitySetsClient:               availabilitySetsClient,
 		DisksClient:                          disksClient,
 		VMScaleSetsClient:                    vmScaleSetsClient,
 		StorageAccountsClient:                storageAccountsClient,

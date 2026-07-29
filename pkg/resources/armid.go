@@ -78,6 +78,14 @@ func diskIDParts(resourceID string) (rgName, diskName string, err error) {
 	return rgName, names["disks"], nil
 }
 
+func availabilitySetIDParts(resourceID string) (rgName, name string, err error) {
+	rgName, names, err := armIDParts(resourceID, "availabilitysets")
+	if err != nil {
+		return "", "", err
+	}
+	return rgName, names["availabilitysets"], nil
+}
+
 func privateEndpointIDParts(resourceID string) (rgName, peName string, err error) {
 	rgName, names, err := armIDParts(resourceID, "privateendpoints")
 	if err != nil {
