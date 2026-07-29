@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkwatcher
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkWatcher"
+const apiVersion = "2023-05-01"
+
+open class NetworkWatcherResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkWatcherResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkWatcherResolvable = (this) {
+        property = "name"
+    }
+    hidden location: NetworkWatcherResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// The regional Network Watcher service instance that flow logs, connection
+/// monitors and packet capture hang off. The body is only `{location, tags}` —
+/// everything else ARM reports is read-only.
+///
+/// Two constraints to plan around:
+///
+/// - **One watcher per region per subscription.** Declaring a second watcher in a
+///   region that already has one fails, and no plugin-side handling can change
+///   that; reference the existing one instead.
+/// - **Azure auto-creates `NetworkWatcher_<region>` in the `NetworkWatcherRG`
+///   resource group** the first time a virtual network appears in a region. Those
+///   are ordinary deletable resources, so discovery surfaces them and a forma can
+///   adopt one.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class NetworkWatcher extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NetworkWatcherResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,48 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkwatcher.pkl"
+import "vars.pkl"
+
+// Azure allows exactly one Network Watcher per region per subscription, and
+// auto-creates NetworkWatcher_<region> in NetworkWatcherRG as soon as a VNet
+// appears in a region. The conformance subscription already has watchers in
+// eastus and twelve other regions, so this fixture uses a region that does not:
+// canadacentral. Keep this region distinct from the flow-log fixture's.
+local region = "canadacentral"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "network-watcher-test-rg"
+  name = "formae-plugin-sdk-test-nw-rg-\(vars.testRunID)"
+  location = region
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new networkwatcher.NetworkWatcher {
+    label = "plugin-sdk-test-network-watcher"
+    name = "formae-plugin-sdk-test-nw-\(vars.testRunID)"
+    location = region
+    resourceGroupName = rg.res.name
+    tags = new Listing {
+      // Update: location is immutable and the body holds nothing else, so tags
+      // are all an update can change.
+      new azure.Tag { key = "Environment"; value = "updated" }
+      new azure.Tag { key = "Owner"; value = "conformance" }
+    }
+  }
+}
