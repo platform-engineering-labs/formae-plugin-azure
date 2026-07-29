@@ -88,6 +88,8 @@ type Client struct {
 	PublicIPAddressesClient                  *armnetwork.PublicIPAddressesClient
 	PublicIPPrefixesClient                   *armnetwork.PublicIPPrefixesClient
 	NatGatewaysClient                        *armnetwork.NatGatewaysClient
+	WatchersClient                           *armnetwork.WatchersClient
+	FlowLogsClient                           *armnetwork.FlowLogsClient
 	LoadBalancersClient                      *armnetwork.LoadBalancersClient
 	ApplicationGatewaysClient                *armnetwork.ApplicationGatewaysClient
 	WebApplicationFirewallPoliciesClient     *armnetwork.WebApplicationFirewallPoliciesClient
@@ -366,6 +368,16 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	natGatewaysClient, err := armnetwork.NewNatGatewaysClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	watchersClient, err := armnetwork.NewWatchersClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	flowLogsClient, err := armnetwork.NewFlowLogsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -1065,6 +1077,8 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		PublicIPAddressesClient:                  publicIPAddressesClient,
 		PublicIPPrefixesClient:                   publicIPPrefixesClient,
 		NatGatewaysClient:                        natGatewaysClient,
+		WatchersClient:                           watchersClient,
+		FlowLogsClient:                           flowLogsClient,
 		LoadBalancersClient:                      loadBalancersClient,
 		ApplicationGatewaysClient:                applicationGatewaysClient,
 		WebApplicationFirewallPoliciesClient:     webApplicationFirewallPoliciesClient,

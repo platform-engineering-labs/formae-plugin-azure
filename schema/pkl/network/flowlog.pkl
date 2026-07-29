@@ -1,0 +1,122 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.flowlog
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::FlowLog"
+const apiVersion = "2023-05-01"
+
+/// On-disk shape of the captured records. ARM defaults to `JSON` version 2.
+///
+/// **Pin both fields.** ARM always echoes this block back with its own defaults,
+/// and provider defaults are only honoured on top-level resource fields — a forma
+/// that omits `format` will therefore show permanent drift.
+class FlowLogFormat {
+    @azure.FieldHint { required = true }
+    type: "JSON"
+
+    @azure.FieldHint { required = true }
+    version: Int(this >= 1 && this <= 2)
+}
+
+/// How long captured records are kept in the storage account. `days = 0` means
+/// keep forever; retention is a paid feature above the free tier.
+///
+/// **Pin both fields** — same nested-default reason as `FlowLogFormat`.
+class FlowLogRetentionPolicy {
+    @azure.FieldHint { required = true }
+    days: Int(this >= 0 && this <= 365)
+
+    @azure.FieldHint { required = true }
+    enabled: Boolean
+}
+
+open class FlowLogResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FlowLogResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FlowLogResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Network Watcher flow logging. The resource lives under a Network Watcher but
+/// points at the thing being captured elsewhere: `targetResourceId`, the storage
+/// account and the watcher must all be in the same region.
+///
+/// `targetResourceId` should be a **virtual network** (or a subnet or NIC). Azure
+/// blocked creation of new *NSG* flow logs on 2025-06-30 with
+/// `NsgFlowLogCreationBlocked`, ahead of retiring them on 2027-09-30 — existing
+/// ones can still be read and modified, so an NSG target is accepted here for
+/// resources already deployed, but a new one will be rejected by ARM.
+///
+/// Because Azure allows only one Network Watcher per region per subscription and
+/// provisions `NetworkWatcher_<region>` automatically, a forma normally points
+/// `networkWatcherName` / `resourceGroupName` at that existing watcher rather than
+/// declaring its own.
+///
+/// Traffic Analytics (`flowAnalyticsConfiguration`) is not modelled — it needs a
+/// Log Analytics workspace, which has no handler yet.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkWatcher"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "networkWatcherName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class FlowLog extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The watcher this flow log hangs off — must be in the same region as the NSG.
+    @azure.FieldHint { required = true; createOnly = true }
+    networkWatcherName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// ARM ID of the storage account the records are written to.
+    @azure.FieldHint { required = true }
+    storageId: String|formae.Resolvable
+
+    /// ARM ID of the resource being captured — a virtual network, subnet or NIC.
+    /// A network security group is only valid for a flow log that already exists;
+    /// ARM rejects new NSG targets.
+    @azure.FieldHint { required = true; createOnly = true }
+    targetResourceId: String|formae.Resolvable
+
+    /// Whether capture is running. Azure defaults to true.
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    @azure.FieldHint { }
+    format: FlowLogFormat?
+
+    @azure.FieldHint { }
+    retentionPolicy: FlowLogRetentionPolicy?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: FlowLogResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
