@@ -1,0 +1,175 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.firewallpolicyrulecollectiongroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::FirewallPolicyRuleCollectionGroup"
+const apiVersion = "2023-05-01"
+
+/// Application-layer protocol and port for an application rule.
+class FirewallPolicyApplicationProtocol {
+    @azure.FieldHint { required = true }
+    protocolType: "Http"|"Https"|"Mssql"
+
+    @azure.FieldHint { required = true }
+    port: Int(this >= 0 && this <= 64000)
+}
+
+/// A single rule inside a filter collection.
+///
+/// ARM discriminates on `ruleType`, and the fields that are meaningful depend on it:
+///
+/// - `NetworkRule` — `ipProtocols`, `destinationPorts`, and any mix of
+///   `destinationAddresses` / `destinationFqdns` / `destinationIpGroups`.
+/// - `ApplicationRule` — `protocols`, and any mix of `targetFqdns` / `fqdnTags` /
+///   `webCategories`.
+///
+/// Setting a field that does not belong to the chosen `ruleType` is passed through to
+/// ARM, which rejects it. `NatRule` is not supported — see the note on the resource.
+class FirewallPolicyRule {
+    @azure.FieldHint { required = true }
+    ruleType: "NetworkRule"|"ApplicationRule"
+
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// `NetworkRule` only. Use `Any` to match every protocol.
+    @azure.FieldHint { }
+    ipProtocols: Listing<"TCP"|"UDP"|"ICMP"|"Any">?
+
+    /// `NetworkRule` only. Port numbers or ranges (`"443"`, `"8000-8999"`, `"*"`).
+    @azure.FieldHint { }
+    destinationPorts: Listing<String>?
+
+    /// IP addresses, CIDRs, service tags, or `*`.
+    @azure.FieldHint { }
+    sourceAddresses: Listing<String>?
+
+    /// ARM IDs of `AZURE::Network::IpGroup` resources.
+    @azure.FieldHint { }
+    sourceIpGroups: Listing<(String|formae.Resolvable)>?
+
+    /// `NetworkRule` only.
+    @azure.FieldHint { }
+    destinationAddresses: Listing<String>?
+
+    /// `NetworkRule` only. Requires DNS proxy on the policy.
+    @azure.FieldHint { }
+    destinationFqdns: Listing<String>?
+
+    /// `NetworkRule` only. ARM IDs of `AZURE::Network::IpGroup` resources.
+    @azure.FieldHint { }
+    destinationIpGroups: Listing<(String|formae.Resolvable)>?
+
+    /// `ApplicationRule` only.
+    @azure.FieldHint { }
+    protocols: Listing<FirewallPolicyApplicationProtocol>?
+
+    /// `ApplicationRule` only. Supports a leading wildcard (`"*.microsoft.com"`).
+    @azure.FieldHint { }
+    targetFqdns: Listing<String>?
+
+    /// `ApplicationRule` only. Azure-curated FQDN tags such as `"WindowsUpdate"`.
+    @azure.FieldHint { }
+    fqdnTags: Listing<String>?
+
+    /// `ApplicationRule` only. Premium-tier web categories.
+    @azure.FieldHint { }
+    webCategories: Listing<String>?
+}
+
+/// A filter rule collection — an ordered set of rules sharing one Allow/Deny action.
+///
+/// `ruleCollectionType` exists because ARM discriminates on it. Only
+/// `FirewallPolicyFilterRuleCollection` is implemented; a NAT collection is rejected
+/// by the plugin rather than silently dropped.
+class FirewallPolicyFilterRuleCollection {
+    @azure.FieldHint { required = true }
+    ruleCollectionType: "FirewallPolicyFilterRuleCollection"
+
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Lower numbers are evaluated first. Must be unique within the group.
+    @azure.FieldHint { required = true }
+    priority: Int(this >= 100 && this <= 65000)
+
+    @azure.FieldHint { required = true }
+    action: FirewallPolicyRuleCollectionAction
+
+    @azure.FieldHint { }
+    rules: Listing<FirewallPolicyRule>?
+}
+
+class FirewallPolicyRuleCollectionAction {
+    @azure.FieldHint { required = true }
+    type: "Allow"|"Deny"
+}
+
+open class FirewallPolicyRuleCollectionGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FirewallPolicyRuleCollectionGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FirewallPolicyRuleCollectionGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A group of rule collections inside an `AZURE::Network::FirewallPolicy`.
+///
+/// There is no PATCH verb — any change replaces the group's entire rule set, so the
+/// forma is always the complete desired state for this group.
+///
+/// **`FirewallPolicyNatRuleCollection` (DNAT) is not supported.** A NAT rule is only
+/// meaningful against a firewall with a public IP, so it cannot be exercised without
+/// `AZURE::Network::AzureFirewall`; it is left out rather than shipped unverified. A
+/// NAT collection in the desired state fails loudly.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::FirewallPolicy"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "firewallPolicyName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class FirewallPolicyRuleCollectionGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    firewallPolicyName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Evaluation order of this group within the policy. Lower runs first; must be
+    /// unique across the policy's groups.
+    @azure.FieldHint { required = true }
+    priority: Int(this >= 100 && this <= 65000)
+
+    @azure.FieldHint { }
+    ruleCollections: Listing<FirewallPolicyFilterRuleCollection>?
+
+    // Note: rule collection groups carry neither location nor tags.
+
+    hidden parent = this
+
+    hidden res: FirewallPolicyRuleCollectionGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
