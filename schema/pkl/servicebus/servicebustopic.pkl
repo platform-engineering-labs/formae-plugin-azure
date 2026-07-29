@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: FSL-1.1-ALv2
  */
 
-module azure.servicebus.topic
+module azure.servicebus.servicebustopic
 
 import "@formae/formae.pkl"
 import "../azure.pkl"
