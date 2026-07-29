@@ -1,0 +1,38 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/eventgrid/topic.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "event-grid-topic-test-rg"
+  name = "formae-plugin-sdk-test-egt-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new topic.Topic {
+    label = "plugin-sdk-test-event-grid-topic"
+    name = "fpsdt-egt-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    inputSchema = "EventGridSchema"
+    publicNetworkAccess = "Enabled"
+    disableLocalAuth = false
+  }
+}

@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventgrid.domaintopic
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventGrid::DomainTopic"
+const apiVersion = "2021-12-01"
+
+open class DomainTopicResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DomainTopicResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DomainTopicResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A topic inside an `AZURE::EventGrid::Domain` — typically one per tenant or
+/// partition.
+///
+/// It has no writable ARM properties beyond its own name: everything here is
+/// createOnly, so an update is a no-op re-read. If the parent domain sets
+/// `autoCreateTopicWithFirstSubscription`, Azure will create these implicitly and
+/// declaring them here is unnecessary.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::EventGrid::Domain"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "domainName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DomainTopic extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 50 && matches(Regex("^[a-zA-Z0-9-]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    domainName: (String|formae.Resolvable)
+
+    hidden parent = this
+
+    hidden res: DomainTopicResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

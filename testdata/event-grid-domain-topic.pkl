@@ -1,0 +1,48 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/eventgrid/domain.pkl"
+import "@azure/eventgrid/domaintopic.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "event-grid-domain-topic-test-rg"
+  name = "formae-plugin-sdk-test-egdt-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local dom = new domain.Domain {
+  label = "domain-topic-test-domain"
+  name = "fpsdt-egdt-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  inputSchema = "EventGridSchema"
+  // Explicit domain topics only make sense when Azure is not auto-creating them.
+  autoCreateTopicWithFirstSubscription = false
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  dom
+
+  new domaintopic.DomainTopic {
+    label = "plugin-sdk-test-event-grid-domain-topic"
+    name = "tenant-a"
+    resourceGroupName = rg.res.name
+    domainName = dom.res.name
+  }
+}

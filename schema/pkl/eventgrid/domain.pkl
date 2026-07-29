@@ -1,0 +1,103 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventgrid.domain
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventGrid::Domain"
+const apiVersion = "2021-12-01"
+
+/// Schema the topic accepts on ingress. `CustomEventSchema` also needs an
+/// inputSchemaMapping, which this plugin does not model, so prefer the other two.
+typealias InputSchema = "EventGridSchema"|"CloudEventSchemaV1_0"|"CustomEventSchema"
+
+typealias PublicNetworkAccess = "Enabled"|"Disabled"
+
+/// Azure only supports `Allow` today; there is no deny action.
+typealias IPActionType = "Allow"
+
+/// An inbound IP firewall rule. Only meaningful when `publicNetworkAccess` is
+/// `Enabled`. Order is significant — the plugin preserves the list as written.
+class InboundIPRule {
+    /// Single IP or CIDR, e.g. `"203.0.113.4"` or `"203.0.113.0/24"`.
+    @azure.FieldHint { required = true }
+    ipMask: String
+
+    @azure.FieldHint { hasProviderDefault = true }
+    action: IPActionType?
+}
+
+open class DomainResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DomainResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DomainResolvable = (this) {
+        property = "name"
+    }
+    /// Publish endpoint Azure assigned to this domain (read-only).
+    hidden endpoint: DomainResolvable = (this) {
+        property = "endpoint"
+    }
+}
+
+/// An Event Grid domain — one ingress endpoint that fans out to many
+/// `AZURE::EventGrid::DomainTopic` children, so a multi-tenant publisher needs a
+/// single endpoint and a single set of credentials instead of one topic per tenant.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Domain extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 50 && matches(Regex("^[a-zA-Z0-9-]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Immutable after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    inputSchema: InputSchema?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: PublicNetworkAccess?
+
+    /// Disable SAS key auth, leaving Entra ID as the only way to publish.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    @azure.FieldHint { }
+    inboundIpRules: Listing<InboundIPRule>?
+
+    /// Create the domain topic automatically when its first event subscription is
+    /// added, instead of requiring an explicit `AZURE::EventGrid::DomainTopic`.
+    @azure.FieldHint { hasProviderDefault = true }
+    autoCreateTopicWithFirstSubscription: Boolean?
+
+    /// Delete the domain topic once its last event subscription goes away.
+    @azure.FieldHint { hasProviderDefault = true }
+    autoDeleteTopicWithLastSubscription: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DomainResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
