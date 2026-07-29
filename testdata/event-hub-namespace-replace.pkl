@@ -22,6 +22,8 @@ local rg = new resourcegroup.ResourceGroup {
 local namespaceSku = new namespace.NamespaceSKU {
   name = "Standard"
   tier = "Standard"
+  // Pinned explicitly: see event-hub-namespace.pkl.
+  capacity = 1
 }
 
 forma {

@@ -31,10 +31,20 @@ class NamespaceSKU {
     /// SKU name (Basic, Standard, Premium)
     name: NamespaceSKUName
 
-    /// The billing tier of this SKU
+    /// The billing tier of this SKU. Azure echoes it back matching `name` when
+    /// omitted.
+    @azure.FieldHint { hasProviderDefault = true }
     tier: String?
 
-    /// Throughput units (Basic/Standard) or premium units (Premium)
+    /// Throughput units (Basic/Standard) or premium units (Premium). Azure always
+    /// returns a capacity (1 by default) whether or not the create body set one.
+    ///
+    /// NOTE: the hint below documents that, but the conformance framework does not
+    /// currently honour `hasProviderDefault` on fields of a nested class — only on
+    /// top-level resource fields — so a forma that omits `capacity` will still show
+    /// drift on `sku.capacity`. Set it explicitly until nested provider defaults
+    /// are supported.
+    @azure.FieldHint { hasProviderDefault = true }
     capacity: Int?
 }
 
