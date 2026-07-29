@@ -1,0 +1,122 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.servicebus.queue
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ServiceBus::Queue"
+const apiVersion = "2021-11-01"
+
+/// Entity lifecycle state. `Active` accepts sends and receives; the `*Disabled`
+/// values fence the entity off without deleting it.
+typealias EntityStatus = "Active"|"Disabled"|"Restoring"|"SendDisabled"|"ReceiveDisabled"|"Creating"|"Deleting"|"Renaming"|"Unknown"
+
+open class QueueResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: QueueResolvable = (this) {
+        property = "id"
+    }
+    hidden name: QueueResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Service Bus queue.
+///
+/// Durations (`lockDuration`, `defaultMessageTimeToLive`,
+/// `duplicateDetectionHistoryTimeWindow`, `autoDeleteOnIdle`) are ISO-8601, e.g.
+/// `"PT1M"` for one minute, `"P14D"` for fourteen days.
+///
+/// Queue-scoped authorization rules (SAS policies) are a separate ARM sub-resource
+/// and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ServiceBus::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Queue extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: (String|formae.Resolvable)
+
+    /// ISO-8601 duration, max PT5M.
+    @azure.FieldHint { hasProviderDefault = true }
+    lockDuration: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultMessageTimeToLive: String?
+
+    /// Only meaningful when `requiresDuplicateDetection` is true.
+    @azure.FieldHint { hasProviderDefault = true }
+    duplicateDetectionHistoryTimeWindow: String?
+
+    /// ISO-8601 duration, minimum PT5M. Azure deletes the queue after this much idle time.
+    @azure.FieldHint { hasProviderDefault = true }
+    autoDeleteOnIdle: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxSizeInMegabytes: Int?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxMessageSizeInKilobytes: Int?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxDeliveryCount: Int(this >= 1)?
+
+    /// Immutable after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    requiresDuplicateDetection: Boolean?
+
+    /// Immutable after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    requiresSession: Boolean?
+
+    /// Immutable after creation; not available on Premium namespaces.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    enablePartitioning: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    deadLetteringOnMessageExpiration: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enableBatchedOperations: Boolean?
+
+    /// Standard namespaces only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableExpress: Boolean?
+
+    /// Name of the queue or topic to auto-forward messages to.
+    @azure.FieldHint { }
+    forwardTo: (String|formae.Resolvable)?
+
+    /// Name of the queue or topic to auto-forward dead-lettered messages to.
+    @azure.FieldHint { }
+    forwardDeadLetteredMessagesTo: (String|formae.Resolvable)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    status: EntityStatus?
+
+    hidden parent = this
+
+    hidden res: QueueResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

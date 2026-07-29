@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/servicebus/servicebusnamespace.pkl" as namespace
+import "@azure/servicebus/topic.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "service-bus-topic-test-rg"
+  name = "formae-plugin-sdk-test-sbt-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local namespaceSku = new namespace.NamespaceSKU {
+  name = "Standard"
+}
+
+local ns = new namespace.Namespace {
+  label = "service-bus-topic-test-ns"
+  name = "fpsdt-sbt-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = namespaceSku
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  ns
+
+  new topic.Topic {
+    label = "plugin-sdk-test-service-bus-topic"
+    name = "formae-plugin-sdk-test-sbt-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    defaultMessageTimeToLive = "P14D"
+    enableBatchedOperations = true
+    supportOrdering = false
+  }
+}

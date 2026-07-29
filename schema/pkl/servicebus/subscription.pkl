@@ -1,0 +1,107 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.servicebus.subscription
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ServiceBus::Subscription"
+const apiVersion = "2021-11-01"
+
+/// Entity lifecycle state. `Active` accepts sends and receives; the `*Disabled`
+/// values fence the entity off without deleting it.
+typealias EntityStatus = "Active"|"Disabled"|"Restoring"|"SendDisabled"|"ReceiveDisabled"|"Creating"|"Deleting"|"Renaming"|"Unknown"
+
+open class SubscriptionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SubscriptionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SubscriptionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A subscription on a Service Bus topic — an independent, filtered copy of the
+/// topic's message stream.
+///
+/// Durations are ISO-8601, e.g. `"PT1M"`, `"P14D"`.
+///
+/// Subscription rules/filters (SQL and correlation filters) are a separate ARM
+/// sub-resource and are not modelled here, so a subscription created through this
+/// type receives every message on the topic.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ServiceBus::Topic"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "topicName" },
+        new formae.ListProperty { parentProperty = "namespaceName" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Subscription extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: (String|formae.Resolvable)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    topicName: (String|formae.Resolvable)
+
+    /// ISO-8601 duration, max PT5M.
+    @azure.FieldHint { hasProviderDefault = true }
+    lockDuration: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultMessageTimeToLive: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    autoDeleteOnIdle: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxDeliveryCount: Int(this >= 1)?
+
+    /// Immutable after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    requiresSession: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    deadLetteringOnMessageExpiration: Boolean?
+
+    /// Dead-letter messages whose filter evaluation throws.
+    @azure.FieldHint { hasProviderDefault = true }
+    deadLetteringOnFilterEvaluationExceptions: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enableBatchedOperations: Boolean?
+
+    /// Name of the queue or topic to auto-forward messages to.
+    @azure.FieldHint { }
+    forwardTo: (String|formae.Resolvable)?
+
+    /// Name of the queue or topic to auto-forward dead-lettered messages to.
+    @azure.FieldHint { }
+    forwardDeadLetteredMessagesTo: (String|formae.Resolvable)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    status: EntityStatus?
+
+    hidden parent = this
+
+    hidden res: SubscriptionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
