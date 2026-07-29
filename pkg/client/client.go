@@ -59,6 +59,7 @@ type Client struct {
 	VirtualNetworksClient                *armnetwork.VirtualNetworksClient
 	SubnetsClient                        *armnetwork.SubnetsClient
 	SecurityGroupsClient                 *armnetwork.SecurityGroupsClient
+	ApplicationSecurityGroupsClient      *armnetwork.ApplicationSecurityGroupsClient
 	PublicIPAddressesClient              *armnetwork.PublicIPAddressesClient
 	LoadBalancersClient                  *armnetwork.LoadBalancersClient
 	ApplicationGatewaysClient            *armnetwork.ApplicationGatewaysClient
@@ -216,6 +217,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	securityGroupsClient, err := armnetwork.NewSecurityGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	applicationSecurityGroupsClient, err := armnetwork.NewApplicationSecurityGroupsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -492,6 +498,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		VirtualNetworksClient:                vnetClient,
 		SubnetsClient:                        subnetClient,
 		SecurityGroupsClient:                 securityGroupsClient,
+		ApplicationSecurityGroupsClient:      applicationSecurityGroupsClient,
 		PublicIPAddressesClient:              publicIPAddressesClient,
 		LoadBalancersClient:                  loadBalancersClient,
 		ApplicationGatewaysClient:            applicationGatewaysClient,
