@@ -61,6 +61,7 @@ type Client struct {
 	SecurityGroupsClient                 *armnetwork.SecurityGroupsClient
 	ApplicationSecurityGroupsClient      *armnetwork.ApplicationSecurityGroupsClient
 	PublicIPAddressesClient              *armnetwork.PublicIPAddressesClient
+	PublicIPPrefixesClient               *armnetwork.PublicIPPrefixesClient
 	LoadBalancersClient                  *armnetwork.LoadBalancersClient
 	ApplicationGatewaysClient            *armnetwork.ApplicationGatewaysClient
 	WebApplicationFirewallPoliciesClient *armnetwork.WebApplicationFirewallPoliciesClient
@@ -227,6 +228,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	publicIPAddressesClient, err := armnetwork.NewPublicIPAddressesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	publicIPPrefixesClient, err := armnetwork.NewPublicIPPrefixesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -500,6 +506,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		SecurityGroupsClient:                 securityGroupsClient,
 		ApplicationSecurityGroupsClient:      applicationSecurityGroupsClient,
 		PublicIPAddressesClient:              publicIPAddressesClient,
+		PublicIPPrefixesClient:               publicIPPrefixesClient,
 		LoadBalancersClient:                  loadBalancersClient,
 		ApplicationGatewaysClient:            applicationGatewaysClient,
 		WebApplicationFirewallPoliciesClient: webApplicationFirewallPoliciesClient,
