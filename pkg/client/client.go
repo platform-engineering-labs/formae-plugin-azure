@@ -85,6 +85,7 @@ type Client struct {
 	BlobContainersClient                 *armstorage.BlobContainersClient
 	StorageQueuesClient                  *armstorage.QueueClient
 	StorageTablesClient                  *armstorage.TableClient
+	FileSharesClient                     *armstorage.FileSharesClient
 	VaultsClient                         *armkeyvault.VaultsClient
 	ManagedClustersClient                *armcontainerservice.ManagedClustersClient
 	MaintenanceConfigurationsClient      *armcontainerservice.MaintenanceConfigurationsClient
@@ -370,6 +371,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	fileSharesClient, err := armstorage.NewFileSharesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	vaultsClient, err := armkeyvault.NewVaultsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -638,6 +644,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		BlobContainersClient:                 blobContainersClient,
 		StorageQueuesClient:                  storageQueuesClient,
 		StorageTablesClient:                  storageTablesClient,
+		FileSharesClient:                     fileSharesClient,
 		VaultsClient:                         vaultsClient,
 		ManagedClustersClient:                managedClustersClient,
 		MaintenanceConfigurationsClient:      maintenanceConfigurationsClient,
