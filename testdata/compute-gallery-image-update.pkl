@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/gallery.pkl"
+import "@azure/compute/galleryimage.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "compute-gallery-image-test-rg"
+  name = "formae-plugin-sdk-test-galimg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Gallery names allow no hyphens — underscores only.
+local parentGallery = new gallery.Gallery {
+  label = "compute-gallery-image-test-gallery"
+  name = "formae_plugin_sdk_test_galimg_\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  parentGallery
+
+  // An image definition is metadata only — nothing bootable exists until a
+  // GalleryImageVersion is added, which is why this fixture stays fast.
+  new galleryimage.GalleryImage {
+    label = "plugin-sdk-test-gallery-image"
+    name = "formae-plugin-sdk-test-galimg-def-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    galleryName = parentGallery.res.name
+    identifier = new galleryimage.GalleryImageIdentifier {
+      publisher = "formae"
+      offer = "conformance"
+      sku = "linux-gen2"
+    }
+    osType = "Linux"
+    osState = "Generalized"
+    hyperVGeneration = "V2"
+    architecture = "x64"
+    // Update: identifier/osType/osState are immutable, so description and tags
+    // are what change — the plugin still echoes the identifier in the PATCH.
+    description = "Conformance test image definition (updated)"
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
