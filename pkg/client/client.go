@@ -75,6 +75,7 @@ type Client struct {
 	VirtualMachinesClient                *armcompute.VirtualMachinesClient
 	AvailabilitySetsClient               *armcompute.AvailabilitySetsClient
 	DisksClient                          *armcompute.DisksClient
+	ProximityPlacementGroupsClient       *armcompute.ProximityPlacementGroupsClient
 	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
 	StorageAccountsClient                *armstorage.AccountsClient
 	BlobContainersClient                 *armstorage.BlobContainersClient
@@ -302,6 +303,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	proximityPlacementGroupsClient, err := armcompute.NewProximityPlacementGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	vmScaleSetsClient, err := armcompute.NewVirtualMachineScaleSetsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -520,6 +526,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		VirtualMachinesClient:                virtualMachinesClient,
 		AvailabilitySetsClient:               availabilitySetsClient,
 		DisksClient:                          disksClient,
+		ProximityPlacementGroupsClient:       proximityPlacementGroupsClient,
 		VMScaleSetsClient:                    vmScaleSetsClient,
 		StorageAccountsClient:                storageAccountsClient,
 		BlobContainersClient:                 blobContainersClient,

@@ -1,0 +1,76 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.proximityplacementgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::ProximityPlacementGroup"
+const apiVersion = "2024-03-01"
+
+/// `Standard` co-locates resources within a region or availability zone.
+/// `Ultra` is reserved by Azure for future use.
+typealias ProximityPlacementGroupType = "Standard"|"Ultra"
+
+/// Declaring the VM sizes up front lets Azure pick a data centre that can host
+/// all of them; without it a later VM create can fail with
+/// `OverconstrainedAllocationRequest`.
+class ProximityPlacementGroupIntent {
+    @azure.FieldHint { required = true }
+    vmSizes: Listing<String>
+}
+
+open class ProximityPlacementGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ProximityPlacementGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ProximityPlacementGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ProximityPlacementGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    proximityPlacementGroupType: ProximityPlacementGroupType?
+
+    @azure.FieldHint { createOnly = true }
+    intent: ProximityPlacementGroupIntent?
+
+    /// Availability zone to pin the group to (e.g. `Listing { "1" }`). Requires
+    /// `intent` to be set.
+    @azure.FieldHint { createOnly = true }
+    zones: Listing<String>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ProximityPlacementGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
