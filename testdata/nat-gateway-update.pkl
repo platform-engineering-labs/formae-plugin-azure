@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "@azure/network/natgateway.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nat-gateway-test-rg"
+  name = "formae-plugin-sdk-test-nat-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// NAT gateways can only SNAT from Standard SKU, statically allocated public IPs.
+local pip = new publicipaddress.PublicIPAddress {
+  label = "nat-gateway-test-pip"
+  name = "formae-plugin-sdk-test-nat-pip-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new publicipaddress.PublicIPAddressSKU {
+    name = "Standard"
+  }
+  publicIPAllocationMethod = "Static"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  pip
+
+  new natgateway.NatGateway {
+    label = "plugin-sdk-test-nat-gateway"
+    name = "formae-plugin-sdk-test-nat-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new natgateway.NatGatewaySku {
+      name = "Standard"
+    }
+    // Update: raise the outbound idle timeout
+    idleTimeoutInMinutes = 15
+    publicIpAddressIds = new Listing {
+      pip.res.id
+    }
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
