@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.virtualnetworkpeering
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VirtualNetworkPeering"
+const apiVersion = "2023-05-01"
+
+open class VirtualNetworkPeeringResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkPeeringResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkPeeringResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// One direction of a virtual network peering. The resource lives under the local
+/// VNet and points at `remoteVirtualNetworkId`; a working bidirectional peering is
+/// therefore two of these, one declared on each VNet, each owning its own flags.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::VirtualNetwork"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "virtualNetworkName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class VirtualNetworkPeering extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The local VNet this peering hangs off.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    /// ARM ID of the VNet to peer with. Immutable — repointing a peering means
+    /// replacing it.
+    @azure.FieldHint { required = true; createOnly = true }
+    remoteVirtualNetworkId: String|formae.Resolvable
+
+    /// Whether VMs in the local VNet can reach VMs in the remote one. Azure
+    /// defaults this to true.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowVirtualNetworkAccess: Boolean?
+
+    /// Whether traffic forwarded by (not originating from) the local VNet is
+    /// allowed into the remote one. Azure defaults this to false.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowForwardedTraffic: Boolean?
+
+    /// Whether the remote VNet may use this VNet's gateway for transit.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowGatewayTransit: Boolean?
+
+    /// Use the remote VNet's gateway for transit. Requires `allowGatewayTransit`
+    /// on the opposite peering, and cannot be set if this VNet has its own gateway.
+    @azure.FieldHint { hasProviderDefault = true }
+    useRemoteGateways: Boolean?
+
+    // Note: peerings carry neither location nor tags — both come from the VNet.
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkPeeringResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
