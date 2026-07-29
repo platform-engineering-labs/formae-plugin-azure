@@ -1,0 +1,107 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.firewallpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::FirewallPolicy"
+const apiVersion = "2023-05-01"
+
+/// Firewall policy tier. Must match the tier of every Azure Firewall the policy is
+/// attached to, and cannot be changed in place.
+typealias FirewallPolicySkuTier = "Basic"|"Standard"|"Premium"
+
+class FirewallPolicySku {
+    @azure.FieldHint { required = true }
+    tier: FirewallPolicySkuTier
+}
+
+/// DNS proxy configuration.
+///
+/// Two ARM behaviours to know about:
+///
+/// - `requireProxyForNetworkRules` is **not** available. ARM rejects any request
+///   carrying it with `FirewallPolicyDeprecatedRequireProxyForNetworkRules`
+///   ("deprecated for all the API Versions"), so it is not modelled.
+/// - ARM does not echo `enableProxy` back when it is false — it returns only
+///   `servers`. Set this block when you actually want the DNS proxy on; a policy
+///   that leaves it unset round-trips cleanly.
+class FirewallPolicyDnsSettings {
+    @azure.FieldHint { }
+    enableProxy: Boolean?
+
+    /// Custom DNS servers, in resolution order. ARM preserves the order given.
+    @azure.FieldHint { }
+    servers: Listing<String>?
+}
+
+open class FirewallPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FirewallPolicyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FirewallPolicyResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Firewall policy — the rule container a firewall attaches to. A policy on
+/// its own carries no hourly charge; the firewall does.
+///
+/// Rules do not live here. They are declared as
+/// `AZURE::Network::FirewallPolicyRuleCollectionGroup` resources that reference this
+/// policy, which is also how ARM models them.
+///
+/// Not modelled (each is an optional nested tree that ARM fills defaults into):
+/// `insights`, `intrusionDetection`, `explicitProxySettings`, `sql`, `snat`,
+/// `transportSecurity`, `threatIntelWhitelist`, `identity`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class FirewallPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Immutable — changing the tier means replacing the policy. Azure defaults to
+    /// `Standard`.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    sku: FirewallPolicySku?
+
+    /// Threat-intelligence enforcement. Azure defaults to `Alert`.
+    @azure.FieldHint { hasProviderDefault = true }
+    threatIntelMode: ("Alert"|"Deny"|"Off")?
+
+    /// ARM ID of a parent policy to inherit rules from.
+    @azure.FieldHint { }
+    basePolicyId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    dnsSettings: FirewallPolicyDnsSettings?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: FirewallPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

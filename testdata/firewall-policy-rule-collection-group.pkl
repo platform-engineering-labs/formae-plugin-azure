@@ -1,0 +1,99 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/firewallpolicy.pkl"
+import "@azure/network/firewallpolicyrulecollectiongroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "fwp-rcg-test-rg"
+  name = "formae-plugin-sdk-test-rcg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local policy = new firewallpolicy.FirewallPolicy {
+  label = "fwp-rcg-test-policy"
+  name = "formae-plugin-sdk-test-rcg-fwp-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new firewallpolicy.FirewallPolicySku {
+    tier = "Standard"
+  }
+  threatIntelMode = "Alert"
+  dnsSettings = new firewallpolicy.FirewallPolicyDnsSettings {
+    enableProxy = true
+    servers = new Listing { "168.63.129.16" }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  policy
+
+  // Exercises both supported rule types in one group: a network rule collection and
+  // an application rule collection. No firewall is attached, so this costs nothing.
+  new firewallpolicyrulecollectiongroup.FirewallPolicyRuleCollectionGroup {
+    label = "plugin-sdk-test-fwp-rule-collection-group"
+    name = "formae-plugin-sdk-test-rcg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    firewallPolicyName = policy.res.name
+    priority = 200
+    ruleCollections = new Listing {
+      new firewallpolicyrulecollectiongroup.FirewallPolicyFilterRuleCollection {
+        ruleCollectionType = "FirewallPolicyFilterRuleCollection"
+        name = "allow-network"
+        priority = 300
+        action = new firewallpolicyrulecollectiongroup.FirewallPolicyRuleCollectionAction {
+          type = "Allow"
+        }
+        rules = new Listing {
+          new firewallpolicyrulecollectiongroup.FirewallPolicyRule {
+            ruleType = "NetworkRule"
+            name = "allow-https-out"
+            description = "Outbound HTTPS from the spoke range"
+            ipProtocols = new Listing { "TCP" }
+            sourceAddresses = new Listing { "10.40.0.0/16" }
+            destinationAddresses = new Listing { "*" }
+            destinationPorts = new Listing { "443" }
+          }
+        }
+      }
+      new firewallpolicyrulecollectiongroup.FirewallPolicyFilterRuleCollection {
+        ruleCollectionType = "FirewallPolicyFilterRuleCollection"
+        name = "allow-application"
+        priority = 400
+        action = new firewallpolicyrulecollectiongroup.FirewallPolicyRuleCollectionAction {
+          type = "Allow"
+        }
+        rules = new Listing {
+          new firewallpolicyrulecollectiongroup.FirewallPolicyRule {
+            ruleType = "ApplicationRule"
+            name = "allow-microsoft"
+            protocols = new Listing {
+              new firewallpolicyrulecollectiongroup.FirewallPolicyApplicationProtocol {
+                protocolType = "Https"
+                port = 443
+              }
+            }
+            sourceAddresses = new Listing { "10.40.0.0/16" }
+            targetFqdns = new Listing { "*.microsoft.com" }
+          }
+        }
+      }
+    }
+  }
+}

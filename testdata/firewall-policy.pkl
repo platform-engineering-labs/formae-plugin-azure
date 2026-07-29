@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/firewallpolicy.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "firewall-policy-test-rg"
+  name = "formae-plugin-sdk-test-fwp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // A policy on its own has no hourly charge — only an attached firewall does.
+  new firewallpolicy.FirewallPolicy {
+    label = "plugin-sdk-test-firewall-policy"
+    name = "formae-plugin-sdk-test-fwp-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new firewallpolicy.FirewallPolicySku {
+      tier = "Standard"
+    }
+    threatIntelMode = "Alert"
+    // ARM only echoes enableProxy back when it is true, so the fixture turns the DNS
+    // proxy on and pins a real resolver (Azure's own DNS VIP) to keep the round-trip
+    // exact.
+    dnsSettings = new firewallpolicy.FirewallPolicyDnsSettings {
+      enableProxy = true
+      servers = new Listing { "168.63.129.16" }
+    }
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "test" }
+    }
+  }
+}
