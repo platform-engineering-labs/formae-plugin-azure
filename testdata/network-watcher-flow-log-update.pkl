@@ -1,0 +1,94 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/flowlog.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "vars.pkl"
+
+// The flow log attaches to the *region's* Network Watcher rather than creating one:
+// Azure allows exactly one watcher per region per subscription and provisions
+// NetworkWatcher_<region> in NetworkWatcherRG automatically, so a forma that
+// declared its own would collide. This mirrors how flow logs are wired in practice.
+local region = "eastus"
+local watcherResourceGroup = "NetworkWatcherRG"
+local watcherName = "NetworkWatcher_\(region)"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "flow-log-test-rg"
+  name = "formae-plugin-sdk-test-fl-rg-\(vars.testRunID)"
+  location = region
+}
+
+// The capture target is a virtual network, not a network security group: Azure
+// blocked creation of new NSG flow logs on 2025-06-30 (NsgFlowLogCreationBlocked)
+// ahead of their retirement on 2027-09-30. The target and the storage account both
+// have to be in the watcher's region.
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "flow-log-test-vnet"
+  name = "formae-plugin-sdk-test-fl-vnet-\(vars.testRunID)"
+  location = region
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing {
+      "10.30.0.0/16"
+    }
+  }
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "flow-log-test-sa"
+  name = "fpsdtfl\(vars.testRunID)"
+  location = region
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU {
+    name = "Standard_LRS"
+  }
+  kind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  vnet
+
+  sa
+
+  new flowlog.FlowLog {
+    label = "plugin-sdk-test-flow-log"
+    name = "formae-plugin-sdk-test-fl-\(vars.testRunID)"
+    location = region
+    resourceGroupName = watcherResourceGroup
+    networkWatcherName = watcherName
+    targetResourceId = vnet.res.id
+    storageId = sa.res.id
+    enabled = true
+    // format and retentionPolicy are nested, and ARM always echoes them back with
+    // its own defaults — pin them or every read reports drift.
+    format = new flowlog.FlowLogFormat {
+      type = "JSON"
+      version = 2
+    }
+    // Update: turn retention on and keep records for 7 days.
+    retentionPolicy = new flowlog.FlowLogRetentionPolicy {
+      days = 7
+      enabled = true
+    }
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}
