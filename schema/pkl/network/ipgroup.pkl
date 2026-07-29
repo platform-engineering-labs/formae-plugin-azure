@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.ipgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::IpGroup"
+const apiVersion = "2023-05-01"
+
+open class IpGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IpGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IpGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A reusable list of IP addresses and CIDRs that Azure Firewall and Firewall
+/// Policy rules reference instead of repeating inline prefixes.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class IpGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Members, each a single IP or a CIDR (e.g. `"10.0.0.0/24"`, `"203.0.113.4"`).
+    /// ARM does not preserve the submitted order, so the plugin sorts this list in
+    /// both directions to keep drift detection stable.
+    @azure.FieldHint { }
+    ipAddresses: Listing<String>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: IpGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
