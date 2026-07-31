@@ -79,7 +79,7 @@ func parseSecretID(nativeID string) (vaultURL, name string, err error) {
 	return u.Scheme + "://" + u.Host, parts[1], nil
 }
 
-// value is intentionally omitted: it is write-only and never surfaced in state.
+// value is included when the SDK returns it (Read path); Create/Update SetSecret responses do not echo it back.
 func buildSecretProperties(sec azsecrets.Secret, vaultURI, name, nativeID string) map[string]any {
 	props := map[string]any{
 		"name":     name,
@@ -88,6 +88,9 @@ func buildSecretProperties(sec azsecrets.Secret, vaultURI, name, nativeID string
 	}
 	if sec.ContentType != nil {
 		props["contentType"] = *sec.ContentType
+	}
+	if sec.Value != nil {
+		props["value"] = *sec.Value
 	}
 	if tags := azureTagsToFormaeTags(sec.Tags); tags != nil {
 		props["Tags"] = tags

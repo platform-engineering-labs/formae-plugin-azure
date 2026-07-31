@@ -91,7 +91,7 @@ func TestKeyVaultSecret_CRUD(t *testing.T) {
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 		require.Equal(t, testSecretNativeID, got.ProgressResult.NativeID)
 
-		// value must NOT be echoed back: it is write-only.
+		// SetSecret response does not echo back the value; only Read returns it.
 		var serialized map[string]any
 		require.NoError(t, json.Unmarshal(got.ProgressResult.ResourceProperties, &serialized))
 		require.NotContains(t, serialized, "value")
@@ -113,7 +113,8 @@ func TestKeyVaultSecret_CRUD(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &serialized))
 		require.Equal(t, testSecretName, serialized["name"])
 		require.Equal(t, "text/plain", serialized["contentType"])
-		require.NotContains(t, serialized, "value")
+		require.Contains(t, serialized, "value")
+		require.Equal(t, "super-secret", serialized["value"])
 	})
 
 	t.Run("Update_keeps_native_id", func(t *testing.T) {
