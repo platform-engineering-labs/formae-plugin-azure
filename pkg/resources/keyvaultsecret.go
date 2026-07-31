@@ -79,7 +79,9 @@ func parseSecretID(nativeID string) (vaultURL, name string, err error) {
 	return u.Scheme + "://" + u.Host, parts[1], nil
 }
 
-// value is intentionally omitted: it is write-only and never surfaced in state.
+// buildSecretProperties returns the metadata fields shared by Create, Read, and
+// Update. It never includes the secret value; callers on the Read path add it
+// themselves so that value exposure is scoped to Read only.
 func buildSecretProperties(sec azsecrets.Secret, vaultURI, name, nativeID string) map[string]any {
 	props := map[string]any{
 		"name":     name,
@@ -166,7 +168,11 @@ func (s *KeyVaultSecret) Read(ctx context.Context, request *resource.ReadRequest
 		return &resource.ReadResult{ErrorCode: operationErrorCode(err)}, nil
 	}
 
-	propsJSON, err := json.Marshal(buildSecretProperties(res.Secret, vaultURL+"/", name, request.NativeID))
+	props := buildSecretProperties(res.Secret, vaultURL+"/", name, request.NativeID)
+	if res.Value != nil {
+		props["value"] = *res.Value
+	}
+	propsJSON, err := json.Marshal(props)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
 	}
