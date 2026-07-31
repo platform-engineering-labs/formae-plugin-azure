@@ -166,6 +166,26 @@ func TestKeyVaultSecret_CRUD(t *testing.T) {
 	})
 }
 
+func TestKeyVaultSecret_NilValue(t *testing.T) {
+	t.Run("Read_omits_value_when_SDK_returns_nil", func(t *testing.T) {
+		nilValFake := &fakeSecretsAPI{
+			getSecretFn: func(_ context.Context, _, _ string, _ *azsecrets.GetSecretOptions) (azsecrets.GetSecretResponse, error) {
+				return azsecrets.GetSecretResponse{Secret: azsecrets.Secret{
+					ID:          secretID("v1"),
+					ContentType: to.Ptr("text/plain"),
+					// Value intentionally absent: documents the nil-guard branch.
+				}}, nil
+			},
+		}
+		prov := newTestKeyVaultSecret(nilValFake)
+		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testSecretNativeID})
+		require.NoError(t, err)
+		var serialized map[string]any
+		require.NoError(t, json.Unmarshal([]byte(got.Properties), &serialized))
+		require.NotContains(t, serialized, "value")
+	})
+}
+
 func TestKeyVaultSecret_UpdateRotation(t *testing.T) {
 	t.Run("value patch op rotates via SetSecret", func(t *testing.T) {
 		var setVal string
