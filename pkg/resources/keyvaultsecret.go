@@ -79,7 +79,9 @@ func parseSecretID(nativeID string) (vaultURL, name string, err error) {
 	return u.Scheme + "://" + u.Host, parts[1], nil
 }
 
-// value is included when the SDK returns it (Read path); Create/Update SetSecret responses do not echo it back.
+// buildSecretProperties returns the metadata fields shared by Create, Read, and
+// Update. It never includes the secret value; callers on the Read path add it
+// themselves so that value exposure is scoped to Read only.
 func buildSecretProperties(sec azsecrets.Secret, vaultURI, name, nativeID string) map[string]any {
 	props := map[string]any{
 		"name":     name,
@@ -88,9 +90,6 @@ func buildSecretProperties(sec azsecrets.Secret, vaultURI, name, nativeID string
 	}
 	if sec.ContentType != nil {
 		props["contentType"] = *sec.ContentType
-	}
-	if sec.Value != nil {
-		props["value"] = *sec.Value
 	}
 	if tags := azureTagsToFormaeTags(sec.Tags); tags != nil {
 		props["Tags"] = tags
@@ -169,7 +168,11 @@ func (s *KeyVaultSecret) Read(ctx context.Context, request *resource.ReadRequest
 		return &resource.ReadResult{ErrorCode: operationErrorCode(err)}, nil
 	}
 
-	propsJSON, err := json.Marshal(buildSecretProperties(res.Secret, vaultURL+"/", name, request.NativeID))
+	props := buildSecretProperties(res.Secret, vaultURL+"/", name, request.NativeID)
+	if res.Secret.Value != nil {
+		props["value"] = *res.Secret.Value
+	}
+	propsJSON, err := json.Marshal(props)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response properties: %w", err)
 	}

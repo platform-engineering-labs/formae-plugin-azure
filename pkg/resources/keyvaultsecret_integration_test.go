@@ -39,8 +39,11 @@ func secretID(version string) *azsecrets.ID {
 func TestKeyVaultSecret_CRUD(t *testing.T) {
 	fake := &fakeSecretsAPI{
 		setSecretFn: func(_ context.Context, _ string, params azsecrets.SetSecretParameters, _ *azsecrets.SetSecretOptions) (azsecrets.SetSecretResponse, error) {
+			// Azure echoes the value back in SetSecret responses; the plugin must
+			// not forward it to ResourceProperties from Create or Update.
 			return azsecrets.SetSecretResponse{Secret: azsecrets.Secret{
 				ID:          secretID("v1"),
+				Value:       params.Value,
 				ContentType: params.ContentType,
 				Tags:        params.Tags,
 			}}, nil
@@ -123,6 +126,11 @@ func TestKeyVaultSecret_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 		require.Equal(t, testSecretNativeID, got.ProgressResult.NativeID)
+
+		// Update must never expose the secret value in ResourceProperties.
+		var serialized map[string]any
+		require.NoError(t, json.Unmarshal(got.ProgressResult.ResourceProperties, &serialized))
+		require.NotContains(t, serialized, "value")
 	})
 
 	t.Run("Delete", func(t *testing.T) {
@@ -196,7 +204,8 @@ func TestKeyVaultSecret_UpdateRotation(t *testing.T) {
 				if params.Value != nil {
 					setVal = *params.Value
 				}
-				return azsecrets.SetSecretResponse{Secret: azsecrets.Secret{ID: secretID("v2")}}, nil
+				// Azure echoes the value back; the plugin must not forward it.
+				return azsecrets.SetSecretResponse{Secret: azsecrets.Secret{ID: secretID("v2"), Value: params.Value}}, nil
 			},
 			updateSecretPropertiesFn: func(_ context.Context, _, _ string, _ azsecrets.UpdateSecretPropertiesParameters, _ *azsecrets.UpdateSecretPropertiesOptions) (azsecrets.UpdateSecretPropertiesResponse, error) {
 				updateCalled = true
@@ -217,6 +226,11 @@ func TestKeyVaultSecret_UpdateRotation(t *testing.T) {
 		require.True(t, setCalled, "SetSecret should rotate the value")
 		require.False(t, updateCalled, "UpdateSecretProperties should not run when the value changed")
 		require.Equal(t, "rotated-secret", setVal)
+
+		// Even when Azure echoes the value back, Update must not include it in ResourceProperties.
+		var serialized map[string]any
+		require.NoError(t, json.Unmarshal(got.ProgressResult.ResourceProperties, &serialized))
+		require.NotContains(t, serialized, "value")
 	})
 
 	t.Run("no value patch op updates metadata only", func(t *testing.T) {
