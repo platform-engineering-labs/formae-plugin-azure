@@ -169,8 +169,8 @@ func (s *KeyVaultSecret) Read(ctx context.Context, request *resource.ReadRequest
 	}
 
 	props := buildSecretProperties(res.Secret, vaultURL+"/", name, request.NativeID)
-	if res.Secret.Value != nil {
-		props["value"] = *res.Secret.Value
+	if res.Value != nil {
+		props["value"] = *res.Value
 	}
 	propsJSON, err := json.Marshal(props)
 	if err != nil {
