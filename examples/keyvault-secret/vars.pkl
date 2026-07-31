@@ -22,7 +22,7 @@ adminPassword = read?("env:PG_ADMIN_PASSWORD") ?? "ChangeMe123!"
 
 stack: formae.Stack = new {
     label = stackName
-    description = "Key Vault Secret (issue #67)"
+    description = "Key Vault Secret"
 }
 
 target: formae.Target = new formae.Target {
