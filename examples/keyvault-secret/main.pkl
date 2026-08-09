@@ -16,7 +16,7 @@ import "./vars.pkl"
 
 description {
     text = """
-        Key Vault Secret (issue #67).
+        Key Vault Secret.
 
         Declares a database admin password as an Azure::KeyVault::Secret in the
         same stack as the vault that holds it, instead of dropping out to
@@ -75,3 +75,9 @@ local adminPasswordSecret = new secret.Secret {
         new azure.Tag { key = "managed-by"; value = "formae" }
     }
 }
+
+// Downstream resources can consume the secret value via the ScalarSecretResolvable
+// accessors inherited from formae.ScalarSecretResolvable:
+//   adminPasswordSecret.res.secretValue          -- the raw secret string
+//   adminPasswordSecret.res.secretValue.json("k") -- a field from a JSON-valued secret
+// The existing .res.value accessor continues to work for backwards-compatibility.
