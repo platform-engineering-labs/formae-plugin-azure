@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
+## [Unreleased]
+
+### Changed
+
+- `KeyVault::Secret` Read now includes the secret value in the returned properties,
+  enabling the `value` resolvable to resolve for downstream resources. The value is
+  protected at rest by formae's `SecretValue` hashing (introduced in v0.1.9).
+
 ## [0.1.10]
 
 ### Changed
