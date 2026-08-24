@@ -1,0 +1,90 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsforwardingrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsForwardingRule"
+const apiVersion = "2023-07-01-preview"
+
+/// A DNS server to forward to.
+class TargetDnsServer {
+    @azure.FieldHint { required = true }
+    ipAddress: String(length >= 1)
+
+    /// DNS port, almost always 53.
+    ///
+    /// Required rather than optional even though ARM defaults it: ARM echoes the
+    /// port back on every read, and `hasProviderDefault` is not honoured on the
+    /// fields of a nested class, so an omitted port reads as drift ("port is not
+    /// expected and not a provider default"). Spell it out.
+    @azure.FieldHint { required = true }
+    port: Int(this >= 1 && this <= 65535)
+}
+
+open class DnsForwardingRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsForwardingRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsForwardingRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// One rule in a DNS forwarding ruleset: "resolve this domain through those DNS
+/// servers".
+///
+/// Rules are the payload of the whole DNS Private Resolver chain — the resolver,
+/// its outbound endpoint and the ruleset exist to carry these.
+///
+/// Unlike its parents this resource is not an LRO: ARM answers create, update and
+/// delete synchronously. It has no location or tags of its own; `metadata` is not
+/// modelled.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsForwardingRuleset"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "dnsForwardingRulesetName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DnsForwardingRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsForwardingRulesetName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Fully qualified domain the rule matches, trailing dot included —
+    /// "contoso.com." not "contoso.com". createOnly: ARM's PATCH body for a rule
+    /// carries no domain name.
+    @azure.FieldHint { required = true; createOnly = true }
+    domainName: String(length >= 1 && endsWith("."))
+
+    @azure.FieldHint { required = true }
+    targetDnsServers: Listing<TargetDnsServer>
+
+    /// A Disabled rule stays in the ruleset but is not applied.
+    @azure.FieldHint { hasProviderDefault = true }
+    forwardingRuleState: ("Enabled"|"Disabled")?
+
+    hidden parent = this
+
+    hidden res: DnsForwardingRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

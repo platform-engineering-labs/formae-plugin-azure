@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsresolverinboundendpoint
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsResolverInboundEndpoint"
+const apiVersion = "2023-07-01-preview"
+
+/// Where the endpoint's listener IP comes from. The subnet must be delegated to
+/// `Microsoft.Network/dnsResolvers` and hold nothing else.
+class IPConfiguration {
+    @azure.FieldHint { required = true }
+    subnetId: (String|formae.Resolvable)
+
+    /// Only set this with `privateIpAllocationMethod = "Static"`. With Dynamic
+    /// allocation the address ARM picks is reported in the endpoint's read-only
+    /// `privateIpAddresses` instead — `hasProviderDefault` is not honoured on
+    /// nested class fields, so echoing an allocated address back here would read
+    /// as drift on every sync.
+    @azure.FieldHint { hasProviderDefault = true }
+    privateIpAddress: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    privateIpAllocationMethod: ("Dynamic"|"Static")?
+}
+
+open class InboundEndpointResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: InboundEndpointResolvable = (this) {
+        property = "id"
+    }
+    hidden name: InboundEndpointResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An inbound endpoint on an Azure DNS Private Resolver — the IP that on-premises
+/// resolvers forward Azure-private queries to.
+///
+/// This is where DNS Private Resolver starts billing: the resolver itself is
+/// free, each inbound endpoint is charged per hour.
+///
+/// Every property except tags is createOnly: ARM's PATCH body for this resource
+/// type carries tags and nothing else.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsResolver"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "dnsResolverName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class InboundEndpoint extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsResolverName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// ARM permits several; in practice one listener IP is the whole point.
+    @azure.FieldHint { required = true; createOnly = true }
+    ipConfigurations: Listing<IPConfiguration>
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    /// The listener addresses ARM ended up with, in the order of
+    /// `ipConfigurations`. This is what an on-premises forwarder points at.
+    @azure.FieldHint { hasProviderDefault = true }
+    privateIpAddresses: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: InboundEndpointResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

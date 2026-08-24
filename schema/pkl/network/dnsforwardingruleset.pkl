@@ -1,0 +1,70 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsforwardingruleset
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsForwardingRuleset"
+const apiVersion = "2023-07-01-preview"
+
+open class DnsForwardingRulesetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsForwardingRulesetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsForwardingRulesetResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A DNS forwarding ruleset — the set of "send queries for this domain to those
+/// servers" rules that an Azure DNS Private Resolver applies on egress.
+///
+/// The ruleset holds no rules itself: each rule is a `DnsForwardingRule` child.
+/// A ruleset also does nothing until it is linked to a virtual network by a
+/// `DnsForwardingRulesetVirtualNetworkLink`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class DnsForwardingRuleset extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM IDs of the outbound endpoints this ruleset forwards through. ARM
+    /// accepts a list but permits exactly one entry today.
+    ///
+    /// createOnly, though the ARM API itself allows a PATCH: the Go SDK's
+    /// DNSForwardingRulesetPatch serialises this list at the top level of the
+    /// request body, where ARM rejects it outright with InvalidRequestContent
+    /// ("Could not find member 'dnsResolverOutboundEndpoints' on object of type
+    /// 'ResourceDefinition'"). Changing it therefore replaces the ruleset.
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsResolverOutboundEndpointIds: Listing<String|formae.Resolvable>
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DnsForwardingRulesetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

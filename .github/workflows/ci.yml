@@ -168,6 +168,30 @@ jobs:
           # (mocked) + marshaller round-trip; run live locally with a real domain/cert:
           #   make conformance-test-crud TEST=cdn-afd-custom-domain
           #   make conformance-test-crud TEST=cdn-secret
+          # --- Private DNS resolver family. All free (the resolver and its endpoints
+          # bill nothing; only the vnet and subnet exist alongside) and each
+          # provisions in ~2-4 min.
+          - dns-resolver
+          - dns-resolver-inbound-endpoint
+          - dns-resolver-outbound-endpoint
+          - dns-forwarding-ruleset
+          - dns-forwarding-rule
+          - dns-forwarding-ruleset-vnet-link
+          # --- DNS security policy. Also free.
+          - dns-resolver-policy
+          - dns-resolver-policy-vnet-link
+          - dns-resolver-domain-list
+          - dns-security-rule
+          # --- Azure Firewall policy. The policy and its rule collection groups are
+          # free without an attached firewall, and none is created.
+          - firewall-policy
+          - firewall-policy-rule-collection-group
+          # --- Remaining networking. subnet-delegated covers subnet delegation on its
+          # own, independent of the resolver endpoints that consume it.
+          - subnet-delegated
+          - vnet-peering
+          - local-network-gateway
+          - traffic-manager-profile
           # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
           # a managed environment takes ~5 min to provision (container-app builds on top),
           # exceeding the CI command timeout — same class as the AKS extension. Both are

@@ -1,0 +1,120 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.firewallpolicyrulecollectiongroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::FirewallPolicyRuleCollectionGroup"
+const apiVersion = "2023-05-01"
+
+/// One L3/L4 filtering rule. Addresses accept CIDR, ranges, single IPs, `*` for
+/// any, and Azure service tags in the destination.
+class NetworkRule {
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// `Any`, `TCP`, `UDP` or `ICMP`.
+    @azure.FieldHint { required = true }
+    ipProtocols: Listing<("Any"|"TCP"|"UDP"|"ICMP")>
+
+    @azure.FieldHint { required = true }
+    sourceAddresses: Listing<String>
+
+    @azure.FieldHint { required = true }
+    destinationAddresses: Listing<String>
+
+    /// Single ports or ranges ("443", "8000-8999"), or `*`. ICMP-only rules still
+    /// need a value; use `*`.
+    @azure.FieldHint { required = true }
+    destinationPorts: Listing<String>
+
+    @azure.FieldHint { hasProviderDefault = true }
+    description: String?
+}
+
+/// A named, prioritised set of rules that share one Allow/Deny verdict.
+class RuleCollection {
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Evaluation order within the group; lower runs first. Must be unique across
+    /// the group's collections.
+    @azure.FieldHint { required = true }
+    priority: Int(this >= 100 && this <= 65000)
+
+    @azure.FieldHint { required = true }
+    action: ("Allow"|"Deny")
+
+    @azure.FieldHint { required = true }
+    networkRules: Listing<NetworkRule>
+}
+
+open class FirewallPolicyRuleCollectionGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FirewallPolicyRuleCollectionGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FirewallPolicyRuleCollectionGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A rule collection group inside an Azure Firewall policy — the resource that
+/// actually carries firewall rules. A policy with no rule collection groups filters
+/// nothing.
+///
+/// Scope: only FILTER rule collections containing NETWORK rules are modelled — the
+/// L3/L4 case. ARM's two other shapes are not:
+///
+///   * application rules (FQDN and URL filtering, protocol/port pairs, TLS
+///     inspection targets), which also require the policy's DNS proxy for FQDNs;
+///   * NAT rule collections (DNAT to a private address), which carry translated
+///     address and port fields instead of a verdict.
+///
+/// The provider does not read either back: a collection or rule the schema cannot
+/// express would show as drift forever. A group authored elsewhere with application
+/// or NAT collections therefore reads with only its network collections visible.
+///
+/// Groups are free; billing belongs to the firewall that uses the policy.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::FirewallPolicy"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "firewallPolicyName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class FirewallPolicyRuleCollectionGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    firewallPolicyName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Evaluation order of this group relative to the policy's other groups; lower
+    /// runs first.
+    @azure.FieldHint { required = true }
+    priority: Int(this >= 100 && this <= 65000)
+
+    @azure.FieldHint { required = true }
+    ruleCollections: Listing<RuleCollection>
+
+    hidden parent = this
+
+    hidden res: FirewallPolicyRuleCollectionGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

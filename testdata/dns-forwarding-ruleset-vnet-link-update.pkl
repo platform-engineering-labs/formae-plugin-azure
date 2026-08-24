@@ -1,0 +1,105 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/dnsresolver.pkl"
+import "@azure/network/dnsresolveroutboundendpoint.pkl" as outbound
+import "@azure/network/dnsforwardingruleset.pkl" as ruleset
+import "@azure/network/dnsforwardingrulesetvnetlink.pkl" as vnetlink
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dnsvl-test-rg"
+  name = "formae-plugin-sdk-test-dnsvl-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dnsvl-test-vnet"
+  name = "formae-plugin-sdk-test-dnsvl-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+// Resolver endpoints demand a subnet delegated to Microsoft.Network/dnsResolvers,
+// holding nothing else, and at least a /28.
+local resolverSubnet = new subnet.Subnet {
+  label = "dnsvl-test-subnet"
+  name = "formae-plugin-sdk-test-dnsvl-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.2.0/28"
+  delegations = new Listing {
+    new subnet.Delegation {
+      name = "dnsresolver"
+      serviceName = "Microsoft.Network/dnsResolvers"
+    }
+  }
+}
+
+local resolver = new dnsresolver.DnsResolver {
+  label = "dnsvl-test-resolver"
+  name = "formae-plugin-sdk-test-dnsvl-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  virtualNetworkId = vnet.res.id
+}
+
+local endpoint = new outbound.OutboundEndpoint {
+  label = "dnsvl-test-endpoint"
+  name = "formae-plugin-sdk-test-dnsvl-ep"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  dnsResolverName = resolver.res.name
+  subnetId = resolverSubnet.res.id
+}
+
+local forwardingRuleset = new ruleset.DnsForwardingRuleset {
+  label = "dnsvl-test-ruleset"
+  name = "formae-plugin-sdk-test-dnsvl-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  dnsResolverOutboundEndpointIds = new Listing { endpoint.res.id }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  resolverSubnet
+  resolver
+  endpoint
+
+  forwardingRuleset
+
+  // The last link in the chain: apply the ruleset to the virtual network. The
+  // linked vnet does not have to be the resolver's own, but here it is.
+  new vnetlink.VirtualNetworkLink {
+    label = "plugin-sdk-test-dns-ruleset-vnet-link"
+    name = "conformance-link"
+    resourceGroupName = rg.res.name
+    dnsForwardingRulesetName = forwardingRuleset.res.name
+    virtualNetworkId = vnet.res.id
+    // Update: change the metadata. It is the only in-place change ARM's PATCH
+    // body for a link can express, so the virtual network binding is createOnly.
+    metadata = new Listing {
+      new azure.Tag { key = "owner"; value = "conformance-updated" }
+    }
+  }
+}

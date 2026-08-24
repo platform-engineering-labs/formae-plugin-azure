@@ -7,7 +7,10 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
@@ -157,4 +160,67 @@ func metadataFromProperties(props map[string]any) map[string]*string {
 		return nil
 	}
 	return out
+}
+
+// stringPointers converts a slice of strings into the pointer slice the Azure SDK
+// models use. Returns nil for an empty input, so an unset list is omitted from the
+// request body rather than sent as an empty array.
+func stringPointers(values []string) []*string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]*string, 0, len(values))
+	for _, value := range values {
+		out = append(out, to.Ptr(value))
+	}
+	return out
+}
+
+// stringsFromPointers is the read-path inverse of stringPointers. Nil entries are
+// skipped, and an empty result comes back as nil so a list ARM echoes back empty does
+// not read as a declared-but-empty list.
+func stringsFromPointers(values []*string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		out = append(out, *value)
+	}
+	return out
+}
+
+// canonicalizeEnum maps a service-returned enum value onto the casing the SDK and
+// PKL schema use.
+//
+// Services are inconsistent here: some return capitalized values ("Enabled",
+// "Default") where the SDK constants and the ARM request body use lowercase, and
+// some return a lower-cased path segment where desired state carries the enum's own
+// casing. Echoing the service casing straight through breaks two things: conformance
+// [Verify] compares desired "enabled" against actual "Enabled", and `formae extract`
+// fails to render the PKL union at all. A blanket strings.ToLower is wrong because
+// some values are mixed-case ("highDensity", "storage_optimized_l1"), so match
+// case-insensitively against the known set and emit its canonical form. An
+// unrecognised value passes through untouched rather than being mangled.
+func canonicalizeEnum(value string, allowed ...string) string {
+	for _, a := range allowed {
+		if strings.EqualFold(value, a) {
+			return a
+		}
+	}
+	return value
+}
+
+// normalizeAzureLocation folds a region name to the form desired state uses.
+//
+// ARM accepts "eastus" on the way in and hands back "East US" on the way out, so a
+// read that passes the response through verbatim reports drift on every sync against
+// a fixture that wrote the compact form. Regions are the one enum-ish field where
+// case and spacing vary per response rather than per service, which is why this is
+// not folded into canonicalizeEnum.
+func normalizeAzureLocation(loc string) string {
+	return strings.ToLower(strings.ReplaceAll(loc, " ", ""))
 }

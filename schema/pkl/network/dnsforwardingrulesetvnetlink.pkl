@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsforwardingrulesetvnetlink
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsForwardingRulesetVirtualNetworkLink"
+const apiVersion = "2023-07-01-preview"
+
+open class VirtualNetworkLinkResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkLinkResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkLinkResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Applies a DNS forwarding ruleset to a virtual network.
+///
+/// This is the last link in the DNS Private Resolver chain: without it a ruleset
+/// and its rules exist but affect no traffic. The linked virtual network does not
+/// have to be the one the resolver itself sits in.
+///
+/// `metadata` is the only in-place change — ARM's PATCH body for this resource
+/// carries nothing else, so the virtual network binding is createOnly.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsForwardingRuleset"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "dnsForwardingRulesetName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class VirtualNetworkLink extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsForwardingRulesetName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// ARM ID of the virtual network the ruleset applies to.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkId: (String|formae.Resolvable)
+
+    /// Free-form name/value pairs carried on the link.
+    @azure.FieldHint { outputField = "metadata"; updateMethod = "EntitySet"; indexField = "Key" }
+    metadata: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkLinkResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.localnetworkgateway
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::LocalNetworkGateway"
+const apiVersion = "2023-05-01"
+
+/// BGP configuration of the on-premises device.
+class BgpSettings {
+    /// The on-premises device's autonomous system number.
+    @azure.FieldHint { required = true }
+    asn: Int
+
+    /// Address the on-premises device peers from. Must sit inside one of the
+    /// gateway's address prefixes.
+    @azure.FieldHint { required = true }
+    bgpPeeringAddress: String
+
+    /// Weight added to routes learned from this peer.
+    @azure.FieldHint { hasProviderDefault = true }
+    peerWeight: Int?
+}
+
+open class LocalNetworkGatewayResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LocalNetworkGatewayResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LocalNetworkGatewayResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The on-premises end of a site-to-site VPN: the peer's public address and the
+/// address ranges reachable behind it.
+///
+/// The resource is free and independent — no virtual network gateway or connection
+/// has to exist, and none is created here. It only becomes live once a
+/// connection references it.
+///
+/// `gatewayIpAddress` and `fqdn` are alternatives: ARM accepts exactly one, and a
+/// gateway addressed by name requires the peer to resolve at connection time.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LocalNetworkGateway extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String
+
+    /// Public IP of the on-premises VPN device. Mutually exclusive with `fqdn`.
+    @azure.FieldHint { }
+    gatewayIpAddress: String?
+
+    /// DNS name of the on-premises VPN device, for peers on a dynamic address.
+    /// Mutually exclusive with `gatewayIpAddress`.
+    @azure.FieldHint { }
+    fqdn: String?
+
+    /// CIDR ranges reachable behind the on-premises device.
+    @azure.FieldHint { required = true }
+    localNetworkAddressSpace: Listing<String>
+
+    @azure.FieldHint { }
+    bgpSettings: BgpSettings?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: LocalNetworkGatewayResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

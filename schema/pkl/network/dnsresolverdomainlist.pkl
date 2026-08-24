@@ -1,0 +1,68 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsresolverdomainlist
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsResolverDomainList"
+const apiVersion = "2023-07-01-preview"
+
+open class DnsResolverDomainListResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsResolverDomainListResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsResolverDomainListResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A named list of domains that DNS security rules match against.
+///
+/// Domains carry a trailing dot — "malware.example.com." — and a bare "." means
+/// every domain, which is how a default-deny rule is written.
+///
+/// ARM also supports loading a large list from a blob URL (the bulk API). That
+/// path is not modelled: only inline `domains` are.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class DnsResolverDomainList extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The domains to match. ARM's PATCH body carries this list, so it is not
+    /// createOnly. Adding entries is detected as a diff; REMOVING the last
+    /// distinguishing entry may not be (observed on Batch's
+    /// allowedAuthenticationModes, where a shrink produced no apply at all), so
+    /// pair a removal-only edit with another change.
+    @azure.FieldHint { required = true }
+    domains: Listing<String>
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DnsResolverDomainListResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,70 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/virtualnetworkpeering.pkl" as peering
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vnetpeer-test-rg"
+  name = "formae-plugin-sdk-test-vnetpeer-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The two address spaces must not overlap, or ARM refuses the peering.
+local vnetA = new virtualnetwork.VirtualNetwork {
+  label = "vnetpeer-test-vnet-a"
+  name = "formae-plugin-sdk-test-vnetpeer-a-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.10.0.0/16" }
+  }
+}
+
+local vnetB = new virtualnetwork.VirtualNetwork {
+  label = "vnetpeer-test-vnet-b"
+  name = "formae-plugin-sdk-test-vnetpeer-b-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.20.0.0/16" }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnetA
+  vnetB
+
+  // One direction only: A → B. A working pair needs the mirror peering on B as
+  // well, so this one reports peeringState "Initiated" rather than "Connected" —
+  // that is expected, not a failure.
+  new peering.VirtualNetworkPeering {
+    label = "plugin-sdk-test-vnet-peering"
+    name = "a-to-b"
+    resourceGroupName = rg.res.name
+    virtualNetworkName = vnetA.res.name
+    remoteVirtualNetworkId = vnetB.res.id
+    allowVirtualNetworkAccess = true
+    // Update: accept traffic the remote vnet forwarded on someone else's behalf —
+    // the hub-and-spoke case. remoteVirtualNetworkId is createOnly, so ARM cannot
+    // re-point an existing peering.
+    allowForwardedTraffic = true
+    allowGatewayTransit = false
+    useRemoteGateways = false
+  }
+}

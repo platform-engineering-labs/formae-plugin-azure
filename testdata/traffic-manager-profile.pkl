@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/trafficmanager/trafficmanagerprofile.pkl" as tm
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "tm-test-rg"
+  name = "formae-plugin-sdk-test-tm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Traffic Manager is global: location is the literal "global". relativeName is
+  // globally unique across all of trafficmanager.net, so it carries the run ID.
+  // The profile has no endpoints — those are a separate ARM sub-resource — so it
+  // resolves to nothing, which is fine for a lifecycle test.
+  new tm.TrafficManagerProfile {
+    label = "plugin-sdk-test-tm"
+    name = "fpsdt-tm-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "global"
+    trafficRoutingMethod = "Priority"
+    dnsConfig = new tm.DnsConfig {
+      relativeName = "fpsdt-tm-\(vars.testRunID)"
+      ttl = 60
+    }
+    monitorConfig = new tm.MonitorConfig {
+      protocol = "HTTP"
+      port = 80
+      path = "/"
+      intervalInSeconds = 30
+      timeoutInSeconds = 10
+      toleratedNumberOfFailures = 3
+    }
+    profileStatus = "Enabled"
+  }
+}

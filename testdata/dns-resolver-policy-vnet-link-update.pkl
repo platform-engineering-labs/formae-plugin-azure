@@ -1,0 +1,68 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/dnsresolverpolicy.pkl" as policy
+import "@azure/network/dnsresolverpolicyvnetlink.pkl" as policylink
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dnspvl-test-rg"
+  name = "formae-plugin-sdk-test-dnspvl-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// No delegated subnet needed here: DNS security policies attach to the virtual
+// network itself, unlike resolver endpoints.
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dnspvl-test-vnet"
+  name = "formae-plugin-sdk-test-dnspvl-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+local resolverPolicy = new policy.DnsResolverPolicy {
+  label = "dnspvl-test-policy"
+  name = "formae-plugin-sdk-test-dnspvl-pol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  resolverPolicy
+
+  // The security-side counterpart to DnsForwardingRulesetVirtualNetworkLink:
+  // without this the policy's rules filter nothing.
+  new policylink.PolicyVirtualNetworkLink {
+    label = "plugin-sdk-test-dns-policy-vnet-link"
+    name = "conformance-link"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    dnsResolverPolicyName = resolverPolicy.res.name
+    virtualNetworkId = vnet.res.id
+    // Update: retag. Tags are the only in-place change — this link's PATCH body
+    // carries nothing else (the forwarding ruleset's link has metadata; this one
+    // does not), so the virtual network binding is createOnly.
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/firewallpolicy.pkl" as firewallpolicy
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "fwpolicy-test-rg"
+  name = "formae-plugin-sdk-test-fwpol-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // A policy with no firewall attached is free — Azure Firewall itself is billed per
+  // deployment hour plus data processed, and none is created here.
+  //
+  // Standard tier: Basic caps out at 250 rules and cannot use threat intelligence,
+  // Premium adds TLS inspection and IDPS that this schema does not model. skuTier is
+  // createOnly — ARM cannot retier a policy in place.
+  new firewallpolicy.FirewallPolicy {
+    label = "plugin-sdk-test-firewall-policy"
+    name = "formae-plugin-sdk-test-fwpol-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    skuTier = "Standard"
+    // Update: escalate from logging threat-feed matches to blocking them. The SDK's
+    // only patch verb is UpdateTags, so the handler re-PUTs the whole policy.
+    threatIntelMode = "Deny"
+    dnsSettings = new firewallpolicy.DnsSettings {
+      enableProxy = true
+    }
+  }
+}

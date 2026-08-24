@@ -1,0 +1,106 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/dnsresolver.pkl"
+import "@azure/network/dnsresolveroutboundendpoint.pkl" as outbound
+import "@azure/network/dnsforwardingruleset.pkl" as ruleset
+import "@azure/network/dnsforwardingrule.pkl" as rule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dnsfr-test-rg"
+  name = "formae-plugin-sdk-test-dnsfr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dnsfr-test-vnet"
+  name = "formae-plugin-sdk-test-dnsfr-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+// Resolver endpoints demand a subnet delegated to Microsoft.Network/dnsResolvers,
+// holding nothing else, and at least a /28.
+local resolverSubnet = new subnet.Subnet {
+  label = "dnsfr-test-subnet"
+  name = "formae-plugin-sdk-test-dnsfr-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.2.0/28"
+  delegations = new Listing {
+    new subnet.Delegation {
+      name = "dnsresolver"
+      serviceName = "Microsoft.Network/dnsResolvers"
+    }
+  }
+}
+
+local resolver = new dnsresolver.DnsResolver {
+  label = "dnsfr-test-resolver"
+  name = "formae-plugin-sdk-test-dnsfr-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  virtualNetworkId = vnet.res.id
+}
+
+local endpoint = new outbound.OutboundEndpoint {
+  label = "dnsfr-test-endpoint"
+  name = "formae-plugin-sdk-test-dnsfr-ep"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  dnsResolverName = resolver.res.name
+  subnetId = resolverSubnet.res.id
+}
+
+local forwardingRuleset = new ruleset.DnsForwardingRuleset {
+  label = "dnsfr-test-ruleset"
+  name = "formae-plugin-sdk-test-dnsfr-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  dnsResolverOutboundEndpointIds = new Listing { endpoint.res.id }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  resolverSubnet
+  resolver
+  endpoint
+
+  forwardingRuleset
+
+  // The rule itself: send contoso.com queries to these two DNS servers, in this
+  // order. The addresses are inside the test vnet and never answer — the rule is
+  // configuration, and nothing here resolves anything.
+  new rule.DnsForwardingRule {
+    label = "plugin-sdk-test-dns-forwarding-rule"
+    name = "conformance-rule"
+    resourceGroupName = rg.res.name
+    dnsForwardingRulesetName = forwardingRuleset.res.name
+    domainName = "contoso.com."
+    targetDnsServers = new Listing {
+      new rule.TargetDnsServer { ipAddress = "10.0.3.4"; port = 53 }
+      new rule.TargetDnsServer { ipAddress = "10.0.3.5"; port = 53 }
+    }
+    forwardingRuleState = "Enabled"
+  }
+}
