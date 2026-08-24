@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.galleryimage
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::GalleryImage"
+const apiVersion = "2023-07-03"
+
+/// Marketplace-style triple that names an image definition. All three parts are
+/// immutable.
+class GalleryImageIdentifier {
+    @azure.FieldHint { required = true; createOnly = true }
+    publisher: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    offer: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: String(length >= 1 && length <= 128)
+}
+
+open class GalleryImageResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GalleryImageResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GalleryImageResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An image *definition* inside a Compute Gallery — the metadata shell
+/// (publisher/offer/sku, OS, generation) that image versions hang off. Creating a
+/// definition does not create anything bootable; a `GalleryImageVersion` does that.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Compute::Gallery"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "galleryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class GalleryImage extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9._]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    galleryName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// ARM requires the identifier on every write, including the PATCH, even though
+    /// it cannot change — the plugin echoes it back on update.
+    @azure.FieldHint { required = true; createOnly = true }
+    identifier: GalleryImageIdentifier
+
+    @azure.FieldHint { required = true; createOnly = true }
+    osType: "Linux"|"Windows"
+
+    @azure.FieldHint { required = true; createOnly = true }
+    osState: "Generalized"|"Specialized"
+
+    /// Hyper-V generation for VMs created from this definition. Azure defaults to V1.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    hyperVGeneration: ("V1"|"V2")?
+
+    /// CPU architecture. Azure defaults to x64.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    architecture: ("x64"|"Arm64")?
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: GalleryImageResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
