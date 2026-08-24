@@ -59,6 +59,57 @@ type Subnet struct {
 	config   *config.Config
 }
 
+// subnetDelegations builds the ARM delegation list from desired properties.
+// serviceName is passed through verbatim: ARM echoes back exactly the casing it
+// was given, so normalising it here would show up as drift on the next read.
+func subnetDelegations(props map[string]any) []*armnetwork.Delegation {
+	raw, ok := props["delegations"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	delegations := make([]*armnetwork.Delegation, 0, len(raw))
+	for _, entry := range raw {
+		d, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := d["name"].(string)
+		serviceName, _ := d["serviceName"].(string)
+		if serviceName == "" {
+			continue
+		}
+		delegations = append(delegations, &armnetwork.Delegation{
+			Name: stringPtr(name),
+			Properties: &armnetwork.ServiceDelegationPropertiesFormat{
+				ServiceName: stringPtr(serviceName),
+			},
+		})
+	}
+	return delegations
+}
+
+// subnetDelegationsFromResult is the read side of subnetDelegations.
+func subnetDelegationsFromResult(subnet *armnetwork.Subnet) []map[string]any {
+	if subnet.Properties == nil || len(subnet.Properties.Delegations) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(subnet.Properties.Delegations))
+	for _, d := range subnet.Properties.Delegations {
+		if d == nil || d.Properties == nil || d.Properties.ServiceName == nil {
+			continue
+		}
+		entry := map[string]any{"serviceName": *d.Properties.ServiceName}
+		if d.Name != nil {
+			entry["name"] = *d.Name
+		}
+		out = append(out, entry)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // buildPropertiesFromResult extracts properties from a Subnet Azure response.
 // This is used by Create, Update, and Status to ensure consistent property format.
 func (s *Subnet) buildPropertiesFromResult(subnet *armnetwork.Subnet, rgName, vnetName string) map[string]any {
@@ -77,6 +128,9 @@ func (s *Subnet) buildPropertiesFromResult(subnet *armnetwork.Subnet, rgName, vn
 	// Writable properties
 	if subnet.Properties != nil && subnet.Properties.AddressPrefix != nil {
 		props["addressPrefix"] = *subnet.Properties.AddressPrefix
+	}
+	if delegations := subnetDelegationsFromResult(subnet); delegations != nil {
+		props["delegations"] = delegations
 	}
 
 	// Read-only properties
@@ -115,6 +169,9 @@ func serializeSubnetProperties(result armnetwork.Subnet, rgName, vnetName, subne
 
 	if result.Properties != nil && result.Properties.AddressPrefix != nil {
 		props["addressPrefix"] = *result.Properties.AddressPrefix
+	}
+	if delegations := subnetDelegationsFromResult(&result); delegations != nil {
+		props["delegations"] = delegations
 	}
 
 	// Include id for resolvable references
@@ -169,6 +226,7 @@ func (s *Subnet) Create(ctx context.Context, request *resource.CreateRequest) (*
 	params := armnetwork.Subnet{
 		Properties: &armnetwork.SubnetPropertiesFormat{
 			AddressPrefix: stringPtr(addressPrefix),
+			Delegations:   subnetDelegations(props),
 		},
 	}
 
@@ -299,6 +357,7 @@ func (s *Subnet) Update(ctx context.Context, request *resource.UpdateRequest) (*
 	params := armnetwork.Subnet{
 		Properties: &armnetwork.SubnetPropertiesFormat{
 			AddressPrefix: stringPtr(addressPrefix),
+			Delegations:   subnetDelegations(props),
 		},
 	}
 
