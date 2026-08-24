@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.privatelinkscope
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::PrivateLinkScope"
+const apiVersion = "2021-09-01"
+
+open class PrivateLinkScopeResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrivateLinkScopeResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrivateLinkScopeResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor Private Link Scope: the grouping that lets a private endpoint
+/// reach Log Analytics workspaces and Application Insights components over a private
+/// network instead of the public internet.
+///
+/// Free — the scope itself carries no charge. The private endpoint that attaches to
+/// it does, and none is created by this resource.
+///
+/// The scope is always `global`: it spans regions, and the resources it covers are
+/// attached through scoped-resource children rather than named here.
+///
+/// A scope with no private endpoint connection is inert, and the access modes below
+/// only take effect once one exists — setting `PrivateOnly` on an empty scope
+/// blocks nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class PrivateLinkScope extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always `global` for this type; ARM rejects a region.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String
+
+    /// Whether data may still be ingested over the public internet (`Open`) or only
+    /// through a private endpoint (`PrivateOnly`).
+    @azure.FieldHint { required = true }
+    ingestionAccessMode: ("Open"|"PrivateOnly")
+
+    /// The same choice for queries against the covered resources.
+    @azure.FieldHint { required = true }
+    queryAccessMode: ("Open"|"PrivateOnly")
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PrivateLinkScopeResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

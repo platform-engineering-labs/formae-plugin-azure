@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.actiongroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::ActionGroup"
+const apiVersion = "2023-01-01"
+
+/// Someone to email when an alert fires.
+class EmailReceiver {
+    /// Unique within the action group.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    emailAddress: String(length >= 1)
+
+    /// Send the common alert schema rather than the legacy per-alert payload.
+    ///
+    /// Required rather than optional even though ARM defaults it: ARM echoes it
+    /// back on every read, and `hasProviderDefault` is not honoured on the fields
+    /// of a nested class, so an omitted value would read as drift.
+    @azure.FieldHint { required = true }
+    useCommonAlertSchema: Boolean
+}
+
+open class ActionGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ActionGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ActionGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor action group — the "who to tell" half of alerting. Metric
+/// alerts, activity log alerts and scheduled query rules all reference one.
+///
+/// Only email receivers are modelled. The other nine ARM receiver kinds (SMS,
+/// Azure app push, ARM role, webhook, Azure Function, Logic App, Event Hub,
+/// automation runbook, ITSM) are not, and the provider does not read them back
+/// either — a receiver the schema cannot express would show as drift forever.
+///
+/// Action groups are global: `location` is the literal "Global", not a region.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ActionGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always "Global" for action groups.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String(length >= 1)
+
+    /// Short name used in SMS and push notifications. Twelve characters, hard
+    /// limit — ARM rejects longer.
+    @azure.FieldHint { required = true }
+    groupShortName: String(length >= 1 && length <= 12)
+
+    /// A disabled action group stays configured but sends nothing.
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    emailReceivers: Listing<EmailReceiver>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ActionGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

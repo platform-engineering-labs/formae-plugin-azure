@@ -1,0 +1,134 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.metricalert
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::MetricAlert"
+const apiVersion = "2018-03-01"
+
+/// One static-threshold test against a metric. The alert fires when every
+/// criterion matches.
+class MetricCriterion {
+    /// Label for this criterion, unique within the alert. ARM conventionally uses
+    /// "Metric1", "Metric2", ...
+    @azure.FieldHint { required = true }
+    name: String(length >= 1)
+
+    /// e.g. "Transactions", "Percentage CPU", "Availability".
+    @azure.FieldHint { required = true }
+    metricName: String(length >= 1)
+
+    /// The metric's provider namespace, e.g. "Microsoft.Storage/storageAccounts".
+    ///
+    /// Required rather than optional even though ARM can infer it: ARM echoes it
+    /// back on every read, and `hasProviderDefault` is not honoured on the fields
+    /// of a nested class, so an omitted value would read as drift.
+    @azure.FieldHint { required = true }
+    metricNamespace: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    operator: ("Equals"|"GreaterThan"|"GreaterThanOrEqual"|"LessThan"|"LessThanOrEqual")
+
+    @azure.FieldHint { required = true }
+    threshold: Number
+
+    /// How raw samples are collapsed over the alert's window.
+    @azure.FieldHint { required = true }
+    timeAggregation: ("Average"|"Count"|"Maximum"|"Minimum"|"Total")
+}
+
+open class MetricAlertResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: MetricAlertResolvable = (this) {
+        property = "id"
+    }
+    hidden name: MetricAlertResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor metric alert — fires when a resource's metrics cross a
+/// threshold.
+///
+/// Scope note: only ARM's single-resource, multiple-metric, STATIC threshold
+/// criteria are modelled ("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria").
+/// ARM's two other criteria kinds — dynamic thresholds, and multi-resource
+/// criteria with dimensions — are not expressible here, and the provider does not
+/// read them back either: surfacing criteria the schema cannot express would show
+/// as drift forever. An alert created elsewhere with dynamic thresholds will
+/// therefore read with no criteria at all rather than with wrong ones.
+///
+/// Metric alerts are global: `location` is the literal "Global" even though the
+/// resource they watch is regional.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class MetricAlert extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always "Global" for metric alerts.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String(length >= 1)
+
+    /// ARM IDs of the resources to watch. Single-resource criteria means exactly
+    /// one entry, and every metric in `criteria` must exist on it.
+    @azure.FieldHint { required = true }
+    scopes: Listing<String|formae.Resolvable>
+
+    @azure.FieldHint { required = true }
+    criteria: Listing<MetricCriterion>
+
+    /// 0 (critical) through 4 (verbose).
+    @azure.FieldHint { required = true }
+    severity: Int(this >= 0 && this <= 4)
+
+    /// How far back each evaluation looks, as an ISO-8601 duration ("PT5M").
+    /// Must be a multiple of `evaluationFrequency` and one of the sizes ARM
+    /// accepts: PT1M, PT5M, PT15M, PT30M, PT1H, PT6H, PT12H, P1D.
+    @azure.FieldHint { hasProviderDefault = true }
+    windowSize: String?
+
+    /// How often the alert evaluates, as an ISO-8601 duration ("PT1M").
+    @azure.FieldHint { hasProviderDefault = true }
+    evaluationFrequency: String?
+
+    /// ARM IDs of the action groups to notify.
+    @azure.FieldHint { hasProviderDefault = true }
+    actionGroupIds: Listing<String|formae.Resolvable>?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    description: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    /// Resolve the alert automatically once the metric comes back into range.
+    @azure.FieldHint { hasProviderDefault = true }
+    autoMitigate: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: MetricAlertResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/dataexport.pkl" as dataexport
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "de-test-rg"
+  name = "formae-plugin-sdk-test-de-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Export destination. Standard_LRS is the cheapest redundancy, and nothing is ever
+// written here: the exported tables receive no data during the test.
+local sa = new storageaccount.StorageAccount {
+  label = "de-test-sa"
+  name = "fpsdtde\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU { name = "Standard_LRS" }
+  kind = "StorageV2"
+}
+
+// 30-day retention is what the PerGB2018 base price includes; the 1 GB daily cap
+// bounds ingestion. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "de-test-law"
+  name = "fpsdt-de-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sa
+
+  workspaceRes
+
+  // The rule is free; only what it writes at the destination costs anything, and
+  // Heartbeat stays empty because no agent reports to this workspace.
+  new dataexport.DataExport {
+    label = "plugin-sdk-test-data-export"
+    name = "fpsdtde\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    destinationResourceId = sa.res.id
+    tableNames {
+      "Heartbeat"
+    }
+    enable = true
+  }
+}

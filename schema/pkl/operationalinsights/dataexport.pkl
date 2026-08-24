@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.dataexport
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::DataExport"
+const apiVersion = "2020-08-01"
+
+open class DataExportResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataExportResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataExportResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A continuous export rule: every row landing in the listed workspace tables is
+/// copied to a storage account or event hub as it arrives.
+///
+/// The rule itself is free. Cost sits at the destination — storage for what is
+/// written, or event hub throughput units — and the export bills nothing while the
+/// listed tables receive no data.
+///
+/// ARM's `destination` block is flattened here into `destinationResourceId` and
+/// `eventHubName`; its `type` (`StorageAccount` or `EventHub`) is derived from the
+/// resource ID by the service and so is not modelled.
+///
+/// The API is fully synchronous — no operation ever reports as in progress.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DataExport extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 4 && length <= 63)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// Workspace tables to export, by their Log Analytics names (e.g. `Heartbeat`).
+    /// A table the workspace does not know is rejected.
+    @azure.FieldHint { required = true }
+    tableNames: Listing<String>
+
+    /// ARM ID of the destination: a storage account, or an event hub namespace.
+    @azure.FieldHint { required = true }
+    destinationResourceId: (String|formae.Resolvable)
+
+    /// Specific event hub to write to. Only valid when the destination is an event
+    /// hub namespace; without it every table gets its own hub.
+    @azure.FieldHint { }
+    eventHubName: String?
+
+    /// Whether the rule is currently exporting.
+    @azure.FieldHint { hasProviderDefault = true }
+    enable: Boolean?
+
+    hidden parent = this
+
+    hidden res: DataExportResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

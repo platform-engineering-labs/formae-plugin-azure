@@ -1,0 +1,54 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/component.pkl" as aicomponent
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ai-test-rg"
+  name = "formae-plugin-sdk-test-ai-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Workspace-based components are the only kind Azure still creates, so the
+// workspace is a hard dependency rather than an option.
+local law = new workspace.Workspace {
+  label = "ai-test-law"
+  name = "fpsdt-ai-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  law
+
+  new aicomponent.Component {
+    label = "plugin-sdk-test-ai"
+    name = "fpsdt-ai-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    workspaceResourceId = law.res.id
+    applicationType = "web"
+    kind = "web"
+    ingestionMode = "LogAnalytics"
+    retentionInDays = 30
+  }
+}

@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/linkedstorageaccount.pkl" as linkedstorageaccount
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lsa-test-rg"
+  name = "formae-plugin-sdk-test-lsa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Link targets. Standard_LRS is the cheapest redundancy, and nothing is ever written
+// to either: no custom log ingestion happens during the test.
+local sa = new storageaccount.StorageAccount {
+  label = "lsa-test-sa-1"
+  name = "fpsdtlsa1\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU { name = "Standard_LRS" }
+  kind = "StorageV2"
+  // Log Analytics refuses to link an account without this exemption; a bare ARM PUT
+  // would leave bypass at None.
+  networkAclsBypass = "AzureServices"
+}
+
+local sa2 = new storageaccount.StorageAccount {
+  label = "lsa-test-sa-2"
+  name = "fpsdtlsa2\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU { name = "Standard_LRS" }
+  kind = "StorageV2"
+  // Log Analytics refuses to link an account without this exemption; a bare ARM PUT
+  // would leave bypass at None.
+  networkAclsBypass = "AzureServices"
+}
+
+// 30-day retention is what the PerGB2018 base price includes; the 1 GB daily cap
+// bounds ingestion. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "lsa-test-law"
+  name = "fpsdt-lsa-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sa
+
+  workspaceRes
+
+  // Second account so the update can grow the link's list; a shrink-only edit can
+  // produce no command at all.
+  sa2
+
+  // The link is free — the accounts bill their normal storage rates for whatever the
+  // workspace writes, and nothing is written during the test. CustomLogs is the
+  // ingestion path; a workspace holds at most one link per data source type.
+  new linkedstorageaccount.LinkedStorageAccount {
+    label = "plugin-sdk-test-linked-storage-account"
+    name = "CustomLogs"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    storageAccountIds {
+      sa.res.id
+      sa2.res.id
+    }
+  }
+}

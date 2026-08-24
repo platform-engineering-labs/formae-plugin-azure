@@ -1,0 +1,109 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.component
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::Component"
+const apiVersion = "2020-02-02"
+
+open class ComponentResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ComponentResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ComponentResolvable = (this) {
+        property = "name"
+    }
+    /// Application ID (a GUID Azure assigns), used by the Application Insights
+    /// query API. This is NOT the ingestion key.
+    hidden appId: ComponentResolvable = (this) {
+        property = "appId"
+    }
+}
+
+/// An Application Insights component (workspace-based).
+///
+/// Classic, non-workspace components are retired, so `workspaceResourceId` is
+/// required and `ingestionMode` defaults to "LogAnalytics".
+///
+/// The `instrumentationKey` and `connectionString` are deliberately NOT surfaced
+/// as properties. ARM does return them on read, but they are ingestion
+/// credentials, and this plugin has no sensitive-output mechanism — a plain
+/// property would write them into resource state in the clear. Read them out of
+/// band (`az monitor app-insights component show`) when wiring an application.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Component extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM id of the Log Analytics workspace backing this component,
+    /// e.g. `workspaceResourceId = law.res.id`.
+    @azure.FieldHint { required = true }
+    workspaceResourceId: String(length >= 1)|formae.Resolvable
+
+    /// The kind of app being monitored — free-form label Azure surfaces in the
+    /// portal, e.g. "web", "other", "java".
+    @azure.FieldHint { createOnly = true }
+    kind: String = "web"
+
+    /// Telemetry flavour. "web" for request/dependency telemetry, "other" for
+    /// plain custom telemetry.
+    @azure.FieldHint { createOnly = true }
+    applicationType: ("web"|"other") = "web"
+
+    /// Where telemetry is ingested. Workspace-based components use "LogAnalytics".
+    @azure.FieldHint { hasProviderDefault = true }
+    ingestionMode: ("LogAnalytics"|"ApplicationInsights"|"ApplicationInsightsWithDiagnosticSettings")?
+
+    /// Telemetry retention in days, e.g. 30, 90, 730.
+    @azure.FieldHint { hasProviderDefault = true }
+    retentionInDays: Int?
+
+    /// Percentage of telemetry sampled, 0-100. 100 keeps everything.
+    @azure.FieldHint { hasProviderDefault = true }
+    samplingPercentage: Number?
+
+    /// Turn off ingestion keys, leaving Entra ID as the only way to send telemetry.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccessForIngestion: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccessForQuery: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    appId: String?
+
+    hidden parent = this
+
+    hidden res: ComponentResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

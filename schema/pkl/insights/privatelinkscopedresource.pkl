@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.privatelinkscopedresource
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::PrivateLinkScopedResource"
+const apiVersion = "2021-09-01"
+
+open class PrivateLinkScopedResourceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrivateLinkScopedResourceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrivateLinkScopedResourceResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Puts one monitoring resource — a Log Analytics workspace or an Application
+/// Insights component — inside an Azure Monitor Private Link Scope. Until a resource
+/// is scoped this way, a private endpoint on the scope cannot reach it.
+///
+/// Free — the link carries no charge, and the private endpoint that makes it useful
+/// is a separate resource that does.
+///
+/// The link is one-directional bookkeeping: it does not move or alter the linked
+/// resource, and deleting it only removes the association.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Insights::PrivateLinkScope"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "scopeName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class PrivateLinkScopedResource extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the private link scope this link belongs to.
+    @azure.FieldHint { required = true; createOnly = true }
+    scopeName: String(length >= 1 && length <= 255)|formae.Resolvable
+
+    /// ARM ID of the workspace or component being scoped. Immutable — ARM refuses a
+    /// PUT that swaps the target:
+    ///
+    ///   BadRequest: Cannot change the linked resource id of the resource from
+    ///   '<old>' to '<new>'
+    ///
+    /// so re-pointing a link means replacing this resource. Every field here is
+    /// createOnly, which makes the resource immutable as a whole.
+    @azure.FieldHint { required = true; createOnly = true }
+    linkedResourceId: (String|formae.Resolvable)
+
+    hidden parent = this
+
+    hidden res: PrivateLinkScopedResourceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

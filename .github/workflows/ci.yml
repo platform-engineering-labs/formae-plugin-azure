@@ -192,6 +192,30 @@ jobs:
           - vnet-peering
           - local-network-gateway
           - traffic-manager-profile
+          # --- Azure Monitor alerting. Action groups and activity log alerts are free;
+          # a metric alert and a scheduled query rule are ~$0.10-0.15/month each and
+          # are deleted by the run.
+          - action-group
+          - activity-log-alert
+          - metric-alert
+          - scheduled-query-rule
+          # --- Azure Monitor Agent ingestion. Both free; nothing is collected because
+          # no machine is associated with the rule.
+          - data-collection-endpoint
+          - data-collection-rule
+          # --- Azure Monitor private link. Free: the scope and its scoped resources
+          # carry no charge, and the private endpoint that would bill is not created.
+          - private-link-scope
+          - private-link-scoped-resource
+          # --- Log Analytics and Application Insights. The workspace is PerGB2018 with
+          # a 1 GB daily cap and nothing sends data to it; destroy soft-deletes it for
+          # 14 days, so fixtures carry the run ID in the name.
+          - log-analytics-workspace
+          - app-insights-component
+          - diagnostic-setting
+          - saved-search
+          - data-export
+          - linked-storage-account
           # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
           # a managed environment takes ~5 min to provision (container-app builds on top),
           # exceeding the CI command timeout — same class as the AKS extension. Both are

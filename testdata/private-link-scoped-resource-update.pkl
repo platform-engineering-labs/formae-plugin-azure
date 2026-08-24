@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/privatelinkscope.pkl" as privatelinkscope
+import "@azure/insights/privatelinkscopedresource.pkl" as privatelinkscopedresource
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "amplsr-test-rg"
+  name = "formae-plugin-sdk-test-amplsr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The scope is free and inert without a private endpoint, and location must be the
+// literal "global".
+local scope = new privatelinkscope.PrivateLinkScope {
+  label = "amplsr-test-scope"
+  name = "formae-plugin-sdk-test-amplsr-ampls-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "global"
+  ingestionAccessMode = "Open"
+  queryAccessMode = "Open"
+}
+
+// The resource being scoped. 30-day retention is what the PerGB2018 base price
+// includes and the 1 GB cap bounds ingestion; nothing sends data here. Destroy
+// soft-deletes it for 14 days, hence the run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "amplsr-test-law"
+  name = "fpsdt-amplsr-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+// Second target so the update can re-point the link at something else.
+local workspaceTwo = new workspace.Workspace {
+  label = "amplsr-test-law-2"
+  name = "fpsdt-amplsr-law2-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  scope
+
+  workspaceRes
+
+  workspaceTwo
+
+  // Free. Pure bookkeeping: it puts the workspace inside the scope so a private
+  // endpoint could reach it, without moving or altering the workspace itself.
+  new privatelinkscopedresource.PrivateLinkScopedResource {
+    label = "plugin-sdk-test-private-link-scoped-resource"
+    name = "formae-plugin-sdk-test-amplsr-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    scopeName = scope.res.name
+    linkedResourceId = workspaceTwo.res.id
+  }
+}

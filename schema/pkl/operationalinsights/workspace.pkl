@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.workspace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::Workspace"
+const apiVersion = "2022-10-01"
+
+/// Pricing tier. `PerGB2018` is the current pay-as-you-go default; `Free`,
+/// `Standard`, `Standalone`, `PerNode` and `Premium` are legacy tiers that are
+/// unavailable on subscriptions that never used them.
+class SKU {
+    name: "PerGB2018"|"CapacityReservation"|"Free"|"LACluster"|"PerNode"|"Premium"|"Standalone"|"Standard" = "PerGB2018"
+
+    /// Reserved daily capacity in GB. Only valid with `CapacityReservation`.
+    capacityReservationLevel: Int?
+}
+
+open class WorkspaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WorkspaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WorkspaceResolvable = (this) {
+        property = "name"
+    }
+    /// Workspace GUID, the "workspace ID" agents are configured with.
+    hidden customerId: WorkspaceResolvable = (this) {
+        property = "customerId"
+    }
+}
+
+/// A Log Analytics workspace — the ingestion and query target that diagnostic
+/// settings, AKS monitoring and Application Insights components point at.
+///
+/// Deleting a workspace soft-deletes it: the name stays reserved and the data
+/// recoverable for 14 days. The primary and secondary shared keys are NOT exposed
+/// as properties — ARM returns them only from a separate SharedKeys call, so
+/// surfacing them would persist live credentials in resource state.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Workspace extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 4 && length <= 63 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-]+[A-Za-z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { hasProviderDefault = true }
+    sku: SKU?
+
+    /// Data retention in days: 30-730 on `PerGB2018` (7 on `Free`). 30 days is
+    /// included in the base price; longer retention is billed extra.
+    @azure.FieldHint { hasProviderDefault = true }
+    retentionInDays: Int?
+
+    /// Daily ingestion cap in GB. Omit for uncapped; `-1` also means uncapped.
+    @azure.FieldHint { hasProviderDefault = true }
+    dailyQuotaGb: Number?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccessForIngestion: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccessForQuery: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    customerId: String?
+
+    hidden parent = this
+
+    hidden res: WorkspaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.savedsearch
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::SavedSearch"
+const apiVersion = "2020-08-01"
+
+open class SavedSearchResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SavedSearchResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SavedSearchResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A stored KQL query in a Log Analytics workspace, either a saved search or —
+/// when `functionAlias` is set — a reusable function other queries can call.
+///
+/// Free: saved searches carry no charge of their own, and running one bills the
+/// workspace's normal query costs only when it is actually executed.
+///
+/// The API is fully synchronous — create, update and delete all return a final
+/// answer — so no operation ever reports as in progress.
+///
+/// `Tags` in the ARM model is a saved-search-specific name/value list, not ARM
+/// resource tags, and is not modelled: it collides with the plugin's resource-tag
+/// convention and carries no behaviour.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class SavedSearch extends formae.Resource {
+
+    /// The saved search ID, used as the resource name in ARM.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// Grouping shown in the portal's query list.
+    @azure.FieldHint { required = true }
+    category: String
+
+    @azure.FieldHint { required = true }
+    displayName: String
+
+    /// The KQL query itself.
+    @azure.FieldHint { required = true }
+    query: String
+
+    /// Name this query can be called by from other queries. Setting it turns the
+    /// saved search into a workspace function.
+    @azure.FieldHint { }
+    functionAlias: String?
+
+    /// Parameter declarations for a function, in KQL syntax
+    /// (e.g. `wintype:string = "Windows"`). Only meaningful with `functionAlias`.
+    @azure.FieldHint { }
+    functionParameters: String?
+
+    /// Schema version of the saved search. The service assigns 2 when unset.
+    @azure.FieldHint { hasProviderDefault = true }
+    version: Int?
+
+    hidden parent = this
+
+    hidden res: SavedSearchResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
