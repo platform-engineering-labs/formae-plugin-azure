@@ -103,6 +103,7 @@ type Client struct {
 	AvailabilitySetsClient                   *armcompute.AvailabilitySetsClient
 	DisksClient                              *armcompute.DisksClient
 	SnapshotsClient                          *armcompute.SnapshotsClient
+	ImagesClient                             *armcompute.ImagesClient
 	GalleriesClient                          *armcompute.GalleriesClient
 	GalleryImagesClient                      *armcompute.GalleryImagesClient
 	GalleryApplicationsClient                *armcompute.GalleryApplicationsClient
@@ -440,6 +441,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	snapshotsClient, err := armcompute.NewSnapshotsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	imagesClient, err := armcompute.NewImagesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -1074,6 +1080,7 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		AvailabilitySetsClient:                   availabilitySetsClient,
 		DisksClient:                              disksClient,
 		SnapshotsClient:                          snapshotsClient,
+		ImagesClient:                             imagesClient,
 		GalleriesClient:                          galleriesClient,
 		GalleryImagesClient:                      galleryImagesClient,
 		GalleryApplicationsClient:                galleryApplicationsClient,

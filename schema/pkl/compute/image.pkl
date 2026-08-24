@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.image
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::Image"
+const apiVersion = "2023-09-01"
+
+/// The OS disk of a managed image. Source it from either a snapshot or a managed
+/// disk — exactly one of `snapshotId` / `managedDiskId`.
+///
+/// Only these four fields are modelled on purpose: ARM fills in `caching`,
+/// `storageAccountType` and `diskSizeGB` on the nested disk, and provider defaults
+/// are not honoured below the top level of a resource, so modelling them would show
+/// as permanent drift.
+class ImageOsDisk {
+    @azure.FieldHint { required = true; createOnly = true }
+    osType: "Linux"|"Windows"
+
+    /// Use `Generalized` for images a VM will be created from.
+    @azure.FieldHint { required = true; createOnly = true }
+    osState: "Generalized"|"Specialized"
+
+    @azure.FieldHint { createOnly = true }
+    snapshotId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { createOnly = true }
+    managedDiskId: (String|formae.Resolvable)?
+}
+
+class ImageStorageProfile {
+    @azure.FieldHint { required = true; createOnly = true }
+    osDisk: ImageOsDisk
+}
+
+open class ImageResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ImageResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ImageResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A managed image — the pre-Compute-Gallery way to capture a generalized OS disk
+/// so VMs can be created from it. For new work prefer
+/// `AZURE::Compute::GalleryImage`, which supports versioning and replication.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Image extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex(#"^[a-zA-Z0-9][-a-zA-Z0-9_.]*[a-zA-Z0-9_]$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Disks that make up the image. Immutable — repointing an image means replacing
+    /// it, so the PATCH carries tags only.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageProfile: ImageStorageProfile
+
+    /// Hyper-V generation of VMs created from this image. Azure deduces it from the
+    /// source when the source is a managed disk or snapshot.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    hyperVGeneration: ("V1"|"V2")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ImageResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
