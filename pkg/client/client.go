@@ -13,27 +13,47 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appconfiguration/armappconfiguration"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/applicationinsights/armapplicationinsights"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v3"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v3"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dashboard/armdashboard"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dataprotection/armdataprotection/v3"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dnsresolver/armdnsresolver"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/iothub/armiothub"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kubernetesconfiguration/armkubernetesconfiguration"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/netapp/armnetapp/v7"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/notificationhubs/armnotificationhubs"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v3"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/relay/armrelay"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armpolicy"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/signalr/armsignalr"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/webpubsub/armwebpubsub"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
 )
 
@@ -54,77 +74,140 @@ const (
 // When adding new resource types, add new typed client fields here (e.g., StorageClient,
 // NetworkClient) rather than using the generic armClient for operations.
 type Client struct {
-	Config                               *config.Config
-	ResourceGroupsClient                 *armresources.ResourceGroupsClient
-	VirtualNetworksClient                *armnetwork.VirtualNetworksClient
-	SubnetsClient                        *armnetwork.SubnetsClient
-	SecurityGroupsClient                 *armnetwork.SecurityGroupsClient
-	ApplicationSecurityGroupsClient      *armnetwork.ApplicationSecurityGroupsClient
-	IPGroupsClient                       *armnetwork.IPGroupsClient
-	PublicIPAddressesClient              *armnetwork.PublicIPAddressesClient
-	PublicIPPrefixesClient               *armnetwork.PublicIPPrefixesClient
-	NatGatewaysClient                    *armnetwork.NatGatewaysClient
-	LoadBalancersClient                  *armnetwork.LoadBalancersClient
-	ApplicationGatewaysClient            *armnetwork.ApplicationGatewaysClient
-	WebApplicationFirewallPoliciesClient *armnetwork.WebApplicationFirewallPoliciesClient
-	InterfacesClient                     *armnetwork.InterfacesClient
-	PrivateEndpointsClient               *armnetwork.PrivateEndpointsClient
-	PrivateDnsZoneGroupsClient           *armnetwork.PrivateDNSZoneGroupsClient
-	PrivateDnsZonesClient                *armprivatedns.PrivateZonesClient
-	PrivateDnsVNetLinksClient            *armprivatedns.VirtualNetworkLinksClient
-	PrivateDnsRecordSetsClient           *armprivatedns.RecordSetsClient
-	DnsZonesClient                       *armdns.ZonesClient
-	RecordSetsClient                     *armdns.RecordSetsClient
-	VirtualMachinesClient                *armcompute.VirtualMachinesClient
-	AvailabilitySetsClient               *armcompute.AvailabilitySetsClient
-	DisksClient                          *armcompute.DisksClient
-	ProximityPlacementGroupsClient       *armcompute.ProximityPlacementGroupsClient
-	SSHPublicKeysClient                  *armcompute.SSHPublicKeysClient
-	VMScaleSetsClient                    *armcompute.VirtualMachineScaleSetsClient
-	StorageAccountsClient                *armstorage.AccountsClient
-	BlobContainersClient                 *armstorage.BlobContainersClient
-	StorageQueuesClient                  *armstorage.QueueClient
-	StorageTablesClient                  *armstorage.TableClient
-	FileSharesClient                     *armstorage.FileSharesClient
-	VaultsClient                         *armkeyvault.VaultsClient
-	ManagedClustersClient                *armcontainerservice.ManagedClustersClient
-	MaintenanceConfigurationsClient      *armcontainerservice.MaintenanceConfigurationsClient
-	TrustedAccessRoleBindingsClient      *armcontainerservice.TrustedAccessRoleBindingsClient
-	ExtensionsClient                     *armkubernetesconfiguration.ExtensionsClient
-	FluxConfigurationsClient             *armkubernetesconfiguration.FluxConfigurationsClient
-	RegistriesClient                     *armcontainerregistry.RegistriesClient
-	UserAssignedIdentitiesClient         *armmsi.UserAssignedIdentitiesClient
-	FederatedIdentityCredentialsClient   *armmsi.FederatedIdentityCredentialsClient
-	RoleAssignmentsClient                *armauthorization.RoleAssignmentsClient
-	FlexibleServersClient                *armpostgresqlflexibleservers.ServersClient
-	FirewallRulesClient                  *armpostgresqlflexibleservers.FirewallRulesClient
-	DatabasesClient                      *armpostgresqlflexibleservers.DatabasesClient
-	ConfigurationsClient                 *armpostgresqlflexibleservers.ConfigurationsClient
-	SQLServersClient                     *armsql.ServersClient
-	SQLDatabasesClient                   *armsql.DatabasesClient
-	SQLFirewallRulesClient               *armsql.FirewallRulesClient
-	SQLServerAzureADAdministratorsClient *armsql.ServerAzureADAdministratorsClient
-	SQLServerDNSAliasesClient            *armsql.ServerDNSAliasesClient
-	SQLOutboundFirewallRulesClient       *armsql.OutboundFirewallRulesClient
-	SQLVirtualNetworkRulesClient         *armsql.VirtualNetworkRulesClient
-	RouteTablesClient                    *armnetwork.RouteTablesClient
-	VirtualMachineExtensionsClient       *armcompute.VirtualMachineExtensionsClient
-	EventHubNamespacesClient             *armeventhub.NamespacesClient
-	EventHubsClient                      *armeventhub.EventHubsClient
-	EventHubConsumerGroupsClient         *armeventhub.ConsumerGroupsClient
-	ServiceBusNamespacesClient           *armservicebus.NamespacesClient
-	ServiceBusQueuesClient               *armservicebus.QueuesClient
-	ServiceBusTopicsClient               *armservicebus.TopicsClient
-	ServiceBusSubscriptionsClient        *armservicebus.SubscriptionsClient
-	EventGridSystemTopicsClient          *armeventgrid.SystemTopicsClient
-	EventGridTopicsClient                *armeventgrid.TopicsClient
-	EventGridDomainsClient               *armeventgrid.DomainsClient
-	EventGridDomainTopicsClient          *armeventgrid.DomainTopicsClient
-	CognitiveAccountsClient              *armcognitiveservices.AccountsClient
-	GrafanaClient                        *armdashboard.GrafanaClient
-	GrafanaManagedPrivateEndpointsClient *armdashboard.ManagedPrivateEndpointsClient
-	ManagedEnvironmentsClient            *armappcontainers.ManagedEnvironmentsClient
-	ContainerAppsClient                  *armappcontainers.ContainerAppsClient
+	Config                                   *config.Config
+	ResourceGroupsClient                     *armresources.ResourceGroupsClient
+	VirtualNetworksClient                    *armnetwork.VirtualNetworksClient
+	VirtualNetworkPeeringsClient             *armnetwork.VirtualNetworkPeeringsClient
+	FirewallPoliciesClient                   *armnetwork.FirewallPoliciesClient
+	FirewallPolicyRuleCollectionGroupsClient *armnetwork.FirewallPolicyRuleCollectionGroupsClient
+	LocalNetworkGatewaysClient               *armnetwork.LocalNetworkGatewaysClient
+	SubnetsClient                            *armnetwork.SubnetsClient
+	SecurityGroupsClient                     *armnetwork.SecurityGroupsClient
+	ApplicationSecurityGroupsClient          *armnetwork.ApplicationSecurityGroupsClient
+	IPGroupsClient                           *armnetwork.IPGroupsClient
+	PublicIPAddressesClient                  *armnetwork.PublicIPAddressesClient
+	PublicIPPrefixesClient                   *armnetwork.PublicIPPrefixesClient
+	NatGatewaysClient                        *armnetwork.NatGatewaysClient
+	LoadBalancersClient                      *armnetwork.LoadBalancersClient
+	ApplicationGatewaysClient                *armnetwork.ApplicationGatewaysClient
+	WebApplicationFirewallPoliciesClient     *armnetwork.WebApplicationFirewallPoliciesClient
+	InterfacesClient                         *armnetwork.InterfacesClient
+	PrivateEndpointsClient                   *armnetwork.PrivateEndpointsClient
+	PrivateDnsZoneGroupsClient               *armnetwork.PrivateDNSZoneGroupsClient
+	PrivateDnsZonesClient                    *armprivatedns.PrivateZonesClient
+	PrivateDnsVNetLinksClient                *armprivatedns.VirtualNetworkLinksClient
+	PrivateDnsRecordSetsClient               *armprivatedns.RecordSetsClient
+	DnsZonesClient                           *armdns.ZonesClient
+	RecordSetsClient                         *armdns.RecordSetsClient
+	VirtualMachinesClient                    *armcompute.VirtualMachinesClient
+	AvailabilitySetsClient                   *armcompute.AvailabilitySetsClient
+	DisksClient                              *armcompute.DisksClient
+	SnapshotsClient                          *armcompute.SnapshotsClient
+	GalleriesClient                          *armcompute.GalleriesClient
+	GalleryImagesClient                      *armcompute.GalleryImagesClient
+	GalleryApplicationsClient                *armcompute.GalleryApplicationsClient
+	DiskAccessesClient                       *armcompute.DiskAccessesClient
+	ProximityPlacementGroupsClient           *armcompute.ProximityPlacementGroupsClient
+	SSHPublicKeysClient                      *armcompute.SSHPublicKeysClient
+	VMScaleSetsClient                        *armcompute.VirtualMachineScaleSetsClient
+	StorageAccountsClient                    *armstorage.AccountsClient
+	StorageEncryptionScopesClient            *armstorage.EncryptionScopesClient
+	BlobContainersClient                     *armstorage.BlobContainersClient
+	StorageQueuesClient                      *armstorage.QueueClient
+	StorageTablesClient                      *armstorage.TableClient
+	FileSharesClient                         *armstorage.FileSharesClient
+	StorageManagementPoliciesClient          *armstorage.ManagementPoliciesClient
+	VaultsClient                             *armkeyvault.VaultsClient
+	ManagedClustersClient                    *armcontainerservice.ManagedClustersClient
+	MaintenanceConfigurationsClient          *armcontainerservice.MaintenanceConfigurationsClient
+	TrustedAccessRoleBindingsClient          *armcontainerservice.TrustedAccessRoleBindingsClient
+	ExtensionsClient                         *armkubernetesconfiguration.ExtensionsClient
+	FluxConfigurationsClient                 *armkubernetesconfiguration.FluxConfigurationsClient
+	RegistriesClient                         *armcontainerregistry.RegistriesClient
+	ContainerRegistryWebhooksClient          *armcontainerregistry.WebhooksClient
+	ContainerRegistryScopeMapsClient         *armcontainerregistry.ScopeMapsClient
+	ContainerRegistryTokensClient            *armcontainerregistry.TokensClient
+	UserAssignedIdentitiesClient             *armmsi.UserAssignedIdentitiesClient
+	FederatedIdentityCredentialsClient       *armmsi.FederatedIdentityCredentialsClient
+	RoleAssignmentsClient                    *armauthorization.RoleAssignmentsClient
+	RoleDefinitionsClient                    *armauthorization.RoleDefinitionsClient
+	PolicyDefinitionsClient                  *armpolicy.DefinitionsClient
+	PolicyAssignmentsClient                  *armpolicy.AssignmentsClient
+	PolicySetDefinitionsClient               *armpolicy.SetDefinitionsClient
+	FlexibleServersClient                    *armpostgresqlflexibleservers.ServersClient
+	FirewallRulesClient                      *armpostgresqlflexibleservers.FirewallRulesClient
+	DatabasesClient                          *armpostgresqlflexibleservers.DatabasesClient
+	ConfigurationsClient                     *armpostgresqlflexibleservers.ConfigurationsClient
+	SQLServersClient                         *armsql.ServersClient
+	SQLDatabasesClient                       *armsql.DatabasesClient
+	SQLElasticPoolsClient                    *armsql.ElasticPoolsClient
+	SQLFirewallRulesClient                   *armsql.FirewallRulesClient
+	SQLServerAzureADAdministratorsClient     *armsql.ServerAzureADAdministratorsClient
+	SQLServerDNSAliasesClient                *armsql.ServerDNSAliasesClient
+	SQLOutboundFirewallRulesClient           *armsql.OutboundFirewallRulesClient
+	SQLVirtualNetworkRulesClient             *armsql.VirtualNetworkRulesClient
+	RouteTablesClient                        *armnetwork.RouteTablesClient
+	VirtualMachineExtensionsClient           *armcompute.VirtualMachineExtensionsClient
+	EventHubNamespacesClient                 *armeventhub.NamespacesClient
+	EventHubSchemaRegistryClient             *armeventhub.SchemaRegistryClient
+	EventHubsClient                          *armeventhub.EventHubsClient
+	EventHubConsumerGroupsClient             *armeventhub.ConsumerGroupsClient
+	ServiceBusNamespacesClient               *armservicebus.NamespacesClient
+	AppConfigurationStoresClient             *armappconfiguration.ConfigurationStoresClient
+	LogAnalyticsWorkspacesClient             *armoperationalinsights.WorkspacesClient
+	LogAnalyticsSavedSearchesClient          *armoperationalinsights.SavedSearchesClient
+	LogAnalyticsDataExportsClient            *armoperationalinsights.DataExportsClient
+	LogAnalyticsLinkedStorageAccountsClient  *armoperationalinsights.LinkedStorageAccountsClient
+	MonitorActionGroupsClient                *armmonitor.ActionGroupsClient
+	MonitorActivityLogAlertsClient           *armmonitor.ActivityLogAlertsClient
+	MonitorMetricAlertsClient                *armmonitor.MetricAlertsClient
+	MonitorScheduledQueryRulesClient         *armmonitor.ScheduledQueryRulesClient
+	MonitorDiagnosticSettingsClient          *armmonitor.DiagnosticSettingsClient
+	MonitorDataCollectionEndpointsClient     *armmonitor.DataCollectionEndpointsClient
+	MonitorDataCollectionRulesClient         *armmonitor.DataCollectionRulesClient
+	MonitorPrivateLinkScopesClient           *armmonitor.PrivateLinkScopesClient
+	MonitorPrivateLinkScopedResourcesClient  *armmonitor.PrivateLinkScopedResourcesClient
+	AppInsightsComponentsClient              *armapplicationinsights.ComponentsClient
+	ContainerGroupsClient                    *armcontainerinstance.ContainerGroupsClient
+	MySQLFlexibleServersClient               *armmysqlflexibleservers.ServersClient
+	CosmosDatabaseAccountsClient             *armcosmos.DatabaseAccountsClient
+	SearchServicesClient                     *armsearch.ServicesClient
+	BatchAccountClient                       *armbatch.AccountClient
+	DNSResolversClient                       *armdnsresolver.DNSResolversClient
+	DNSResolverInboundEndpointsClient        *armdnsresolver.InboundEndpointsClient
+	DNSResolverOutboundEndpointsClient       *armdnsresolver.OutboundEndpointsClient
+	DNSForwardingRulesetsClient              *armdnsresolver.DNSForwardingRulesetsClient
+	DNSForwardingRulesClient                 *armdnsresolver.ForwardingRulesClient
+	DNSForwardingRulesetVNetLinksClient      *armdnsresolver.VirtualNetworkLinksClient
+	DNSResolverPoliciesClient                *armdnsresolver.PoliciesClient
+	DNSResolverDomainListsClient             *armdnsresolver.DomainListsClient
+	DNSSecurityRulesClient                   *armdnsresolver.DNSSecurityRulesClient
+	DNSResolverPolicyVNetLinksClient         *armdnsresolver.PolicyVirtualNetworkLinksClient
+	RelayNamespacesClient                    *armrelay.NamespacesClient
+	RelayHybridConnectionsClient             *armrelay.HybridConnectionsClient
+	NotificationHubNamespacesClient          *armnotificationhubs.NamespacesClient
+	NotificationHubsClient                   *armnotificationhubs.Client
+	NetAppAccountsClient                     *armnetapp.AccountsClient
+	RedisClient                              *armredis.Client
+	IotHubResourceClient                     *armiothub.ResourceClient
+	TrafficManagerProfilesClient             *armtrafficmanager.ProfilesClient
+	BackupVaultsClient                       *armdataprotection.BackupVaultsClient
+	SignalRClient                            *armsignalr.Client
+	WebPubSubClient                          *armwebpubsub.Client
+	ServiceBusQueuesClient                   *armservicebus.QueuesClient
+	ServiceBusTopicsClient                   *armservicebus.TopicsClient
+	ServiceBusSubscriptionsClient            *armservicebus.SubscriptionsClient
+	ServiceBusRulesClient                    *armservicebus.RulesClient
+	EventGridSystemTopicsClient              *armeventgrid.SystemTopicsClient
+	EventGridTopicsClient                    *armeventgrid.TopicsClient
+	EventGridEventSubscriptionsClient        *armeventgrid.EventSubscriptionsClient
+	EventGridDomainsClient                   *armeventgrid.DomainsClient
+	EventGridDomainTopicsClient              *armeventgrid.DomainTopicsClient
+	CognitiveAccountsClient                  *armcognitiveservices.AccountsClient
+	GrafanaClient                            *armdashboard.GrafanaClient
+	GrafanaManagedPrivateEndpointsClient     *armdashboard.ManagedPrivateEndpointsClient
+	ManagedEnvironmentsClient                *armappcontainers.ManagedEnvironmentsClient
+	ContainerAppsClient                      *armappcontainers.ContainerAppsClient
 	// Azure Front Door Standard (Microsoft.Cdn AFD) clients.
 	CdnProfilesClient         *armcdn.ProfilesClient
 	CdnAFDEndpointsClient     *armcdn.AFDEndpointsClient
@@ -227,6 +310,26 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	vnetClient, err := armnetwork.NewVirtualNetworksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNetworkPeeringsClient, err := armnetwork.NewVirtualNetworkPeeringsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	firewallPoliciesClient, err := armnetwork.NewFirewallPoliciesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	firewallPolicyRuleCollectionGroupsClient, err := armnetwork.NewFirewallPolicyRuleCollectionGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	localNetworkGatewaysClient, err := armnetwork.NewLocalNetworkGatewaysClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -336,6 +439,31 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	snapshotsClient, err := armcompute.NewSnapshotsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	galleriesClient, err := armcompute.NewGalleriesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	galleryImagesClient, err := armcompute.NewGalleryImagesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	galleryApplicationsClient, err := armcompute.NewGalleryApplicationsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	diskAccessesClient, err := armcompute.NewDiskAccessesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	proximityPlacementGroupsClient, err := armcompute.NewProximityPlacementGroupsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -356,6 +484,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	storageEncryptionScopesClient, err := armstorage.NewEncryptionScopesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	blobContainersClient, err := armstorage.NewBlobContainersClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -372,6 +505,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	fileSharesClient, err := armstorage.NewFileSharesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	storageManagementPoliciesClient, err := armstorage.NewManagementPoliciesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -411,6 +549,21 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	containerRegistryWebhooksClient, err := armcontainerregistry.NewWebhooksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	containerRegistryScopeMapsClient, err := armcontainerregistry.NewScopeMapsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	containerRegistryTokensClient, err := armcontainerregistry.NewTokensClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -422,6 +575,27 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Role definitions are scope-addressed, so this client takes no subscription.
+	roleDefinitionsClient, err := armauthorization.NewRoleDefinitionsClient(cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	policyDefinitionsClient, err := armpolicy.NewDefinitionsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	policyAssignmentsClient, err := armpolicy.NewAssignmentsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	policySetDefinitionsClient, err := armpolicy.NewSetDefinitionsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -452,6 +626,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	sqlDatabasesClient, err := armsql.NewDatabasesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	sqlElasticPoolsClient, err := armsql.NewElasticPoolsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -496,6 +675,11 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	eventHubSchemaRegistryClient, err := armeventhub.NewSchemaRegistryClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	eventHubsClient, err := armeventhub.NewEventHubsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
@@ -507,6 +691,244 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	serviceBusNamespacesClient, err := armservicebus.NewNamespacesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	appConfigurationStoresClient, err := armappconfiguration.NewConfigurationStoresClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	logAnalyticsWorkspacesClient, err := armoperationalinsights.NewWorkspacesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	logAnalyticsSavedSearchesClient, err := armoperationalinsights.NewSavedSearchesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	logAnalyticsDataExportsClient, err := armoperationalinsights.NewDataExportsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	logAnalyticsLinkedStorageAccountsClient, err := armoperationalinsights.NewLinkedStorageAccountsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	monitorActionGroupsClient, err := armmonitor.NewActionGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	monitorActivityLogAlertsClient, err := armmonitor.NewActivityLogAlertsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// armmonitor v0.13.0 defaults its MetricAlerts client to api-version 2026-01-01,
+	// which ARM rejects outright for this type:
+	//
+	//	NoRegisteredProviderFound: No registered resource provider found for
+	//	location 'Global' and API version '2026-01-01' for type 'metricalerts'.
+	//	The supported api-versions are '2017-09-01-preview, 2018-03-01,
+	//	2024-01-01-preview, 2024-03-01-preview'.
+	//
+	// Pin the version this plugin's schema documents. Only this client needs the
+	// override, so it gets its own options rather than changing the shared ones.
+	metricAlertOptions := &arm.ClientOptions{
+		ClientOptions: azcore.ClientOptions{APIVersion: "2018-03-01"},
+	}
+	monitorMetricAlertsClient, err := armmonitor.NewMetricAlertsClient(cfg.SubscriptionId, cred, metricAlertOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Pinned for the same reason as the metric alerts client above: this pre-1.0
+	// module's default api-version runs ahead of what the service accepts. 2021-08-01
+	// is the GA version the schema documents.
+	scheduledQueryRuleOptions := &arm.ClientOptions{
+		ClientOptions: azcore.ClientOptions{APIVersion: "2021-08-01"},
+	}
+	monitorScheduledQueryRulesClient, err := armmonitor.NewScheduledQueryRulesClient(cfg.SubscriptionId, cred, scheduledQueryRuleOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	monitorDiagnosticSettingsClient, err := armmonitor.NewDiagnosticSettingsClient(cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unlike MetricAlerts and ScheduledQueryRules above, this client's default
+	// api-version (2024-03-11) is the newest ARM lists for dataCollectionEndpoints,
+	// so it needs no pin.
+	monitorDataCollectionEndpointsClient, err := armmonitor.NewDataCollectionEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Same api-version story as the endpoints client above: the SDK default
+	// (2024-03-11) is ARM's newest for dataCollectionRules, so no pin.
+	monitorDataCollectionRulesClient, err := armmonitor.NewDataCollectionRulesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// armmonitor v0.13.0 sends api-version 2023-06-01 for private link scopes, which
+	// ARM does not offer at all for this type — its list runs 2023-06-01-PREVIEW,
+	// 2021-09-01, 2021-07-01-preview, 2019-10-17-preview. Pin the newest stable one.
+	privateLinkScopeOptions := &arm.ClientOptions{
+		ClientOptions: azcore.ClientOptions{APIVersion: "2021-09-01"},
+	}
+	monitorPrivateLinkScopesClient, err := armmonitor.NewPrivateLinkScopesClient(cfg.SubscriptionId, cred, privateLinkScopeOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Same pin as the scope above, for the same reason: the SDK default 2023-06-01
+	// does not exist for privateLinkScopes/scopedResources either — only
+	// 2023-06-01-preview and older.
+	monitorPrivateLinkScopedResourcesClient, err := armmonitor.NewPrivateLinkScopedResourcesClient(cfg.SubscriptionId, cred, privateLinkScopeOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	appInsightsComponentsClient, err := armapplicationinsights.NewComponentsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	containerGroupsClient, err := armcontainerinstance.NewContainerGroupsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	mySQLFlexibleServersClient, err := armmysqlflexibleservers.NewServersClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cosmosDatabaseAccountsClient, err := armcosmos.NewDatabaseAccountsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	searchServicesClient, err := armsearch.NewServicesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	batchAccountClient, err := armbatch.NewAccountClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsResolversClient, err := armdnsresolver.NewDNSResolversClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsResolverInboundEndpointsClient, err := armdnsresolver.NewInboundEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsResolverOutboundEndpointsClient, err := armdnsresolver.NewOutboundEndpointsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsForwardingRulesetsClient, err := armdnsresolver.NewDNSForwardingRulesetsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsForwardingRulesClient, err := armdnsresolver.NewForwardingRulesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsForwardingRulesetVNetLinksClient, err := armdnsresolver.NewVirtualNetworkLinksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsResolverPoliciesClient, err := armdnsresolver.NewPoliciesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsResolverDomainListsClient, err := armdnsresolver.NewDomainListsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsSecurityRulesClient, err := armdnsresolver.NewDNSSecurityRulesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsResolverPolicyVNetLinksClient, err := armdnsresolver.NewPolicyVirtualNetworkLinksClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	relayNamespacesClient, err := armrelay.NewNamespacesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	relayHybridConnectionsClient, err := armrelay.NewHybridConnectionsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	notificationHubNamespacesClient, err := armnotificationhubs.NewNamespacesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	notificationHubsClient, err := armnotificationhubs.NewClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	netAppAccountsClient, err := armnetapp.NewAccountsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	redisClient, err := armredis.NewClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	iotHubResourceClient, err := armiothub.NewResourceClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	trafficManagerProfilesClient, err := armtrafficmanager.NewProfilesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	backupVaultsClient, err := armdataprotection.NewBackupVaultsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	signalRClient, err := armsignalr.NewClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	webPubSubClient, err := armwebpubsub.NewClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -526,12 +948,22 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	serviceBusRulesClient, err := armservicebus.NewRulesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	eventGridSystemTopicsClient, err := armeventgrid.NewSystemTopicsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
 
 	eventGridTopicsClient, err := armeventgrid.NewTopicsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	eventGridEventSubscriptionsClient, err := armeventgrid.NewEventSubscriptionsClient(cfg.SubscriptionId, cred, clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -613,87 +1045,150 @@ func buildClient(cfg *config.Config) (*Client, error) {
 	}
 
 	return &Client{
-		Config:                               cfg,
-		ResourceGroupsClient:                 rgClient,
-		VirtualNetworksClient:                vnetClient,
-		SubnetsClient:                        subnetClient,
-		SecurityGroupsClient:                 securityGroupsClient,
-		ApplicationSecurityGroupsClient:      applicationSecurityGroupsClient,
-		IPGroupsClient:                       ipGroupsClient,
-		PublicIPAddressesClient:              publicIPAddressesClient,
-		PublicIPPrefixesClient:               publicIPPrefixesClient,
-		NatGatewaysClient:                    natGatewaysClient,
-		LoadBalancersClient:                  loadBalancersClient,
-		ApplicationGatewaysClient:            applicationGatewaysClient,
-		WebApplicationFirewallPoliciesClient: webApplicationFirewallPoliciesClient,
-		InterfacesClient:                     interfacesClient,
-		PrivateEndpointsClient:               privateEndpointsClient,
-		PrivateDnsZoneGroupsClient:           privateDnsZoneGroupsClient,
-		PrivateDnsZonesClient:                privateDnsZonesClient,
-		PrivateDnsVNetLinksClient:            privateDnsVNetLinksClient,
-		PrivateDnsRecordSetsClient:           privateDnsRecordSetsClient,
-		DnsZonesClient:                       dnsZonesClient,
-		RecordSetsClient:                     recordSetsClient,
-		VirtualMachinesClient:                virtualMachinesClient,
-		AvailabilitySetsClient:               availabilitySetsClient,
-		DisksClient:                          disksClient,
-		ProximityPlacementGroupsClient:       proximityPlacementGroupsClient,
-		SSHPublicKeysClient:                  sshPublicKeysClient,
-		VMScaleSetsClient:                    vmScaleSetsClient,
-		StorageAccountsClient:                storageAccountsClient,
-		BlobContainersClient:                 blobContainersClient,
-		StorageQueuesClient:                  storageQueuesClient,
-		StorageTablesClient:                  storageTablesClient,
-		FileSharesClient:                     fileSharesClient,
-		VaultsClient:                         vaultsClient,
-		ManagedClustersClient:                managedClustersClient,
-		MaintenanceConfigurationsClient:      maintenanceConfigurationsClient,
-		TrustedAccessRoleBindingsClient:      trustedAccessRoleBindingsClient,
-		ExtensionsClient:                     extensionsClient,
-		FluxConfigurationsClient:             fluxConfigurationsClient,
-		RegistriesClient:                     registriesClient,
-		UserAssignedIdentitiesClient:         userAssignedIdentitiesClient,
-		FederatedIdentityCredentialsClient:   federatedIdentityCredentialsClient,
-		RoleAssignmentsClient:                roleAssignmentsClient,
-		FlexibleServersClient:                flexibleServersClient,
-		FirewallRulesClient:                  firewallRulesClient,
-		DatabasesClient:                      databasesClient,
-		ConfigurationsClient:                 configurationsClient,
-		SQLServersClient:                     sqlServersClient,
-		SQLDatabasesClient:                   sqlDatabasesClient,
-		SQLFirewallRulesClient:               sqlFirewallRulesClient,
-		SQLServerAzureADAdministratorsClient: sqlServerAzureADAdministratorsClient,
-		SQLServerDNSAliasesClient:            sqlServerDNSAliasesClient,
-		SQLOutboundFirewallRulesClient:       sqlOutboundFirewallRulesClient,
-		SQLVirtualNetworkRulesClient:         sqlVirtualNetworkRulesClient,
-		RouteTablesClient:                    routeTablesClient,
-		VirtualMachineExtensionsClient:       virtualMachineExtensionsClient,
-		EventHubNamespacesClient:             eventHubNamespacesClient,
-		EventHubsClient:                      eventHubsClient,
-		EventHubConsumerGroupsClient:         eventHubConsumerGroupsClient,
-		ServiceBusNamespacesClient:           serviceBusNamespacesClient,
-		ServiceBusQueuesClient:               serviceBusQueuesClient,
-		ServiceBusTopicsClient:               serviceBusTopicsClient,
-		ServiceBusSubscriptionsClient:        serviceBusSubscriptionsClient,
-		EventGridSystemTopicsClient:          eventGridSystemTopicsClient,
-		EventGridTopicsClient:                eventGridTopicsClient,
-		EventGridDomainsClient:               eventGridDomainsClient,
-		EventGridDomainTopicsClient:          eventGridDomainTopicsClient,
-		CognitiveAccountsClient:              cognitiveAccountsClient,
-		GrafanaClient:                        grafanaClient,
-		GrafanaManagedPrivateEndpointsClient: grafanaManagedPrivateEndpointsClient,
-		ManagedEnvironmentsClient:            managedEnvironmentsClient,
-		ContainerAppsClient:                  containerAppsClient,
-		CdnProfilesClient:                    cdnProfilesClient,
-		CdnAFDEndpointsClient:                cdnAFDEndpointsClient,
-		CdnAFDOriginGroupsClient:             cdnAFDOriginGroupsClient,
-		CdnAFDOriginsClient:                  cdnAFDOriginsClient,
-		CdnRoutesClient:                      cdnRoutesClient,
-		CdnAFDCustomDomainsClient:            cdnAFDCustomDomainsClient,
-		CdnSecretsClient:                     cdnSecretsClient,
-		credential:                           cred,
-		clientOptions:                        clientOptions,
-		armClient:                            armClient,
+		Config:                                   cfg,
+		ResourceGroupsClient:                     rgClient,
+		VirtualNetworksClient:                    vnetClient,
+		VirtualNetworkPeeringsClient:             virtualNetworkPeeringsClient,
+		FirewallPoliciesClient:                   firewallPoliciesClient,
+		FirewallPolicyRuleCollectionGroupsClient: firewallPolicyRuleCollectionGroupsClient,
+		LocalNetworkGatewaysClient:               localNetworkGatewaysClient,
+		SubnetsClient:                            subnetClient,
+		SecurityGroupsClient:                     securityGroupsClient,
+		ApplicationSecurityGroupsClient:          applicationSecurityGroupsClient,
+		IPGroupsClient:                           ipGroupsClient,
+		PublicIPAddressesClient:                  publicIPAddressesClient,
+		PublicIPPrefixesClient:                   publicIPPrefixesClient,
+		NatGatewaysClient:                        natGatewaysClient,
+		LoadBalancersClient:                      loadBalancersClient,
+		ApplicationGatewaysClient:                applicationGatewaysClient,
+		WebApplicationFirewallPoliciesClient:     webApplicationFirewallPoliciesClient,
+		InterfacesClient:                         interfacesClient,
+		PrivateEndpointsClient:                   privateEndpointsClient,
+		PrivateDnsZoneGroupsClient:               privateDnsZoneGroupsClient,
+		PrivateDnsZonesClient:                    privateDnsZonesClient,
+		PrivateDnsVNetLinksClient:                privateDnsVNetLinksClient,
+		PrivateDnsRecordSetsClient:               privateDnsRecordSetsClient,
+		DnsZonesClient:                           dnsZonesClient,
+		RecordSetsClient:                         recordSetsClient,
+		VirtualMachinesClient:                    virtualMachinesClient,
+		AvailabilitySetsClient:                   availabilitySetsClient,
+		DisksClient:                              disksClient,
+		SnapshotsClient:                          snapshotsClient,
+		GalleriesClient:                          galleriesClient,
+		GalleryImagesClient:                      galleryImagesClient,
+		GalleryApplicationsClient:                galleryApplicationsClient,
+		DiskAccessesClient:                       diskAccessesClient,
+		ProximityPlacementGroupsClient:           proximityPlacementGroupsClient,
+		SSHPublicKeysClient:                      sshPublicKeysClient,
+		VMScaleSetsClient:                        vmScaleSetsClient,
+		StorageAccountsClient:                    storageAccountsClient,
+		StorageEncryptionScopesClient:            storageEncryptionScopesClient,
+		BlobContainersClient:                     blobContainersClient,
+		StorageQueuesClient:                      storageQueuesClient,
+		StorageTablesClient:                      storageTablesClient,
+		FileSharesClient:                         fileSharesClient,
+		StorageManagementPoliciesClient:          storageManagementPoliciesClient,
+		VaultsClient:                             vaultsClient,
+		ManagedClustersClient:                    managedClustersClient,
+		MaintenanceConfigurationsClient:          maintenanceConfigurationsClient,
+		TrustedAccessRoleBindingsClient:          trustedAccessRoleBindingsClient,
+		ExtensionsClient:                         extensionsClient,
+		FluxConfigurationsClient:                 fluxConfigurationsClient,
+		RegistriesClient:                         registriesClient,
+		ContainerRegistryWebhooksClient:          containerRegistryWebhooksClient,
+		ContainerRegistryScopeMapsClient:         containerRegistryScopeMapsClient,
+		ContainerRegistryTokensClient:            containerRegistryTokensClient,
+		UserAssignedIdentitiesClient:             userAssignedIdentitiesClient,
+		FederatedIdentityCredentialsClient:       federatedIdentityCredentialsClient,
+		RoleAssignmentsClient:                    roleAssignmentsClient,
+		RoleDefinitionsClient:                    roleDefinitionsClient,
+		PolicyDefinitionsClient:                  policyDefinitionsClient,
+		PolicyAssignmentsClient:                  policyAssignmentsClient,
+		PolicySetDefinitionsClient:               policySetDefinitionsClient,
+		FlexibleServersClient:                    flexibleServersClient,
+		FirewallRulesClient:                      firewallRulesClient,
+		DatabasesClient:                          databasesClient,
+		ConfigurationsClient:                     configurationsClient,
+		SQLServersClient:                         sqlServersClient,
+		SQLDatabasesClient:                       sqlDatabasesClient,
+		SQLElasticPoolsClient:                    sqlElasticPoolsClient,
+		SQLFirewallRulesClient:                   sqlFirewallRulesClient,
+		SQLServerAzureADAdministratorsClient:     sqlServerAzureADAdministratorsClient,
+		SQLServerDNSAliasesClient:                sqlServerDNSAliasesClient,
+		SQLOutboundFirewallRulesClient:           sqlOutboundFirewallRulesClient,
+		SQLVirtualNetworkRulesClient:             sqlVirtualNetworkRulesClient,
+		RouteTablesClient:                        routeTablesClient,
+		VirtualMachineExtensionsClient:           virtualMachineExtensionsClient,
+		EventHubNamespacesClient:                 eventHubNamespacesClient,
+		EventHubSchemaRegistryClient:             eventHubSchemaRegistryClient,
+		EventHubsClient:                          eventHubsClient,
+		EventHubConsumerGroupsClient:             eventHubConsumerGroupsClient,
+		ServiceBusNamespacesClient:               serviceBusNamespacesClient,
+		AppConfigurationStoresClient:             appConfigurationStoresClient,
+		LogAnalyticsWorkspacesClient:             logAnalyticsWorkspacesClient,
+		LogAnalyticsSavedSearchesClient:          logAnalyticsSavedSearchesClient,
+		LogAnalyticsDataExportsClient:            logAnalyticsDataExportsClient,
+		LogAnalyticsLinkedStorageAccountsClient:  logAnalyticsLinkedStorageAccountsClient,
+		MonitorActionGroupsClient:                monitorActionGroupsClient,
+		MonitorActivityLogAlertsClient:           monitorActivityLogAlertsClient,
+		MonitorMetricAlertsClient:                monitorMetricAlertsClient,
+		MonitorScheduledQueryRulesClient:         monitorScheduledQueryRulesClient,
+		MonitorDiagnosticSettingsClient:          monitorDiagnosticSettingsClient,
+		MonitorDataCollectionEndpointsClient:     monitorDataCollectionEndpointsClient,
+		MonitorDataCollectionRulesClient:         monitorDataCollectionRulesClient,
+		MonitorPrivateLinkScopesClient:           monitorPrivateLinkScopesClient,
+		MonitorPrivateLinkScopedResourcesClient:  monitorPrivateLinkScopedResourcesClient,
+		AppInsightsComponentsClient:              appInsightsComponentsClient,
+		ContainerGroupsClient:                    containerGroupsClient,
+		MySQLFlexibleServersClient:               mySQLFlexibleServersClient,
+		CosmosDatabaseAccountsClient:             cosmosDatabaseAccountsClient,
+		SearchServicesClient:                     searchServicesClient,
+		BatchAccountClient:                       batchAccountClient,
+		DNSResolversClient:                       dnsResolversClient,
+		DNSResolverInboundEndpointsClient:        dnsResolverInboundEndpointsClient,
+		DNSResolverOutboundEndpointsClient:       dnsResolverOutboundEndpointsClient,
+		DNSForwardingRulesetsClient:              dnsForwardingRulesetsClient,
+		DNSForwardingRulesClient:                 dnsForwardingRulesClient,
+		DNSForwardingRulesetVNetLinksClient:      dnsForwardingRulesetVNetLinksClient,
+		DNSResolverPoliciesClient:                dnsResolverPoliciesClient,
+		DNSResolverDomainListsClient:             dnsResolverDomainListsClient,
+		DNSSecurityRulesClient:                   dnsSecurityRulesClient,
+		DNSResolverPolicyVNetLinksClient:         dnsResolverPolicyVNetLinksClient,
+		RelayNamespacesClient:                    relayNamespacesClient,
+		RelayHybridConnectionsClient:             relayHybridConnectionsClient,
+		NotificationHubNamespacesClient:          notificationHubNamespacesClient,
+		NotificationHubsClient:                   notificationHubsClient,
+		NetAppAccountsClient:                     netAppAccountsClient,
+		RedisClient:                              redisClient,
+		IotHubResourceClient:                     iotHubResourceClient,
+		TrafficManagerProfilesClient:             trafficManagerProfilesClient,
+		BackupVaultsClient:                       backupVaultsClient,
+		SignalRClient:                            signalRClient,
+		WebPubSubClient:                          webPubSubClient,
+		ServiceBusQueuesClient:                   serviceBusQueuesClient,
+		ServiceBusTopicsClient:                   serviceBusTopicsClient,
+		ServiceBusSubscriptionsClient:            serviceBusSubscriptionsClient,
+		ServiceBusRulesClient:                    serviceBusRulesClient,
+		EventGridSystemTopicsClient:              eventGridSystemTopicsClient,
+		EventGridTopicsClient:                    eventGridTopicsClient,
+		EventGridEventSubscriptionsClient:        eventGridEventSubscriptionsClient,
+		EventGridDomainsClient:                   eventGridDomainsClient,
+		EventGridDomainTopicsClient:              eventGridDomainTopicsClient,
+		CognitiveAccountsClient:                  cognitiveAccountsClient,
+		GrafanaClient:                            grafanaClient,
+		GrafanaManagedPrivateEndpointsClient:     grafanaManagedPrivateEndpointsClient,
+		ManagedEnvironmentsClient:                managedEnvironmentsClient,
+		ContainerAppsClient:                      containerAppsClient,
+		CdnProfilesClient:                        cdnProfilesClient,
+		CdnAFDEndpointsClient:                    cdnAFDEndpointsClient,
+		CdnAFDOriginGroupsClient:                 cdnAFDOriginGroupsClient,
+		CdnAFDOriginsClient:                      cdnAFDOriginsClient,
+		CdnRoutesClient:                          cdnRoutesClient,
+		CdnAFDCustomDomainsClient:                cdnAFDCustomDomainsClient,
+		CdnSecretsClient:                         cdnSecretsClient,
+		credential:                               cred,
+		clientOptions:                            clientOptions,
+		armClient:                                armClient,
 	}, nil
 }
 
