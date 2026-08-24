@@ -270,10 +270,30 @@ func TestRoleDefinition_CRUD(t *testing.T) {
 		require.Equal(t, []string{testRoleDefinitionNativeID}, got.NativeIDs)
 	})
 
-	t.Run("List_without_scope_is_empty", func(t *testing.T) {
+	// Discovery has no parent to hand a scope down from, so an unscoped List must
+	// fall back to the subscription — otherwise the role is never discovered.
+	t.Run("List_without_scope_defaults_to_subscription", func(t *testing.T) {
+		var askedScope string
+		fake.listPagerFn = func(scope string, _ *armauthorization.RoleDefinitionsClientListOptions) *runtime.Pager[armauthorization.RoleDefinitionsClientListResponse] {
+			askedScope = scope
+			return runtime.NewPager(runtime.PagingHandler[armauthorization.RoleDefinitionsClientListResponse]{
+				More: func(_ armauthorization.RoleDefinitionsClientListResponse) bool { return false },
+				Fetcher: func(_ context.Context, _ *armauthorization.RoleDefinitionsClientListResponse) (armauthorization.RoleDefinitionsClientListResponse, error) {
+					return armauthorization.RoleDefinitionsClientListResponse{
+						RoleDefinitionListResult: armauthorization.RoleDefinitionListResult{
+							Value: []*armauthorization.RoleDefinition{{
+								ID:         to.Ptr(testRoleDefinitionNativeID),
+								Properties: &armauthorization.RoleDefinitionProperties{RoleType: to.Ptr("CustomRole")},
+							}},
+						},
+					}, nil
+				},
+			})
+		}
 		got, err := prov.List(context.Background(), &resource.ListRequest{})
 		require.NoError(t, err)
-		require.Empty(t, got.NativeIDs)
+		require.Equal(t, "/subscriptions/sub-1", askedScope)
+		require.Equal(t, []string{testRoleDefinitionNativeID}, got.NativeIDs)
 	})
 
 	t.Run("Read_NotFound", func(t *testing.T) {

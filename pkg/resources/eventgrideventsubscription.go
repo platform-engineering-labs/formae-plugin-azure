@@ -35,6 +35,7 @@ type eventGridEventSubscriptionsAPI interface {
 	Get(ctx context.Context, scope string, eventSubscriptionName string, options *armeventgrid.EventSubscriptionsClientGetOptions) (armeventgrid.EventSubscriptionsClientGetResponse, error)
 	BeginDelete(ctx context.Context, scope string, eventSubscriptionName string, options *armeventgrid.EventSubscriptionsClientBeginDeleteOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientDeleteResponse], error)
 	NewListByResourcePager(resourceGroupName string, providerNamespace string, resourceTypeName string, resourceName string, options *armeventgrid.EventSubscriptionsClientListByResourceOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListByResourceResponse]
+	NewListGlobalBySubscriptionPager(options *armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse]
 }
 
 func init() {
@@ -493,19 +494,36 @@ func (e *EventGridEventSubscription) completeFromSubscription(sub *armeventgrid.
 	return nativeID, propsJSON, nil
 }
 
-// List needs the scope broken into its ARM parts, which only the discovery caller
-// can supply. Without them there is nothing to page: ARM has no listing that spans
-// scopes of every kind.
+// List pages a single scope when the caller names one, and otherwise falls back to
+// every subscription-level subscription.
+//
+// An event subscription hangs off an arbitrary resource, so discovery has no parent
+// to hand down the four ARM path parts from. The global listing is what makes the
+// type discoverable at all; it covers subscription-scoped subscriptions, which is
+// what this provider creates.
 func (e *EventGridEventSubscription) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
 	rgName := request.AdditionalProperties["resourceGroupName"]
 	providerNamespace := request.AdditionalProperties["providerNamespace"]
 	resourceTypeName := request.AdditionalProperties["resourceTypeName"]
 	resourceName := request.AdditionalProperties["resourceName"]
+	var nativeIDs []string
+
 	if rgName == "" || providerNamespace == "" || resourceTypeName == "" || resourceName == "" {
-		return &resource.ListResult{}, nil
+		pager := e.api.NewListGlobalBySubscriptionPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list event subscriptions: %w", err)
+			}
+			for _, sub := range page.Value {
+				if sub != nil && sub.ID != nil {
+					nativeIDs = append(nativeIDs, *sub.ID)
+				}
+			}
+		}
+		return &resource.ListResult{NativeIDs: nativeIDs}, nil
 	}
 
-	var nativeIDs []string
 	pager := e.api.NewListByResourcePager(rgName, providerNamespace, resourceTypeName, resourceName, nil)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)

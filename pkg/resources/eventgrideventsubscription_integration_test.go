@@ -74,6 +74,18 @@ func TestEventGridEventSubscription_CRUD(t *testing.T) {
 			deleteCalls++
 			return newDonePoller(armeventgrid.EventSubscriptionsClientDeleteResponse{}), nil
 		},
+		newListGlobalBySubscriptionPagerFn: func(_ *armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse] {
+			return runtime.NewPager(runtime.PagingHandler[armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse]{
+				More: func(_ armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse) bool { return false },
+				Fetcher: func(_ context.Context, _ *armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse) (armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse, error) {
+					return armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse{
+						EventSubscriptionsListResult: armeventgrid.EventSubscriptionsListResult{
+							Value: []*armeventgrid.EventSubscription{{ID: to.Ptr(testEventSubNativeID)}},
+						},
+					}, nil
+				},
+			})
+		},
 		newListByResourcePagerFn: func(_, _, _, _ string, _ *armeventgrid.EventSubscriptionsClientListByResourceOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListByResourceResponse] {
 			return runtime.NewPager(runtime.PagingHandler[armeventgrid.EventSubscriptionsClientListByResourceResponse]{
 				More: func(_ armeventgrid.EventSubscriptionsClientListByResourceResponse) bool { return false },
@@ -88,6 +100,15 @@ func TestEventGridEventSubscription_CRUD(t *testing.T) {
 		},
 	}
 	prov := newTestEventSubscription(fake)
+
+	// An event subscription hangs off an arbitrary resource, so discovery cannot hand
+	// down the four ARM path parts. Without the global fallback the type is never
+	// discovered at all.
+	t.Run("List_without_scope_falls_back_to_subscription_wide", func(t *testing.T) {
+		got, err := prov.List(context.Background(), &resource.ListRequest{})
+		require.NoError(t, err)
+		require.Equal(t, []string{testEventSubNativeID}, got.NativeIDs)
+	})
 
 	t.Run("Create", func(t *testing.T) {
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{
@@ -193,12 +214,6 @@ func TestEventGridEventSubscription_CRUD(t *testing.T) {
 
 	// ARM has no listing that spans scopes of every kind, so without the scope
 	// broken into parts there is nothing to page.
-	t.Run("List_without_scope_parts_is_empty", func(t *testing.T) {
-		got, err := prov.List(context.Background(), &resource.ListRequest{})
-		require.NoError(t, err)
-		require.Empty(t, got.NativeIDs)
-	})
-
 	t.Run("Azure_error_maps_to_failure", func(t *testing.T) {
 		fake.beginCreateOrUpdateFn = func(_ context.Context, _, _ string, _ armeventgrid.EventSubscription, _ *armeventgrid.EventSubscriptionsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientCreateOrUpdateResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 409}
@@ -263,10 +278,11 @@ func TestEventGridEventSubscription_ReadNotFound(t *testing.T) {
 // --- Test helpers ---
 
 type fakeEventSubscriptionsAPI struct {
-	beginCreateOrUpdateFn    func(ctx context.Context, scope, name string, params armeventgrid.EventSubscription, options *armeventgrid.EventSubscriptionsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientCreateOrUpdateResponse], error)
-	getFn                    func(ctx context.Context, scope, name string, options *armeventgrid.EventSubscriptionsClientGetOptions) (armeventgrid.EventSubscriptionsClientGetResponse, error)
-	beginDeleteFn            func(ctx context.Context, scope, name string, options *armeventgrid.EventSubscriptionsClientBeginDeleteOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientDeleteResponse], error)
-	newListByResourcePagerFn func(rgName, providerNamespace, resourceTypeName, resourceName string, options *armeventgrid.EventSubscriptionsClientListByResourceOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListByResourceResponse]
+	beginCreateOrUpdateFn              func(ctx context.Context, scope, name string, params armeventgrid.EventSubscription, options *armeventgrid.EventSubscriptionsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientCreateOrUpdateResponse], error)
+	getFn                              func(ctx context.Context, scope, name string, options *armeventgrid.EventSubscriptionsClientGetOptions) (armeventgrid.EventSubscriptionsClientGetResponse, error)
+	beginDeleteFn                      func(ctx context.Context, scope, name string, options *armeventgrid.EventSubscriptionsClientBeginDeleteOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientDeleteResponse], error)
+	newListGlobalBySubscriptionPagerFn func(options *armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse]
+	newListByResourcePagerFn           func(rgName, providerNamespace, resourceTypeName, resourceName string, options *armeventgrid.EventSubscriptionsClientListByResourceOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListByResourceResponse]
 }
 
 func (f *fakeEventSubscriptionsAPI) BeginCreateOrUpdate(ctx context.Context, scope, name string, params armeventgrid.EventSubscription, options *armeventgrid.EventSubscriptionsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientCreateOrUpdateResponse], error) {
@@ -279,6 +295,10 @@ func (f *fakeEventSubscriptionsAPI) Get(ctx context.Context, scope, name string,
 
 func (f *fakeEventSubscriptionsAPI) BeginDelete(ctx context.Context, scope, name string, options *armeventgrid.EventSubscriptionsClientBeginDeleteOptions) (*runtime.Poller[armeventgrid.EventSubscriptionsClientDeleteResponse], error) {
 	return f.beginDeleteFn(ctx, scope, name, options)
+}
+
+func (f *fakeEventSubscriptionsAPI) NewListGlobalBySubscriptionPager(options *armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListGlobalBySubscriptionResponse] {
+	return f.newListGlobalBySubscriptionPagerFn(options)
 }
 
 func (f *fakeEventSubscriptionsAPI) NewListByResourcePager(rgName, providerNamespace, resourceTypeName, resourceName string, options *armeventgrid.EventSubscriptionsClientListByResourceOptions) *runtime.Pager[armeventgrid.EventSubscriptionsClientListByResourceResponse] {

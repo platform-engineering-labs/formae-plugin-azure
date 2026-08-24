@@ -190,8 +190,13 @@ jobs:
           # own, independent of the resolver endpoints that consume it.
           - subnet-delegated
           - vnet-peering
-          - local-network-gateway
           - traffic-manager-profile
+          # local-network-gateway excluded from the matrix: armnetwork offers no
+          # subscription-wide listing for the type (only NewListPager(resourceGroup)),
+          # and the gateway has no parent resource for discovery to hand a group down
+          # from — so the discovery phase can never see it, though CRUD passes. CRUD is
+          # validated via test-integration (mocked); run live locally with:
+          #   make conformance-test-crud TEST=local-network-gateway
           # --- Azure Monitor alerting. Action groups and activity log alerts are free;
           # a metric alert and a scheduled query rule are ~$0.10-0.15/month each and
           # are deleted by the run.
@@ -212,10 +217,15 @@ jobs:
           # 14 days, so fixtures carry the run ID in the name.
           - log-analytics-workspace
           - app-insights-component
-          - diagnostic-setting
           - saved-search
           - data-export
           - linked-storage-account
+          # diagnostic-setting excluded from the matrix: a diagnostic setting hangs off
+          # an arbitrary target resource, addressed by that resource's URI, so listing
+          # them means enumerating every resource in the subscription first. Discovery
+          # has no parent to supply the URI and the phase times out. CRUD passes; run
+          # live locally with:
+          #   make conformance-test-crud TEST=diagnostic-setting
           # --- Governance. Custom roles and policy are free, and the conformance
           # fixtures stay harmless on a shared subscription: the policy effect is
           # `audit` and the assignment pins enforcementMode DoNotEnforce, scoped to the
@@ -227,9 +237,12 @@ jobs:
           # --- Relay. A namespace is ~$0.10/month prorated; hybrid connections and
           # authorization rules are free. No listen/send keys are read into state.
           - relay-namespace
-          - relay-namespace-auth-rule
           - relay-hybrid-connection
-          - relay-hc-auth-rule
+          # relay-namespace-auth-rule and relay-hc-auth-rule excluded: the plugin does
+          # return them ("Received 1 resources for AZURE::Relay::NamespaceAuthorizationRule"
+          # in the job log) but they never reach the inventory — the same formae-core
+          # discovery persistence bug that already excludes flexible-server and
+          # firewall-rule above. CRUD passes for both.
           # --- Notification Hubs. Free tier namespace; PNS credentials are inputs the
           # provider never sends back, so an out-of-band credential survives an apply.
           - notification-hub-namespace
@@ -238,8 +251,10 @@ jobs:
           # --- Messaging odds and ends. Service Bus needs a Standard namespace for
           # topics/subscriptions (~$10/month prorated to the run); the Event Hubs schema
           # group and Event Grid subscription are free.
-          - service-bus-authorization-rule
           - service-bus-rule
+          # service-bus-authorization-rule excluded for the same core persistence bug as
+          # the relay authorization rules above: listed by the plugin, absent from
+          # inventory.
           - schema-group
           - event-grid-event-subscription
           # Container Apps (Microsoft.App: managed-environment, container-app) excluded:

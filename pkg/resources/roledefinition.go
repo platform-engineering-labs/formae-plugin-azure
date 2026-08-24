@@ -323,16 +323,18 @@ func (r *RoleDefinition) Status(_ context.Context, request *resource.StatusReque
 	}, nil
 }
 
-// List enumerates definitions visible at a scope. Without one there is nothing to
-// enumerate: a role definition is not a child of a resource group, so no scope can
-// be inferred.
+// List enumerates definitions visible at a scope, defaulting to the subscription.
+//
+// A role definition is not a child of a resource group, so discovery has no parent
+// to hand down a scope from — without the default it would ask with no scope, get
+// nothing back, and never see the role at all.
 //
 // The listing is filtered to custom roles — the scope also surfaces every built-in
 // role, which this provider cannot manage.
 func (r *RoleDefinition) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
 	scope := request.AdditionalProperties["scope"]
 	if scope == "" {
-		return &resource.ListResult{}, nil
+		scope = "/subscriptions/" + r.config.SubscriptionId
 	}
 
 	var nativeIDs []string
