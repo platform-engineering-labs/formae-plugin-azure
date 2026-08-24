@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.relay.relaynamespace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Relay::Namespace"
+const apiVersion = "2021-11-01"
+
+open class NamespaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NamespaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NamespaceResolvable = (this) {
+        property = "name"
+    }
+    /// AMQP/relay endpoint, e.g. https://<name>.servicebus.windows.net:443/.
+    hidden serviceBusEndpoint: NamespaceResolvable = (this) {
+        property = "serviceBusEndpoint"
+    }
+}
+
+/// An Azure Relay namespace — the container for hybrid connections and WCF
+/// relays, which tunnel to on-premises services without opening inbound ports.
+///
+/// The namespace's shared access keys are NOT surfaced as properties: ARM returns
+/// them only from a separate ListKeys call, so exposing them would persist live
+/// credentials in resource state.
+///
+/// Namespace names are globally unique — they share the servicebus.windows.net
+/// namespace with Service Bus.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Namespace extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 6 && length <= 50 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Relay has exactly one tier. Modelled as a scalar rather than an ARM-shaped
+    /// `sku` block because ARM echoes both name and tier, and a nested field with
+    /// a provider default reads back as drift.
+    @azure.FieldHint { hasProviderDefault = true }
+    skuName: ("Standard")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled"|"SecuredByPerimeter")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    @azure.FieldHint { hasProviderDefault = true }
+    serviceBusEndpoint: String?
+
+    /// Namespace ID used when querying Azure Monitor metrics.
+    @azure.FieldHint { hasProviderDefault = true }
+    metricId: String?
+
+    hidden parent = this
+
+    hidden res: NamespaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

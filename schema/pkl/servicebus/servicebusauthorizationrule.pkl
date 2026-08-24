@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.servicebus.servicebusauthorizationrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ServiceBus::AuthorizationRule"
+const apiVersion = "2021-11-01"
+
+/// A single SAS permission. `Manage` implies both `Listen` and `Send`, so ARM
+/// rejects a rule that grants `Manage` without them.
+typealias AccessRight = "Listen"|"Send"|"Manage"
+
+open class AuthorizationRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AuthorizationRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AuthorizationRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Namespace-scoped Service Bus authorization rule (SAS policy).
+///
+/// The primary/secondary keys and connection strings this rule mints are NOT
+/// exposed as properties: ARM returns them only from a separate `ListKeys` call,
+/// so surfacing them here would put live credentials into resource state. Read
+/// them out of band when an application needs them.
+///
+/// Queue- and topic-scoped rules are distinct ARM sub-resources and are not
+/// modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ServiceBus::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AuthorizationRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Service Bus namespace.
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 1)|formae.Resolvable
+
+    /// Permissions granted by this rule. At least one is required.
+    @azure.FieldHint { required = true }
+    rights: Listing<AccessRight>(!isEmpty)
+
+    hidden parent = this
+
+    hidden res: AuthorizationRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

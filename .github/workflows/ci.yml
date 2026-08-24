@@ -216,6 +216,32 @@ jobs:
           - saved-search
           - data-export
           - linked-storage-account
+          # --- Governance. Custom roles and policy are free, and the conformance
+          # fixtures stay harmless on a shared subscription: the policy effect is
+          # `audit` and the assignment pins enforcementMode DoNotEnforce, scoped to the
+          # test resource group rather than the subscription.
+          - role-definition
+          - policy-definition
+          - policy-set-definition
+          - policy-assignment
+          # --- Relay. A namespace is ~$0.10/month prorated; hybrid connections and
+          # authorization rules are free. No listen/send keys are read into state.
+          - relay-namespace
+          - relay-namespace-auth-rule
+          - relay-hybrid-connection
+          - relay-hc-auth-rule
+          # --- Notification Hubs. Free tier namespace; PNS credentials are inputs the
+          # provider never sends back, so an out-of-band credential survives an apply.
+          - notification-hub-namespace
+          - notification-hub
+          - nh-auth-rule
+          # --- Messaging odds and ends. Service Bus needs a Standard namespace for
+          # topics/subscriptions (~$10/month prorated to the run); the Event Hubs schema
+          # group and Event Grid subscription are free.
+          - service-bus-authorization-rule
+          - service-bus-rule
+          - schema-group
+          - event-grid-event-subscription
           # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
           # a managed environment takes ~5 min to provision (container-app builds on top),
           # exceeding the CI command timeout — same class as the AKS extension. Both are

@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.notificationhubs.notificationhub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::NotificationHubs::NotificationHub"
+const apiVersion = "2017-04-01"
+
+open class NotificationHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NotificationHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NotificationHubResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A notification hub — the object app clients register with, and the thing a
+/// single push is sent to so it fans out to APNS, FCM, WNS and the rest.
+///
+/// The per-platform PNS credentials (APNS certificate or token, FCM/GCM server
+/// key, WNS, MPNS, ADM, Baidu) are deliberately NOT modelled. They are live
+/// secrets, ARM keeps them behind a separate GetPnsCredentials call rather than
+/// returning them from Get, and putting them in a forma would persist them in
+/// resource state. Configure them out of band — through the portal, `az`, or a
+/// deployment script that reads from a vault — and this resource will leave them
+/// untouched.
+///
+/// Authorization rules are separate resources, not a nested block.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::NotificationHubs::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class NotificationHub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// How long an inactive device registration survives, as a .NET TimeSpan
+    /// ("7.00:00:00" for a week) — NOT an ISO-8601 duration. Left unset ARM applies
+    /// its maximum, which is what most hubs want.
+    @azure.FieldHint { hasProviderDefault = true }
+    registrationTtl: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NotificationHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

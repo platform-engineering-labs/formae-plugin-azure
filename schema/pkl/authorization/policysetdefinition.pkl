@@ -1,0 +1,106 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.policysetdefinition
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Authorization::PolicySetDefinition"
+const apiVersion = "2021-06-01"
+
+/// One policy definition included in the initiative.
+class PolicyDefinitionReference {
+    /// ARM ID of the definition to include — custom or built-in.
+    @azure.FieldHint { required = true }
+    policyDefinitionId: (String|formae.Resolvable)
+
+    /// Name this inclusion is addressed by: a policy assignment's non-compliance
+    /// messages and a group membership both refer to the definition through it.
+    /// The service generates one when omitted, so set it if anything references it.
+    @azure.FieldHint { hasProviderDefault = true }
+    policyDefinitionReferenceId: String?
+
+    /// Groups within the initiative this inclusion belongs to.
+    @azure.FieldHint { }
+    groupNames: Listing<String>?
+}
+
+/// A named grouping of inclusions, used to organise a large initiative and to
+/// report compliance per group.
+class PolicyDefinitionGroup {
+    @azure.FieldHint { required = true }
+    name: String
+
+    @azure.FieldHint { }
+    displayName: String?
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { }
+    category: String?
+}
+
+open class PolicySetDefinitionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PolicySetDefinitionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PolicySetDefinitionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An initiative: several policy definitions assigned and reported on as one unit.
+/// Assign it with an AZURE::Authorization::PolicyAssignment, the same way as a
+/// single definition — and only an initiative may carry more than one
+/// non-compliance message on that assignment, one per referenced definition.
+///
+/// Free — initiatives and policy evaluation carry no charge.
+///
+/// Scope: SUBSCRIPTION-level initiatives only, as with policy definitions. The
+/// management-group verbs are not modelled, and built-in initiatives are read-only.
+///
+/// Not modelled: `parameters` (arbitrarily nested JSON, as on a definition),
+/// `metadata`, per-inclusion `parameters` and `definitionVersion` pinning. None is
+/// read back, so an initiative authored elsewhere reads without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class PolicySetDefinition extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// The definitions the initiative applies. ARM requires at least one.
+    @azure.FieldHint { required = true }
+    policyDefinitions: Listing<PolicyDefinitionReference>
+
+    @azure.FieldHint { }
+    policyDefinitionGroups: Listing<PolicyDefinitionGroup>?
+
+    /// Always `Custom` for an initiative this provider created. Assigned by the
+    /// service.
+    @azure.FieldHint { hasProviderDefault = true }
+    policyType: String?
+
+    hidden parent = this
+
+    hidden res: PolicySetDefinitionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

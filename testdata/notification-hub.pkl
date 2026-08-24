@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/notificationhubs/notificationhubnamespace.pkl" as nhns
+import "@azure/notificationhubs/notificationhub.pkl" as hub
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nhhub-test-rg"
+  name = "formae-plugin-sdk-test-nhhub-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new nhns.Namespace {
+  label = "nhhub-test-namespace"
+  name = "fpsdt-nhhub-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+  namespaceType = "NotificationHub"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ns
+
+  // No PNS credentials here by design — they are live secrets and this resource
+  // deliberately does not model them, so a hub configured out of band keeps its
+  // credentials across applies.
+  new hub.NotificationHub {
+    label = "plugin-sdk-test-notification-hub"
+    name = "conformance-hub"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

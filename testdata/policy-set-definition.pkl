@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/authorization/policydefinition.pkl" as policydefinition
+import "@azure/authorization/policysetdefinition.pkl" as policysetdefinition
+import "vars.pkl"
+
+// Initiatives live at subscription scope, so no resource group is created. Both
+// included definitions use `audit` — the initiative is never assigned to anything.
+local locationPolicy = new policydefinition.PolicyDefinition {
+  label = "psd-test-location-policy"
+  name = "formae-plugin-sdk-test-psd-loc-\(vars.testRunID)"
+  displayName = "formae plugin sdk test location audit \(vars.testRunID)"
+  description = "conformance test location policy"
+  mode = "Indexed"
+  policyRule = #"{"if":{"field":"location","notEquals":"eastus"},"then":{"effect":"audit"}}"#
+}
+
+local tagPolicy = new policydefinition.PolicyDefinition {
+  label = "psd-test-tag-policy"
+  name = "formae-plugin-sdk-test-psd-tag-\(vars.testRunID)"
+  displayName = "formae plugin sdk test tag audit \(vars.testRunID)"
+  description = "conformance test tag policy"
+  mode = "Indexed"
+  policyRule = #"{"if":{"field":"tags['environment']","exists":"false"},"then":{"effect":"audit"}}"#
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  locationPolicy
+
+  tagPolicy
+
+  // Free. Two inclusions, each with its own reference ID — those are what a policy
+  // assignment addresses when it carries one non-compliance message per definition,
+  // which only an initiative may do.
+  new policysetdefinition.PolicySetDefinition {
+    label = "plugin-sdk-test-policy-set-definition"
+    name = "formae-plugin-sdk-test-psd-\(vars.testRunID)"
+    displayName = "formae plugin sdk test initiative \(vars.testRunID)"
+    description = "conformance test initiative"
+    policyDefinitionGroups {
+      new policysetdefinition.PolicyDefinitionGroup {
+        name = "governance"
+        displayName = "Resource governance"
+        category = "Tags"
+      }
+    }
+    policyDefinitions {
+      new policysetdefinition.PolicyDefinitionReference {
+        policyDefinitionId = locationPolicy.res.id
+        policyDefinitionReferenceId = "location-audit"
+        groupNames { "governance" }
+      }
+      new policysetdefinition.PolicyDefinitionReference {
+        policyDefinitionId = tagPolicy.res.id
+        policyDefinitionReferenceId = "tag-audit"
+        groupNames { "governance" }
+      }
+    }
+  }
+}

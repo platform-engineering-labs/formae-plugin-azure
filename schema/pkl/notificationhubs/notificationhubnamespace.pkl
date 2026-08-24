@@ -1,0 +1,89 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.notificationhubs.notificationhubnamespace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::NotificationHubs::Namespace"
+const apiVersion = "2017-04-01"
+
+open class NamespaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NamespaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NamespaceResolvable = (this) {
+        property = "name"
+    }
+    /// Endpoint the client SDKs connect to.
+    hidden serviceBusEndpoint: NamespaceResolvable = (this) {
+        property = "serviceBusEndpoint"
+    }
+}
+
+/// A Notification Hubs namespace — the container for notification hubs, which
+/// fan a single push out to APNS, FCM, WNS and the rest.
+///
+/// The namespace's shared access keys are NOT surfaced as properties: ARM returns
+/// them only from a separate ListKeys call, so exposing them would persist live
+/// credentials in resource state.
+///
+/// Namespace names are globally unique — they share the servicebus.windows.net
+/// namespace with Service Bus and Relay.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Namespace extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 6 && length <= 50 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// `Free` allows one namespace per subscription, which collides between
+    /// environments; `Basic` is the cheapest tier that does not.
+    ///
+    /// Modelled as a scalar rather than an ARM-shaped `sku` block: ARM fills in
+    /// tier/size/family/capacity alongside the name, and nested fields with
+    /// provider defaults read back as drift.
+    @azure.FieldHint { hasProviderDefault = true }
+    skuName: ("Free"|"Basic"|"Standard")?
+
+    /// `NotificationHub` is the push service; `Messaging` is the legacy Service
+    /// Bus flavour of this same ARM type. createOnly either way.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    namespaceType: ("NotificationHub"|"Messaging")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    @azure.FieldHint { hasProviderDefault = true }
+    serviceBusEndpoint: String?
+
+    /// Namespace ID used when querying Azure Monitor metrics.
+    @azure.FieldHint { hasProviderDefault = true }
+    metricId: String?
+
+    hidden parent = this
+
+    hidden res: NamespaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

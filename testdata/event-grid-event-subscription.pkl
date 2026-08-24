@@ -1,0 +1,82 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/queue.pkl"
+import "@azure/eventgrid/topic.pkl"
+import "@azure/eventgrid/eventsubscription.pkl" as eventsub
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "egsub-test-rg"
+  name = "formae-plugin-sdk-test-egsub-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// The delivery target. A storage queue is the one destination Event Grid accepts
+// without validating a live external endpoint, which is why it is the kind this
+// resource models.
+local sa = new storageaccount.StorageAccount {
+  label = "egsub-test-sa"
+  name = "fpsdtegsub\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local eventQueue = new queue.Queue {
+  label = "egsub-test-queue"
+  name = "events"
+  resourceGroupName = rg.res.name
+  storageAccountName = sa.res.name
+}
+
+// The event source. A topic with no subscription accepts events and drops them.
+local egTopic = new topic.Topic {
+  label = "egsub-test-topic"
+  name = "fpsdt-egsub-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  inputSchema = "EventGridSchema"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  eventQueue
+  egTopic
+
+  // A scoped extension resource: scope is the ARM ID of whatever emits the events,
+  // here the topic above.
+  new eventsub.EventSubscription {
+    label = "plugin-sdk-test-egsub"
+    name = "fpsdt-egsub-\(vars.testRunID)"
+    scope = egTopic.res.id
+    storageQueueDestination = new eventsub.StorageQueueDestination {
+      storageAccountId = sa.res.id
+      queueName = eventQueue.res.name
+    }
+    filter = new eventsub.Filter {
+      subjectBeginsWith = "/orders/"
+    }
+    eventDeliverySchema = "EventGridSchema"
+  }
+}
