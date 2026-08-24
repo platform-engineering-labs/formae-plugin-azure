@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/datacollectionrule.pkl" as datacollectionrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dcr-test-rg"
+  name = "formae-plugin-sdk-test-dcr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Collection target. 30-day retention is what the PerGB2018 base price includes and
+// the 1 GB daily cap bounds ingestion; no agent is attached to this rule, so nothing
+// is ever collected. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "dcr-test-law"
+  name = "fpsdt-dcr-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  workspaceRes
+
+  // The rule is free and collects nothing until machines are associated with it —
+  // that association is a separate resource, and none is created here.
+  new datacollectionrule.DataCollectionRule {
+    label = "plugin-sdk-test-data-collection-rule"
+    name = "formae-plugin-sdk-test-dcr-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    kind = "Linux"
+    description = "conformance test cpu sampling"
+    performanceCounters {
+      new datacollectionrule.PerformanceCounterDataSource {
+        name = "perf-counters"
+        streams { "Microsoft-Perf" }
+        samplingFrequencyInSeconds = 300
+        counterSpecifiers {
+          "Processor(*)\\% Processor Time"
+          "Memory(*)\\AvailableMemoryPercentage"
+        }
+      }
+    }
+    logAnalyticsDestinations {
+      new datacollectionrule.LogAnalyticsDestination {
+        name = "law-destination"
+        workspaceResourceId = workspaceRes.res.id
+      }
+    }
+    dataFlows {
+      new datacollectionrule.DataFlow {
+        streams { "Microsoft-Perf" }
+        destinations { "law-destination" }
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

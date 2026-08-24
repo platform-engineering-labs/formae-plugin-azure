@@ -1,0 +1,92 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/insights/actiongroup.pkl"
+import "@azure/insights/metricalert.pkl" as alert
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ma-test-rg"
+  name = "formae-plugin-sdk-test-ma-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// The alert needs a real resource that emits metrics; a storage account is the
+// cheapest one that does.
+local sa = new storageaccount.StorageAccount {
+  label = "ma-test-sa"
+  name = "fpsdtma\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local ag = new actiongroup.ActionGroup {
+  label = "ma-test-action-group"
+  name = "fpsdt-ma-ag-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "Global"
+  groupShortName = "fpsdtma"
+  enabled = true
+  emailReceivers = new Listing {
+    new actiongroup.EmailReceiver {
+      name = "oncall"
+      emailAddress = "oncall@example.com"
+      useCommonAlertSchema = true
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  ag
+
+  // Static threshold on a single resource — the only criteria shape this schema
+  // models. windowSize must be a multiple of evaluationFrequency.
+  new alert.MetricAlert {
+    label = "plugin-sdk-test-ma"
+    name = "fpsdt-ma-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "Global"
+    scopes = new Listing { sa.res.id }
+    criteria = new Listing {
+      new alert.MetricCriterion {
+        name = "Metric1"
+        metricName = "Transactions"
+        metricNamespace = "Microsoft.Storage/storageAccounts"
+        operator = "GreaterThan"
+        threshold = 100
+        timeAggregation = "Total"
+      }
+    }
+    // Update: raise the severity. ARM's PATCH takes the same full property bag as
+    // the PUT, so the handler routes every write through CreateOrUpdate.
+    severity = 2
+    windowSize = "PT5M"
+    evaluationFrequency = "PT1M"
+    actionGroupIds = new Listing { ag.res.id }
+    description = "storage transactions above threshold"
+    enabled = true
+    autoMitigate = true
+  }
+}

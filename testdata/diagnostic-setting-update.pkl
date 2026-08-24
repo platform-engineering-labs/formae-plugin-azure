@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/diagnosticsetting.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ds-test-rg"
+  name = "formae-plugin-sdk-test-ds-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// The monitored target. A storage account is the cheapest resource that emits a
+// metric category at the account level ("Transaction").
+local sa = new storageaccount.StorageAccount {
+  label = "ds-test-sa"
+  name = "fpsdtds\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+// The destination.
+local law = new workspace.Workspace {
+  label = "ds-test-law"
+  name = "fpsdt-ds-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  law
+
+  // Extension resource: no resourceGroupName of its own. Its ARM id is
+  // <targetResourceId>/providers/Microsoft.Insights/diagnosticSettings/<name>.
+  // Account-level storage diagnostics expose metrics only — log categories live on
+  // the sub-services (blobServices, queueServices, ...), not the account itself.
+  new diagnosticsetting.DiagnosticSetting {
+    label = "plugin-sdk-test-ds"
+    name = "fpsdt-ds-\(vars.testRunID)"
+    targetResourceId = sa.res.id
+    workspaceId = law.res.id
+    // Update: route Capacity as well, 1 -> 2 categories. In-place; the NativeID
+    // stays the same.
+    metrics = new Listing {
+      new diagnosticsetting.MetricSetting { category = "Transaction" }
+      new diagnosticsetting.MetricSetting { category = "Capacity" }
+    }
+  }
+}

@@ -1,0 +1,146 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.datacollectionrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::DataCollectionRule"
+const apiVersion = "2024-03-11"
+
+/// A set of performance counters to sample, and the stream they feed.
+class PerformanceCounterDataSource {
+    /// Referenced from a data flow's `streams`, so it must be unique in the rule.
+    @azure.FieldHint { required = true }
+    name: String
+
+    /// Streams the samples are published on, e.g. `Microsoft-Perf` for the Perf
+    /// table or `Microsoft-InsightsMetrics` for platform metrics.
+    @azure.FieldHint { required = true }
+    streams: Listing<String>
+
+    @azure.FieldHint { required = true }
+    samplingFrequencyInSeconds: Int(this >= 1 && this <= 1800)
+
+    /// Counters in the agent's own syntax, e.g.
+    /// `\Processor(_Total)\% Processor Time`, or `\Processor(*)\*` for a whole set.
+    @azure.FieldHint { required = true }
+    counterSpecifiers: Listing<String>
+}
+
+/// A Log Analytics workspace the collected data is written to.
+class LogAnalyticsDestination {
+    /// Referenced from a data flow's `destinations`, so it must be unique in the rule.
+    @azure.FieldHint { required = true }
+    name: String
+
+    @azure.FieldHint { required = true }
+    workspaceResourceId: (String|formae.Resolvable)
+}
+
+/// Wires one or more streams to one or more named destinations.
+class DataFlow {
+    @azure.FieldHint { required = true }
+    streams: Listing<String>
+
+    /// Destination names declared on this rule.
+    @azure.FieldHint { required = true }
+    destinations: Listing<String>
+
+    /// KQL applied to each record before it is written.
+    @azure.FieldHint { }
+    transformKql: String?
+
+    /// Table the records land in when it differs from the stream's own.
+    @azure.FieldHint { }
+    outputStream: String?
+}
+
+open class DataCollectionRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataCollectionRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataCollectionRuleResolvable = (this) {
+        property = "name"
+    }
+    hidden immutableId: DataCollectionRuleResolvable = (this) {
+        property = "immutableId"
+    }
+}
+
+/// What Azure Monitor Agent collects, and where it sends it. Machines are attached
+/// to a rule by a separate association resource; a rule on its own collects nothing.
+///
+/// Free — the rule carries no charge, and the data bills against the workspace it
+/// lands in.
+///
+/// Scope: only PERFORMANCE COUNTER data sources and LOG ANALYTICS destinations are
+/// modelled. ARM's data sources are a fourteen-way union (syslog, Windows event
+/// logs, IIS logs, log files, ETW providers, extensions, Prometheus, platform
+/// telemetry, four OpenTelemetry shapes, data imports) and its destinations a
+/// ten-way one (event hubs, storage accounts, blobs, tables, Data Explorer,
+/// Microsoft Fabric, monitoring accounts, Azure Monitor metrics). Neither is read
+/// back: a shape the schema cannot express would show as drift forever, so a rule
+/// authored elsewhere reads with only its performance counters and Log Analytics
+/// destinations visible.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DataCollectionRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String
+
+    /// Platform the rule targets. A rule collecting Windows counters cannot be
+    /// applied to Linux machines and vice versa.
+    @azure.FieldHint { createOnly = true }
+    kind: ("Linux"|"Windows")?
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// ARM ID of a data collection endpoint agents fetch this rule through. Only
+    /// needed for private-link or Logs Ingestion API scenarios.
+    @azure.FieldHint { }
+    dataCollectionEndpointId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { required = true }
+    performanceCounters: Listing<PerformanceCounterDataSource>
+
+    @azure.FieldHint { required = true }
+    logAnalyticsDestinations: Listing<LogAnalyticsDestination>
+
+    @azure.FieldHint { required = true }
+    dataFlows: Listing<DataFlow>
+
+    /// Stable ID agents identify this rule by. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    immutableId: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DataCollectionRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

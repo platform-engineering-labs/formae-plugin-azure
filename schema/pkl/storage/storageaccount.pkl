@@ -91,6 +91,21 @@ open class StorageAccount extends formae.Resource {
     @azure.FieldHint { hasProviderDefault = true }
     allowBlobPublicAccess: Boolean?
 
+    /// Azure platform traffic exempted from the network rules, as ARM's
+    /// comma-joined set (e.g. `AzureServices`, `Logging, Metrics, AzureServices`,
+    /// or `None`).
+    ///
+    /// A bare ARM PUT leaves this at `None` — the `AzureServices` default people
+    /// expect comes from the CLI, not the service — and several Azure features
+    /// refuse an account without the `AzureServices` exemption, among them Log
+    /// Analytics linked storage accounts.
+    @azure.FieldHint { hasProviderDefault = true }
+    networkAclsBypass: String?
+
+    /// What happens to traffic no network rule matches.
+    @azure.FieldHint { hasProviderDefault = true }
+    networkAclsDefaultAction: ("Allow"|"Deny")?
+
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 

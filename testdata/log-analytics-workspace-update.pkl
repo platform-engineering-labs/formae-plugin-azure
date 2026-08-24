@@ -1,0 +1,46 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "law-test-rg"
+  name = "formae-plugin-sdk-test-law-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // 30-day retention is the amount included in the PerGB2018 base price, and the
+  // 1 GB daily cap bounds ingestion cost if anything ever points at this workspace.
+  // Destroy soft-deletes it for 14 days; the run-ID suffix keeps later runs from
+  // colliding on the reserved name.
+  new workspace.Workspace {
+    label = "plugin-sdk-test-law"
+    name = "fpsdt-law-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new workspace.SKU { name = "PerGB2018" }
+    // Update: extend retention 30 -> 60 days and raise the daily cap. Both are
+    // in-place PATCH properties, so the NativeID must stay the same.
+    retentionInDays = 60
+    dailyQuotaGb = 2
+    publicNetworkAccessForIngestion = "Enabled"
+    publicNetworkAccessForQuery = "Enabled"
+  }
+}

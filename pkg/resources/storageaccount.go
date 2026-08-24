@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
@@ -96,6 +97,15 @@ func serializeStorageAccountProperties(result armstorage.Account, rgName, accoun
 		}
 		if result.Properties.AllowBlobPublicAccess != nil {
 			props["allowBlobPublicAccess"] = *result.Properties.AllowBlobPublicAccess
+		}
+		if acls := result.Properties.NetworkRuleSet; acls != nil {
+			if acls.Bypass != nil {
+				props["networkAclsBypass"] = string(*acls.Bypass)
+			}
+			if acls.DefaultAction != nil {
+				props["networkAclsDefaultAction"] = canonicalizeEnum(string(*acls.DefaultAction), "Allow", "Deny")
+			}
+			// ipRules, virtualNetworkRules and resourceAccessRules are not modelled.
 		}
 		if result.Properties.PrimaryEndpoints != nil {
 			endpoints := make(map[string]any)
@@ -209,6 +219,21 @@ func (s *StorageAccount) Create(ctx context.Context, request *resource.CreateReq
 	// Parse allowBlobPublicAccess
 	if allowPublicAccess, ok := props["allowBlobPublicAccess"].(bool); ok {
 		params.Properties.AllowBlobPublicAccess = &allowPublicAccess
+	}
+
+	// Network ACLs. The block is sent only when one of the two modelled fields is
+	// set, so an account that never mentions them keeps whatever ARM or an operator
+	// put there. defaultAction rides along at its ARM default because PUTting
+	// networkAcls without it would reset the account to Allow implicitly.
+	if bypass, hasBypass := props["networkAclsBypass"].(string); hasBypass || props["networkAclsDefaultAction"] != nil {
+		acls := &armstorage.NetworkRuleSet{DefaultAction: to.Ptr(armstorage.DefaultActionAllow)}
+		if hasBypass {
+			acls.Bypass = to.Ptr(armstorage.Bypass(bypass))
+		}
+		if action, ok := props["networkAclsDefaultAction"].(string); ok {
+			acls.DefaultAction = to.Ptr(armstorage.DefaultAction(action))
+		}
+		params.Properties.NetworkRuleSet = acls
 	}
 
 	if azureTags := formaeTagsToAzureTags(request.Properties); azureTags != nil {
@@ -340,6 +365,21 @@ func (s *StorageAccount) Update(ctx context.Context, request *resource.UpdateReq
 	// Parse allowBlobPublicAccess (updatable)
 	if allowPublicAccess, ok := props["allowBlobPublicAccess"].(bool); ok {
 		params.Properties.AllowBlobPublicAccess = &allowPublicAccess
+	}
+
+	// Network ACLs. The block is sent only when one of the two modelled fields is
+	// set, so an account that never mentions them keeps whatever ARM or an operator
+	// put there. defaultAction rides along at its ARM default because PUTting
+	// networkAcls without it would reset the account to Allow implicitly.
+	if bypass, hasBypass := props["networkAclsBypass"].(string); hasBypass || props["networkAclsDefaultAction"] != nil {
+		acls := &armstorage.NetworkRuleSet{DefaultAction: to.Ptr(armstorage.DefaultActionAllow)}
+		if hasBypass {
+			acls.Bypass = to.Ptr(armstorage.Bypass(bypass))
+		}
+		if action, ok := props["networkAclsDefaultAction"].(string); ok {
+			acls.DefaultAction = to.Ptr(armstorage.DefaultAction(action))
+		}
+		params.Properties.NetworkRuleSet = acls
 	}
 
 	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {

@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.datacollectionendpoint
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::DataCollectionEndpoint"
+const apiVersion = "2024-03-11"
+
+open class DataCollectionEndpointResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataCollectionEndpointResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataCollectionEndpointResolvable = (this) {
+        property = "name"
+    }
+    hidden logsIngestionEndpoint: DataCollectionEndpointResolvable = (this) {
+        property = "logsIngestionEndpoint"
+    }
+    hidden configurationAccessEndpoint: DataCollectionEndpointResolvable = (this) {
+        property = "configurationAccessEndpoint"
+    }
+}
+
+/// The ingestion front door for Azure Monitor Agent and the Logs Ingestion API:
+/// agents fetch their configuration from it and post data to it, and data collection
+/// rules reference it.
+///
+/// Free — the endpoint carries no charge, and ingestion bills against the workspace
+/// the data lands in.
+///
+/// ARM's `networkAcls` block holds a single member, so it is flattened here into
+/// `publicNetworkAccess`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DataCollectionEndpoint extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 44)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String
+
+    /// Platform the endpoint serves. Only meaningful for agent scenarios.
+    @azure.FieldHint { createOnly = true }
+    kind: ("Linux"|"Windows")?
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Whether the ingestion and configuration endpoints answer from the public
+    /// internet.
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled"|"SecuredByPerimeter")?
+
+    /// URL agents post log data to. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    logsIngestionEndpoint: String?
+
+    /// URL agents post metric data to. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    metricsIngestionEndpoint: String?
+
+    /// URL agents fetch their data collection rules from. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    configurationAccessEndpoint: String?
+
+    /// Stable ID other resources reference this endpoint by. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    immutableId: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DataCollectionEndpointResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

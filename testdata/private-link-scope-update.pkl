@@ -1,0 +1,46 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/insights/privatelinkscope.pkl" as privatelinkscope
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ampls-test-rg"
+  name = "formae-plugin-sdk-test-ampls-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Free: the scope carries no charge, and the private endpoint that would attach to
+  // it — the part that bills — is not created here. With no connection attached the
+  // scope is inert, so the access modes below block nothing.
+  //
+  // location is the literal "global": the scope spans regions and ARM rejects a
+  // region name.
+  new privatelinkscope.PrivateLinkScope {
+    label = "plugin-sdk-test-private-link-scope"
+    name = "formae-plugin-sdk-test-ampls-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "global"
+    ingestionAccessMode = "PrivateOnly"
+    queryAccessMode = "Open"
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test-updated" }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/insights/datacollectionendpoint.pkl" as datacollectionendpoint
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dce-test-rg"
+  name = "formae-plugin-sdk-test-dce-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Free: the endpoint carries no charge of its own, and nothing ingests through it
+  // during the test — data would bill against whatever workspace it landed in.
+  new datacollectionendpoint.DataCollectionEndpoint {
+    label = "plugin-sdk-test-data-collection-endpoint"
+    name = "formae-plugin-sdk-test-dce-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    kind = "Linux"
+    description = "conformance test ingestion endpoint"
+    publicNetworkAccess = "Enabled"
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.linkedstorageaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::LinkedStorageAccount"
+const apiVersion = "2020-08-01"
+
+open class LinkedStorageAccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LinkedStorageAccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LinkedStorageAccountResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Points one class of workspace data at customer-owned storage accounts, so that
+/// data lives in the customer's own account instead of the service's.
+///
+/// The link itself is free; the linked account bills its normal storage rates for
+/// whatever the workspace writes there.
+///
+/// `name` is the data source type, not a free-form name — ARM uses it as the
+/// resource's path segment, so a workspace holds at most one link per type and
+/// changing it addresses a different resource entirely.
+///
+/// The API is fully synchronous — no operation ever reports as in progress.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LinkedStorageAccount extends formae.Resource {
+
+    /// The class of data to redirect. `CustomLogs` covers custom log ingestion,
+    /// `Query` query results, `Alerts` alert state, `AzureWatson` crash dumps.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: ("Alerts"|"AzureWatson"|"CustomLogs"|"Query")
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// ARM IDs of the storage accounts to link. They must sit in the workspace's
+    /// own region.
+    @azure.FieldHint { required = true }
+    storageAccountIds: Listing<(String|formae.Resolvable)>
+
+    hidden parent = this
+
+    hidden res: LinkedStorageAccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

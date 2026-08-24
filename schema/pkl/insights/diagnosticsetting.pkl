@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.diagnosticsetting
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::DiagnosticSetting"
+const apiVersion = "2021-05-01-preview"
+
+/// One log category (or category group) to route.
+///
+/// Listing a category IS the instruction to route it — there is no `enabled` flag.
+/// ARM echoes back every category a target supports, marking the ones you did not
+/// ask for as disabled, so an `enabled` knob would make a subset of categories
+/// drift against desired state forever. To stop routing a category, remove it.
+class LogSetting {
+    /// Individual log category, e.g. "StorageRead". Mutually exclusive with
+    /// `categoryGroup`.
+    category: String?
+
+    /// Category group shorthand: "allLogs" or "audit". Mutually exclusive with
+    /// `category`.
+    categoryGroup: String?
+}
+
+/// One metric category to route. "AllMetrics" covers every metric the target emits.
+/// As with logs, listing it is what routes it; remove it to stop.
+class MetricSetting {
+    category: String = "AllMetrics"
+}
+
+open class DiagnosticSettingResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DiagnosticSettingResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DiagnosticSettingResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor diagnostic setting — routes a target resource's logs and
+/// metrics to a Log Analytics workspace or storage account.
+///
+/// This is an ARM **extension** resource: it has no resource group of its own and
+/// its id is `<targetResourceId>/providers/Microsoft.Insights/diagnosticSettings/<name>`.
+/// Because the target can be almost any Azure resource, no `parent` is declared —
+/// which means discovery cannot enumerate settings on its own; it needs a
+/// `targetResourceId` to scope the lookup.
+///
+/// At least one destination (`workspaceId` or `storageAccountId`) is required. The
+/// Event Hub and marketplace-partner destinations, `logAnalyticsDestinationType`,
+/// and the per-category `retentionPolicy` (deprecated by Azure — retention now
+/// lives on the destination) are intentionally not modelled.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class DiagnosticSetting extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    /// ARM id of the resource being monitored, e.g. `targetResourceId = sa.res.id`.
+    @azure.FieldHint { required = true; createOnly = true }
+    targetResourceId: String(length >= 1)|formae.Resolvable
+
+    /// ARM id of the destination Log Analytics workspace,
+    /// e.g. `workspaceId = law.res.id`.
+    @azure.FieldHint {}
+    workspaceId: (String|formae.Resolvable)?
+
+    /// ARM id of a destination storage account for archival.
+    @azure.FieldHint {}
+    storageAccountId: (String|formae.Resolvable)?
+
+    @azure.FieldHint {}
+    logs: Listing<LogSetting>?
+
+    @azure.FieldHint {}
+    metrics: Listing<MetricSetting>?
+
+    hidden parent = this
+
+    hidden res: DiagnosticSettingResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

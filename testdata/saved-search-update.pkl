@@ -1,0 +1,57 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/savedsearch.pkl" as savedsearch
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ss-test-rg"
+  name = "formae-plugin-sdk-test-ss-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// 30-day retention is what the PerGB2018 base price includes, and the 1 GB daily cap
+// bounds ingestion cost. Nothing sends data here, so the workspace is effectively
+// free; destroy soft-deletes it for 14 days, hence the run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "ss-test-law"
+  name = "fpsdt-ss-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  workspaceRes
+
+  // A stored query costs nothing on its own — only running it bills the workspace.
+  new savedsearch.SavedSearch {
+    label = "plugin-sdk-test-saved-search"
+    name = "formae-plugin-sdk-test-ss-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    category = "conformance-updated"
+    displayName = "heartbeat by operating system"
+    query = "Heartbeat | summarize count() by OSType"
+  }
+}

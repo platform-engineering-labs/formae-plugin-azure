@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/insights/actiongroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ag-test-rg"
+  name = "formae-plugin-sdk-test-ag-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Action groups are global: location is the literal "Global", not a region.
+  // groupShortName is capped at 12 characters by ARM.
+  new actiongroup.ActionGroup {
+    label = "plugin-sdk-test-ag"
+    name = "fpsdt-ag-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "Global"
+    groupShortName = "fpsdtag"
+    enabled = true
+    // Update: add a second receiver. ARM's PATCH cannot change receivers, so the
+    // handler routes this through CreateOrUpdate; the NativeID stays the same.
+    emailReceivers = new Listing {
+      new actiongroup.EmailReceiver {
+        name = "oncall"
+        emailAddress = "oncall@example.com"
+        useCommonAlertSchema = true
+      }
+      new actiongroup.EmailReceiver {
+        name = "backup"
+        emailAddress = "backup@example.com"
+        useCommonAlertSchema = true
+      }
+    }
+  }
+}

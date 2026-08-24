@@ -1,0 +1,101 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.activitylogalert
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::ActivityLogAlert"
+const apiVersion = "2020-10-01"
+
+/// One `field equals value` test against an activity log entry. All conditions on
+/// an alert must match for it to fire.
+///
+/// Common fields: `category` ("Administrative", "ServiceHealth", "Autoscale",
+/// "Security", "Recommendation", "Policy", "ResourceHealth"), `operationName`
+/// (e.g. "Microsoft.Compute/virtualMachines/delete"), `level`, `status`,
+/// `resourceType`, `caller`.
+class Condition {
+    @azure.FieldHint { required = true }
+    field: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    equals: String(length >= 1)
+}
+
+open class ActivityLogAlertResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ActivityLogAlertResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ActivityLogAlertResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor activity log alert — fires on control-plane events, which is
+/// how you get told that someone deleted a resource, that a service health
+/// incident started, or that a policy assignment changed.
+///
+/// Only simple `field equals value` conditions are modelled. ARM also supports
+/// `anyOf` groups and `containsAny` lists; those are not expressible here yet, and
+/// the provider does not read them back either, since a condition the schema
+/// cannot express would show as drift forever.
+///
+/// Activity log alerts are global: `location` is the literal "Global", not a
+/// region — the activity log itself is subscription-wide.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ActivityLogAlert extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always "Global" for activity log alerts.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String(length >= 1)
+
+    /// What the alert watches — a subscription, resource group or resource ARM ID.
+    /// Every scope must sit under the same subscription as the alert.
+    @azure.FieldHint { required = true }
+    scopes: Listing<String|formae.Resolvable>
+
+    /// All of these must match for the alert to fire.
+    @azure.FieldHint { required = true }
+    conditions: Listing<Condition>
+
+    /// ARM IDs of the action groups to notify. An alert with no action groups
+    /// evaluates but tells nobody.
+    @azure.FieldHint { hasProviderDefault = true }
+    actionGroupIds: Listing<String|formae.Resolvable>?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    description: String?
+
+    /// A disabled alert stays configured but never fires.
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ActivityLogAlertResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

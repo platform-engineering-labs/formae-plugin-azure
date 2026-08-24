@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/actiongroup.pkl"
+import "@azure/insights/scheduledqueryrule.pkl" as sqr
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sqr-test-rg"
+  name = "formae-plugin-sdk-test-sqr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The rule queries this workspace. 1 GB daily cap bounds ingestion cost; nothing
+// actually writes to it here.
+local law = new workspace.Workspace {
+  label = "sqr-test-law"
+  name = "fpsdt-sqr-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+}
+
+local ag = new actiongroup.ActionGroup {
+  label = "sqr-test-action-group"
+  name = "fpsdt-sqr-ag-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "Global"
+  groupShortName = "fpsdtsqr"
+  enabled = true
+  emailReceivers = new Listing {
+    new actiongroup.EmailReceiver {
+      name = "oncall"
+      emailAddress = "oncall@example.com"
+      useCommonAlertSchema = true
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  law
+  ag
+
+  // Log alerts are REGIONAL: location must match the workspace's region.
+  //
+  // skipQueryValidation is on because the Heartbeat table does not exist in a
+  // brand-new workspace — ARM would otherwise reject the query outright.
+  new sqr.ScheduledQueryRule {
+    label = "plugin-sdk-test-sqr"
+    name = "fpsdt-sqr-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    scopes = new Listing { law.res.id }
+    criteria = new Listing {
+      new sqr.Condition {
+        query = "Heartbeat | summarize count()"
+        timeAggregation = "Count"
+        operator = "GreaterThan"
+        threshold = 10
+        failingPeriods = new sqr.FailingPeriods {
+          minFailingPeriodsToAlert = 1
+          numberOfEvaluationPeriods = 1
+        }
+      }
+    }
+    // Update: raise the severity. ARM's PATCH takes the same full property bag as
+    // the PUT, so the handler routes every write through CreateOrUpdate.
+    severity = 2
+    windowSize = "PT5M"
+    evaluationFrequency = "PT5M"
+    actionGroupIds = new Listing { ag.res.id }
+    description = "heartbeats above threshold"
+    displayName = "heartbeat check"
+    enabled = true
+    autoMitigate = true
+    skipQueryValidation = true
+  }
+}

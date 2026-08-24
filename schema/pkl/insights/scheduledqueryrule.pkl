@@ -1,0 +1,142 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.scheduledqueryrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::ScheduledQueryRule"
+const apiVersion = "2021-08-01"
+
+/// How many evaluations may fail before the alert fires. ARM fills both fields in
+/// when they are omitted, so both are required here rather than optional:
+/// `hasProviderDefault` is not honoured on the fields of a nested class, and an
+/// omitted value would read back as drift.
+class FailingPeriods {
+    /// How many of the last `numberOfEvaluationPeriods` must fail. Cannot exceed it.
+    @azure.FieldHint { required = true }
+    minFailingPeriodsToAlert: Int(this >= 1)
+
+    @azure.FieldHint { required = true }
+    numberOfEvaluationPeriods: Int(this >= 1)
+}
+
+/// One KQL query and the threshold its result is compared against.
+class Condition {
+    /// The KQL to run against every scope, e.g.
+    /// `Heartbeat | where Computer == "web1" | summarize count()`.
+    @azure.FieldHint { required = true }
+    query: String(length >= 1)
+
+    /// How the query's rows are collapsed before comparison. `Count` counts rows
+    /// and needs no measure column.
+    @azure.FieldHint { required = true }
+    timeAggregation: ("Average"|"Count"|"Maximum"|"Minimum"|"Total")
+
+    @azure.FieldHint { required = true }
+    operator: ("Equals"|"GreaterThan"|"GreaterThanOrEqual"|"LessThan"|"LessThanOrEqual"|"GreaterOrLessThan")
+
+    @azure.FieldHint { required = true }
+    threshold: Number
+
+    @azure.FieldHint { required = true }
+    failingPeriods: FailingPeriods
+}
+
+open class ScheduledQueryRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ScheduledQueryRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ScheduledQueryRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor scheduled query rule (a "log alert") — runs KQL on a schedule
+/// against a Log Analytics workspace or Application Insights component and fires
+/// when the result crosses a threshold.
+///
+/// Unlike metric alerts these are REGIONAL: `location` must match the region of
+/// the workspace being queried.
+///
+/// Static thresholds only. ARM's dynamic-threshold conditions (`alertSensitivity`
+/// plus `ignoreDataBefore`) and dimension splitting are not modelled, and the
+/// provider does not read them back either — surfacing a condition the schema
+/// cannot express would show as drift forever.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ScheduledQueryRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Must match the region of the workspace in `scopes`.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    /// ARM IDs of the workspaces or components to query.
+    @azure.FieldHint { required = true }
+    scopes: Listing<String|formae.Resolvable>
+
+    @azure.FieldHint { required = true }
+    criteria: Listing<Condition>
+
+    /// 0 (critical) through 4 (verbose).
+    @azure.FieldHint { required = true }
+    severity: Int(this >= 0 && this <= 4)
+
+    /// How far back each run looks, as an ISO-8601 duration ("PT5M").
+    @azure.FieldHint { required = true }
+    windowSize: String(length >= 1)
+
+    /// How often the query runs, as an ISO-8601 duration ("PT5M").
+    @azure.FieldHint { required = true }
+    evaluationFrequency: String(length >= 1)
+
+    /// ARM IDs of the action groups to notify.
+    @azure.FieldHint { hasProviderDefault = true }
+    actionGroupIds: Listing<String|formae.Resolvable>?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    description: String?
+
+    /// Name shown in the alert itself, if different from the resource name.
+    @azure.FieldHint { hasProviderDefault = true }
+    displayName: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    /// Resolve the alert automatically once the query stops crossing the threshold.
+    @azure.FieldHint { hasProviderDefault = true }
+    autoMitigate: Boolean?
+
+    /// Skip ARM's syntax check on the query. Needed when the query references a
+    /// table that does not exist yet.
+    @azure.FieldHint { hasProviderDefault = true }
+    skipQueryValidation: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ScheduledQueryRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

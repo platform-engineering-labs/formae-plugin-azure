@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/insights/actiongroup.pkl"
+import "@azure/insights/activitylogalert.pkl" as alert
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "ala-test-rg"
+  name = "formae-plugin-sdk-test-ala-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ag = new actiongroup.ActionGroup {
+  label = "ala-test-action-group"
+  name = "fpsdt-ala-ag-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "Global"
+  groupShortName = "fpsdtala"
+  enabled = true
+  emailReceivers = new Listing {
+    new actiongroup.EmailReceiver {
+      name = "oncall"
+      emailAddress = "oncall@example.com"
+      useCommonAlertSchema = true
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ag
+
+  // Fires when anyone deletes a VM anywhere in the subscription, and tells the
+  // action group above. Activity log alerts are global and cost nothing to keep.
+  new alert.ActivityLogAlert {
+    label = "plugin-sdk-test-ala"
+    name = "fpsdt-ala-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "Global"
+    scopes = new Listing { "/subscriptions/\(vars.subscriptionId)" }
+    conditions = new Listing {
+      new alert.Condition { field = "category"; equals = "Administrative" }
+      new alert.Condition { field = "operationName"; equals = "Microsoft.Compute/virtualMachines/delete" }
+    }
+    actionGroupIds = new Listing { ag.res.id }
+    // Update: change the description. ARM's PATCH can only toggle enabled and
+    // tags, so the handler routes every write through CreateOrUpdate.
+    description = "VM deleted in subscription (updated)"
+    enabled = true
+  }
+}
