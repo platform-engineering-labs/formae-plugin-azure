@@ -26,6 +26,21 @@ open class SubnetResolvable extends formae.Resolvable {
     }
 }
 
+/// Hands the subnet to an Azure service that needs to inject its own resources
+/// into it — DNS resolver endpoints, NetApp volumes, App Service or ACI vnet
+/// integration all require one. A delegated subnet can hold nothing else.
+class Delegation {
+    /// Free-form label for the delegation, unique within the subnet.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1)
+
+    /// The consuming service, e.g. "Microsoft.Network/dnsResolvers" or
+    /// "Microsoft.Netapp/volumes". Case matters: ARM echoes back exactly the
+    /// string it was given.
+    @azure.FieldHint { required = true }
+    serviceName: String(length >= 1)
+}
+
 @azure.ResourceHint {
     type = module.type
     identifier = "id"
@@ -50,6 +65,11 @@ open class Subnet extends formae.Resource {
 
     @azure.FieldHint { required = true }
     addressPrefix: String
+
+    /// Services this subnet is delegated to. Azure permits several entries but
+    /// in practice one service owns a subnet.
+    @azure.FieldHint { hasProviderDefault = true }
+    delegations: Listing<Delegation>?
 
     // Note: Azure Subnets do not support tags or location (inherited from VNet)
 

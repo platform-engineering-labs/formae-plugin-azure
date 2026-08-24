@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "subnet-deleg-test-rg"
+  name = "formae-plugin-sdk-test-subnetdeleg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing {
+    "10.1.0.0/16"
+  }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "subnet-deleg-test-vnet"
+  name = "formae-plugin-sdk-test-subnetdeleg-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  vnet
+
+  // Covers subnet delegation on its own, so the field keeps a regression test that
+  // does not depend on the resources which consume it. A /28 is the smallest prefix
+  // a delegated subnet may use, and a delegated subnet can hold nothing else — so
+  // nothing is placed in it here.
+  new subnet.Subnet {
+    label = "plugin-sdk-test-subnet-delegated"
+    name = "formae-plugin-sdk-test-subnetdeleg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    virtualNetworkName = vnet.res.name
+    addressPrefix = "10.1.0.16/28"
+    delegations {
+      new subnet.Delegation {
+        name = "dns-resolver"
+        serviceName = "Microsoft.Network/dnsResolvers"
+      }
+    }
+  }
+}

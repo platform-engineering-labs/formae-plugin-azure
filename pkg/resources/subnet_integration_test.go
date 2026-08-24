@@ -120,6 +120,76 @@ func TestSubnet_CRUD(t *testing.T) {
 	})
 }
 
+// Delegated subnets are the prerequisite for DNS resolver endpoints, NetApp
+// volumes and App Service vnet integration, so the delegation must survive both
+// the create body and the read-back.
+func TestSubnet_DelegationsRoundTrip(t *testing.T) {
+	const subnetID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/subnet-1"
+
+	var sent armnetwork.Subnet
+	fake := &fakeSubnetsAPI{
+		beginCreateOrUpdateFn: func(_ context.Context, _, _, _ string, params armnetwork.Subnet, _ *armnetwork.SubnetsClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.SubnetsClientCreateOrUpdateResponse], error) {
+			sent = params
+			return newDoneCreateSubnetPoller(armnetwork.SubnetsClientCreateOrUpdateResponse{Subnet: armnetwork.Subnet{
+				ID:   to.Ptr(subnetID),
+				Name: to.Ptr("subnet-1"),
+				Properties: &armnetwork.SubnetPropertiesFormat{
+					AddressPrefix: to.Ptr("10.0.1.0/28"),
+					Delegations: []*armnetwork.Delegation{{
+						Name: to.Ptr("dnsresolver"),
+						Properties: &armnetwork.ServiceDelegationPropertiesFormat{
+							ServiceName: to.Ptr("Microsoft.Network/dnsResolvers"),
+						},
+					}},
+				},
+			}}), nil
+		},
+	}
+
+	props, _ := json.Marshal(map[string]any{
+		"name":               "subnet-1",
+		"resourceGroupName":  "rg-1",
+		"virtualNetworkName": "vnet-1",
+		"addressPrefix":      "10.0.1.0/28",
+		"delegations": []any{map[string]any{
+			"name":        "dnsresolver",
+			"serviceName": "Microsoft.Network/dnsResolvers",
+		}},
+	})
+	got, err := newTestSubnet(fake).Create(context.Background(), &resource.CreateRequest{Properties: props})
+	require.NoError(t, err)
+
+	require.Len(t, sent.Properties.Delegations, 1)
+	require.Equal(t, "dnsresolver", *sent.Properties.Delegations[0].Name)
+	// serviceName goes out verbatim: ARM echoes back the exact casing it was given.
+	require.Equal(t, "Microsoft.Network/dnsResolvers", *sent.Properties.Delegations[0].Properties.ServiceName)
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(got.ProgressResult.ResourceProperties, &out))
+	delegations := out["delegations"].([]any)
+	require.Len(t, delegations, 1)
+	require.Equal(t, "Microsoft.Network/dnsResolvers", delegations[0].(map[string]any)["serviceName"])
+}
+
+// An undelegated subnet must not grow an empty delegations key, or every plain
+// subnet would read back as drifting.
+func TestSubnet_NoDelegationsStaysAbsent(t *testing.T) {
+	fake := &fakeSubnetsAPI{
+		getFn: func(_ context.Context, _, _, _ string, _ *armnetwork.SubnetsClientGetOptions) (armnetwork.SubnetsClientGetResponse, error) {
+			return armnetwork.SubnetsClientGetResponse{Subnet: armnetwork.Subnet{
+				ID:         to.Ptr("/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/subnet-1"),
+				Name:       to.Ptr("subnet-1"),
+				Properties: &armnetwork.SubnetPropertiesFormat{AddressPrefix: to.Ptr("10.0.0.0/24")},
+			}}, nil
+		},
+	}
+	got, err := newTestSubnet(fake).Read(context.Background(), &resource.ReadRequest{
+		NativeID: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1/subnets/subnet-1",
+	})
+	require.NoError(t, err)
+	require.NotContains(t, got.Properties, "delegations")
+}
+
 // --- Test helpers ---
 
 func newTestSubnet(api subnetsAPI) *Subnet {
