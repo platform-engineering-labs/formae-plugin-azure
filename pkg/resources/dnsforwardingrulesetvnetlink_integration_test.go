@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	testVNetLinkNativeID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/dnsForwardingRulesets/ruleset-1/virtualNetworkLinks/link-1"
-	testVNetLinkVnetID   = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1"
+	testForwardingRulesetVNetLinkNativeID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/dnsForwardingRulesets/ruleset-1/virtualNetworkLinks/link-1"
+	testVNetLinkVnetID                    = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-1"
 )
 
 func newTestVNetLink(api dnsForwardingRulesetVNetLinksAPI) *DNSForwardingRulesetVNetLink {
@@ -43,7 +43,7 @@ func vnetLinkDesired(metadataValue string) []byte {
 
 func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 	linkResult := armdnsresolver.VirtualNetworkLink{
-		ID:   to.Ptr(testVNetLinkNativeID),
+		ID:   to.Ptr(testForwardingRulesetVNetLinkNativeID),
 		Name: to.Ptr("link-1"),
 		Properties: &armdnsresolver.VirtualNetworkLinkProperties{
 			VirtualNetwork:    &armdnsresolver.SubResource{ID: to.Ptr(testVNetLinkVnetID)},
@@ -80,7 +80,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 				Fetcher: func(_ context.Context, _ *armdnsresolver.VirtualNetworkLinksClientListResponse) (armdnsresolver.VirtualNetworkLinksClientListResponse, error) {
 					return armdnsresolver.VirtualNetworkLinksClientListResponse{
 						VirtualNetworkLinkListResult: armdnsresolver.VirtualNetworkLinkListResult{
-							Value: []*armdnsresolver.VirtualNetworkLink{{ID: to.Ptr(testVNetLinkNativeID)}},
+							Value: []*armdnsresolver.VirtualNetworkLink{{ID: to.Ptr(testForwardingRulesetVNetLinkNativeID)}},
 						},
 					}, nil
 				},
@@ -96,7 +96,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
-		require.Equal(t, testVNetLinkNativeID, got.ProgressResult.NativeID)
+		require.Equal(t, testForwardingRulesetVNetLinkNativeID, got.ProgressResult.NativeID)
 		require.Equal(t, "ruleset-1", sawRuleset)
 		require.Equal(t, testVNetLinkVnetID, *sentCreate.Properties.VirtualNetwork.ID)
 		require.Equal(t, "platform", *sentCreate.Properties.Metadata["owner"])
@@ -131,7 +131,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testVNetLinkNativeID})
+		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testForwardingRulesetVNetLinkNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 
@@ -147,7 +147,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 	})
 
 	t.Run("Read_drops_provisioning_state", func(t *testing.T) {
-		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testVNetLinkNativeID})
+		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testForwardingRulesetVNetLinkNativeID})
 		require.NoError(t, err)
 		require.NotContains(t, got.Properties, "provisioningState")
 	})
@@ -158,7 +158,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 	// accepts it.
 	t.Run("Update_sends_metadata", func(t *testing.T) {
 		got, err := prov.Update(context.Background(), &resource.UpdateRequest{
-			NativeID:          testVNetLinkNativeID,
+			NativeID:          testForwardingRulesetVNetLinkNativeID,
 			DesiredProperties: vnetLinkDesired("networking"),
 		})
 		require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 
 	t.Run("Delete", func(t *testing.T) {
 		before := deleteCalls
-		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testVNetLinkNativeID})
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testForwardingRulesetVNetLinkNativeID})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 		require.Equal(t, before+1, deleteCalls)
@@ -178,7 +178,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 		fake.beginDeleteFn = func(_ context.Context, _, _, _ string, _ *armdnsresolver.VirtualNetworkLinksClientBeginDeleteOptions) (*runtime.Poller[armdnsresolver.VirtualNetworkLinksClientDeleteResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 404}
 		}
-		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testVNetLinkNativeID})
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testForwardingRulesetVNetLinkNativeID})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 	})
@@ -188,7 +188,7 @@ func TestDNSForwardingRulesetVNetLink_CRUD(t *testing.T) {
 			AdditionalProperties: map[string]string{"resourceGroupName": "rg-1", "dnsForwardingRulesetName": "ruleset-1"},
 		})
 		require.NoError(t, err)
-		require.Equal(t, []string{testVNetLinkNativeID}, got.NativeIDs)
+		require.Equal(t, []string{testForwardingRulesetVNetLinkNativeID}, got.NativeIDs)
 	})
 
 	t.Run("List_without_parents_is_empty", func(t *testing.T) {
@@ -215,7 +215,7 @@ func TestDNSForwardingRulesetVNetLink_ReadNotFound(t *testing.T) {
 			return armdnsresolver.VirtualNetworkLinksClientGetResponse{}, &azcore.ResponseError{StatusCode: 404}
 		},
 	}
-	got, err := newTestVNetLink(fake).Read(context.Background(), &resource.ReadRequest{NativeID: testVNetLinkNativeID})
+	got, err := newTestVNetLink(fake).Read(context.Background(), &resource.ReadRequest{NativeID: testForwardingRulesetVNetLinkNativeID})
 	require.NoError(t, err)
 	require.Equal(t, resource.OperationErrorCodeNotFound, got.ErrorCode)
 }
