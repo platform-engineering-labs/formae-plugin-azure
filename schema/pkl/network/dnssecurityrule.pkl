@@ -1,0 +1,92 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnssecurityrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsSecurityRule"
+const apiVersion = "2023-07-01-preview"
+
+/// What to do with a query that matches one of the rule's domain lists.
+/// `Alert` logs and resolves anyway; `Block` refuses; `Allow` exempts the domains
+/// from lower-priority Block rules.
+class DnsSecurityRuleAction {
+    @azure.FieldHint { required = true }
+    actionType: ("Alert"|"Allow"|"Block")
+}
+
+open class DnsSecurityRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsSecurityRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsSecurityRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A rule in a DNS resolver policy: match these domain lists, take this action.
+///
+/// Rules are evaluated by ascending `priority`, and the first match wins — so an
+/// `Allow` rule for a specific domain needs a lower number than the broad `Block`
+/// rule it carves an exception out of.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsResolverPolicy"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "dnsResolverPolicyName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DnsSecurityRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsResolverPolicyName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    action: DnsSecurityRuleAction
+
+    /// ARM IDs of the domain lists this rule matches.
+    ///
+    /// Updatable. Adding entries is detected as a diff; a removal-only edit may
+    /// not be (observed on Batch's allowedAuthenticationModes), so pair one with
+    /// another change.
+    @azure.FieldHint { required = true }
+    dnsResolverDomainListIds: Listing<String|formae.Resolvable>
+
+    /// Evaluation order within the policy; lower runs first. Must be unique across
+    /// the policy's rules.
+    @azure.FieldHint { required = true }
+    priority: Int(this >= 100 && this <= 65000)
+
+    /// A Disabled rule stays in the policy but is not applied.
+    @azure.FieldHint { hasProviderDefault = true }
+    dnsSecurityRuleState: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DnsSecurityRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

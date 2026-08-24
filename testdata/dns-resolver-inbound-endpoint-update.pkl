@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/dnsresolver.pkl"
+import "@azure/network/dnsresolverinboundendpoint.pkl" as inbound
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dnsr-inbound-test-rg"
+  name = "formae-plugin-sdk-test-dnsrie-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dnsr-inbound-test-vnet"
+  name = "formae-plugin-sdk-test-dnsrie-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+// Resolver endpoints demand a subnet delegated to Microsoft.Network/dnsResolvers,
+// holding nothing else, and at least a /28.
+local resolverSubnet = new subnet.Subnet {
+  label = "dnsr-inbound-test-subnet"
+  name = "formae-plugin-sdk-test-dnsrie-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/28"
+  delegations = new Listing {
+    new subnet.Delegation {
+      name = "dnsresolver"
+      serviceName = "Microsoft.Network/dnsResolvers"
+    }
+  }
+}
+
+local resolver = new dnsresolver.DnsResolver {
+  label = "dnsr-inbound-test-resolver"
+  name = "formae-plugin-sdk-test-dnsrie-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  virtualNetworkId = vnet.res.id
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  resolverSubnet
+  resolver
+
+  // Dynamic allocation: ARM picks the listener IP out of the delegated subnet.
+  // A static address here would have to avoid the four reserved addresses at the
+  // start of the range.
+  new inbound.InboundEndpoint {
+    label = "plugin-sdk-test-dnsr-inbound"
+    name = "formae-plugin-sdk-test-dnsrie-ep"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    dnsResolverName = resolver.res.name
+    ipConfigurations = new Listing {
+      new inbound.IPConfiguration {
+        subnetId = resolverSubnet.res.id
+        privateIpAllocationMethod = "Dynamic"
+      }
+    }
+    // Update: retag. Tags are the only in-place change — ARM's PATCH body
+    // (InboundEndpointPatch) carries nothing else, so every other property is
+    // createOnly and a change there means replace.
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

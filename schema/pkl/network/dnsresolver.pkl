@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsresolver
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsResolver"
+const apiVersion = "2023-07-01-preview"
+
+open class DnsResolverResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsResolverResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsResolverResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure DNS Private Resolver.
+///
+/// The resolver itself only binds to a virtual network; it carries no cost and
+/// answers nothing until inbound or outbound endpoints are attached. Those
+/// endpoints — and the forwarding rulesets they use — are separate ARM resources
+/// and require a subnet delegated to `Microsoft.Network/dnsResolvers`.
+///
+/// Every property except tags is createOnly: ARM's PATCH body for this resource
+/// type carries tags and nothing else.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class DnsResolver extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM ID of the virtual network to resolve for. One resolver per virtual
+    /// network, and the binding cannot be moved after creation.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkId: (String|formae.Resolvable)
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    /// "Connected" once the resolver is bound to its virtual network.
+    @azure.FieldHint { hasProviderDefault = true }
+    dnsResolverState: String?
+
+    hidden parent = this
+
+    hidden res: DnsResolverResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

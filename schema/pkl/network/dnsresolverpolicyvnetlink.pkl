@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsresolverpolicyvnetlink
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsResolverPolicyVirtualNetworkLink"
+const apiVersion = "2023-07-01-preview"
+
+open class PolicyVirtualNetworkLinkResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PolicyVirtualNetworkLinkResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PolicyVirtualNetworkLinkResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Applies a DNS resolver policy to a virtual network.
+///
+/// Without this the policy and its security rules exist but filter nothing. This
+/// is the security-side counterpart to
+/// `DnsForwardingRulesetVirtualNetworkLink`, and unlike that one it carries no
+/// metadata — tags are its only in-place change.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsResolverPolicy"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "dnsResolverPolicyName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class PolicyVirtualNetworkLink extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsResolverPolicyName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// ARM ID of the virtual network the policy applies to.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkId: (String|formae.Resolvable)
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PolicyVirtualNetworkLinkResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

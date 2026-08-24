@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsresolveroutboundendpoint
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsResolverOutboundEndpoint"
+const apiVersion = "2023-07-01-preview"
+
+open class OutboundEndpointResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OutboundEndpointResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OutboundEndpointResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An outbound endpoint on an Azure DNS Private Resolver — the egress point that
+/// forwarding rulesets use to reach DNS servers outside Azure.
+///
+/// Its subnet must be delegated to `Microsoft.Network/dnsResolvers`, be at least
+/// a /28, and hold nothing else — so an outbound endpoint always needs a subnet
+/// of its own, separate from any inbound endpoint's.
+///
+/// An outbound endpoint on its own forwards nothing; attach a
+/// `DnsForwardingRuleset` to give it rules.
+///
+/// Every property except tags is createOnly: ARM's PATCH body for this resource
+/// type carries tags and nothing else.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::DnsResolver"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "dnsResolverName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class OutboundEndpoint extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsResolverName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// ARM ID of the delegated subnet the endpoint egresses from.
+    @azure.FieldHint { required = true; createOnly = true }
+    subnetId: (String|formae.Resolvable)
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: OutboundEndpointResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

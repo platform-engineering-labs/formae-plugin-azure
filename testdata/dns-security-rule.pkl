@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/dnsresolverpolicy.pkl" as policy
+import "@azure/network/dnsresolverdomainlist.pkl" as domainlist
+import "@azure/network/dnssecurityrule.pkl" as securityrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dnssr-test-rg"
+  name = "formae-plugin-sdk-test-dnssr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local resolverPolicy = new policy.DnsResolverPolicy {
+  label = "dnssr-test-policy"
+  name = "formae-plugin-sdk-test-dnssr-pol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+local blockList = new domainlist.DnsResolverDomainList {
+  label = "dnssr-test-domain-list"
+  name = "formae-plugin-sdk-test-dnssr-dl-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  domains = new Listing {
+    "malware.example.com."
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  resolverPolicy
+  blockList
+
+  // Rules are evaluated by ascending priority and the first match wins, so an
+  // Allow exception would need a lower number than this Block.
+  new securityrule.DnsSecurityRule {
+    label = "plugin-sdk-test-dns-security-rule"
+    name = "conformance-rule"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    dnsResolverPolicyName = resolverPolicy.res.name
+    action = new securityrule.DnsSecurityRuleAction { actionType = "Block" }
+    dnsResolverDomainListIds = new Listing { blockList.res.id }
+    priority = 100
+    dnsSecurityRuleState = "Enabled"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

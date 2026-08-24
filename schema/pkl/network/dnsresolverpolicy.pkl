@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.dnsresolverpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::DnsResolverPolicy"
+const apiVersion = "2023-07-01-preview"
+
+open class DnsResolverPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DnsResolverPolicyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DnsResolverPolicyResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A DNS resolver policy — the container for DNS security rules.
+///
+/// The policy has no settings of its own beyond location and tags: the behaviour
+/// lives in the `DnsSecurityRule` children (which match `DnsResolverDomainList`s)
+/// and it applies to nothing until a policy virtual network link exists.
+///
+/// This is DNS *security* filtering, a different feature from forwarding: the
+/// forwarding side is `DnsForwardingRuleset` and its rules.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class DnsResolverPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DnsResolverPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

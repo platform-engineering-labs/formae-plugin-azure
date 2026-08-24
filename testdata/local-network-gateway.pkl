@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/localnetworkgateway.pkl" as localnetworkgateway
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lng-test-rg"
+  name = "formae-plugin-sdk-test-lng-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Free and self-contained: describes the far end of a site-to-site VPN, and no
+  // virtual network gateway or connection is created here. Addresses come from the
+  // documentation ranges (RFC 5737 / RFC 1918) so nothing real is described.
+  new localnetworkgateway.LocalNetworkGateway {
+    label = "plugin-sdk-test-local-network-gateway"
+    name = "formae-plugin-sdk-test-lng-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    gatewayIpAddress = "203.0.113.10"
+    localNetworkAddressSpace {
+      "192.168.1.0/24"
+    }
+    bgpSettings = new localnetworkgateway.BgpSettings {
+      asn = 65010
+      bgpPeeringAddress = "192.168.1.1"
+      peerWeight = 10
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

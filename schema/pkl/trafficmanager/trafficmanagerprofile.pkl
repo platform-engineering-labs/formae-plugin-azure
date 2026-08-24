@@ -1,0 +1,120 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.trafficmanager.trafficmanagerprofile
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::TrafficManagerProfile"
+const apiVersion = "2022-04-01"
+
+/// How traffic is distributed across endpoints.
+typealias TrafficRoutingMethod = "Performance"|"Priority"|"Weighted"|"Geographic"|"MultiValue"|"Subnet"
+
+typealias MonitorProtocol = "HTTP"|"HTTPS"|"TCP"
+
+/// DNS settings. `relativeName` is the label under trafficmanager.net and is
+/// GLOBALLY unique, so a collision fails the create.
+class DnsConfig {
+    relativeName: String(length >= 1)
+
+    /// DNS TTL in seconds, 0-2147483647. Low values fail over faster.
+    ttl: Int(this >= 0) = 60
+}
+
+/// Endpoint health probe settings.
+class MonitorConfig {
+    protocol: MonitorProtocol = "HTTP"
+
+    port: Int(this > 0 && this <= 65535) = 80
+
+    /// Probe path. Required for HTTP/HTTPS, meaningless for TCP.
+    path: String? = "/"
+
+    /// Probe interval in seconds: 30 (normal) or 10 (fast).
+    intervalInSeconds: Int? = 30
+
+    /// Probe timeout in seconds, 5-10.
+    timeoutInSeconds: Int? = 10
+
+    /// Consecutive failures before an endpoint is marked degraded, 0-9.
+    toleratedNumberOfFailures: Int? = 3
+}
+
+open class TrafficManagerProfileResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TrafficManagerProfileResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TrafficManagerProfileResolvable = (this) {
+        property = "name"
+    }
+    /// Resolvable DNS name, e.g. <relativeName>.trafficmanager.net.
+    hidden fqdn: TrafficManagerProfileResolvable = (this) {
+        property = "fqdn"
+    }
+}
+
+/// A Traffic Manager profile — global DNS-based load balancing across regions.
+///
+/// Traffic Manager is a global service: `location` is the literal "global", not a
+/// region, and ARM rejects a region here.
+///
+/// Endpoints are a separate ARM sub-resource (Microsoft.Network/trafficManagerProfiles/
+/// azureEndpoints etc.) and are not modelled here, so a profile created by this
+/// resource routes nothing until endpoints are added.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class TrafficManagerProfile extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always "global" for Traffic Manager.
+    @azure.FieldHint { createOnly = true }
+    location: azure.Location = "global"
+
+    @azure.FieldHint { required = true }
+    trafficRoutingMethod: TrafficRoutingMethod
+
+    @azure.FieldHint { required = true; createOnly = true }
+    dnsConfig: DnsConfig
+
+    @azure.FieldHint { required = true }
+    monitorConfig: MonitorConfig
+
+    /// Set "Disabled" to stop answering DNS queries without deleting the profile.
+    @azure.FieldHint { hasProviderDefault = true }
+    profileStatus: ("Enabled"|"Disabled")?
+
+    /// Endpoints returned per query. MultiValue routing only.
+    @azure.FieldHint { hasProviderDefault = true }
+    maxReturn: Int?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    fqdn: String?
+
+    hidden parent = this
+
+    hidden res: TrafficManagerProfileResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

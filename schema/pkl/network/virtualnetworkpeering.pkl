@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.virtualnetworkpeering
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VirtualNetworkPeering"
+const apiVersion = "2023-05-01"
+
+open class VirtualNetworkPeeringResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkPeeringResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkPeeringResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A peering from one virtual network to another.
+///
+/// Peerings are ONE-DIRECTIONAL: this resource is the link from
+/// `virtualNetworkName` to `remoteVirtualNetworkId`. Traffic only flows once the
+/// mirror-image peering exists on the remote side, so a working pair is two of
+/// these. Until then the peering sits in state `Initiated` rather than
+/// `Connected`, which is normal and not an error.
+///
+/// The two address spaces must not overlap, and neither can be changed while the
+/// peering exists.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::VirtualNetwork"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "virtualNetworkName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class VirtualNetworkPeering extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The local side of the peering — the vnet this peering hangs off.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    /// ARM ID of the vnet on the far side. createOnly: ARM cannot re-point an
+    /// existing peering.
+    @azure.FieldHint { required = true; createOnly = true }
+    remoteVirtualNetworkId: (String|formae.Resolvable)
+
+    /// Let traffic from the remote vnet reach this one. Turning it off leaves the
+    /// peering in place but blocks the traffic.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowVirtualNetworkAccess: Boolean?
+
+    /// Accept traffic the remote vnet forwarded on behalf of somewhere else — the
+    /// hub-and-spoke case, where a firewall in the hub forwards spoke traffic.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowForwardedTraffic: Boolean?
+
+    /// Let the remote vnet use this vnet's gateway. Mutually exclusive with
+    /// `useRemoteGateways` on the same side.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowGatewayTransit: Boolean?
+
+    /// Use the remote vnet's gateway for this vnet's outbound. Requires the remote
+    /// side to have `allowGatewayTransit` set.
+    @azure.FieldHint { hasProviderDefault = true }
+    useRemoteGateways: Boolean?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    /// `Initiated` until the mirror peering exists, then `Connected`.
+    @azure.FieldHint { hasProviderDefault = true }
+    peeringState: String?
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkPeeringResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

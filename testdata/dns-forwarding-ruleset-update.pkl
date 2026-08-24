@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/dnsresolver.pkl"
+import "@azure/network/dnsresolveroutboundendpoint.pkl" as outbound
+import "@azure/network/dnsforwardingruleset.pkl" as ruleset
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dnsfrs-test-rg"
+  name = "formae-plugin-sdk-test-dnsfrs-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dnsfrs-test-vnet"
+  name = "formae-plugin-sdk-test-dnsfrs-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+// Resolver endpoints demand a subnet delegated to Microsoft.Network/dnsResolvers,
+// holding nothing else, and at least a /28.
+local resolverSubnet = new subnet.Subnet {
+  label = "dnsfrs-test-subnet"
+  name = "formae-plugin-sdk-test-dnsfrs-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.2.0/28"
+  delegations = new Listing {
+    new subnet.Delegation {
+      name = "dnsresolver"
+      serviceName = "Microsoft.Network/dnsResolvers"
+    }
+  }
+}
+
+local resolver = new dnsresolver.DnsResolver {
+  label = "dnsfrs-test-resolver"
+  name = "formae-plugin-sdk-test-dnsfrs-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  virtualNetworkId = vnet.res.id
+}
+
+local endpoint = new outbound.OutboundEndpoint {
+  label = "dnsfrs-test-endpoint"
+  name = "formae-plugin-sdk-test-dnsfrs-ep"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  dnsResolverName = resolver.res.name
+  subnetId = resolverSubnet.res.id
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  resolverSubnet
+  resolver
+  endpoint
+
+  // The ruleset forwards through the outbound endpoint. It carries no rules of
+  // its own — each rule is a DnsForwardingRule child — and applies to no virtual
+  // network until a DnsForwardingRulesetVirtualNetworkLink exists.
+  new ruleset.DnsForwardingRuleset {
+    label = "plugin-sdk-test-dns-forwarding-ruleset"
+    name = "formae-plugin-sdk-test-dnsfrs-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    dnsResolverOutboundEndpointIds = new Listing { endpoint.res.id }
+    // Update: retag. The endpoint list is createOnly here anyway (the SDK's patch
+    // model serialises it at the wrong nesting level and ARM rejects it), so a tag
+    // is the only in-place change available.
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

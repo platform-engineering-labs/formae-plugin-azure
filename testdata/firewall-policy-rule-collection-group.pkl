@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/firewallpolicy.pkl" as firewallpolicy
+import "@azure/network/firewallpolicyrulecollectiongroup.pkl" as rulecollectiongroup
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "fwrcg-test-rg"
+  name = "formae-plugin-sdk-test-fwrcg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Policy and rule collection group are both free — Azure Firewall is billed per
+// deployment hour, and no firewall is created here.
+local policy = new firewallpolicy.FirewallPolicy {
+  label = "fwrcg-test-policy"
+  name = "formae-plugin-sdk-test-fwrcg-pol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuTier = "Standard"
+  threatIntelMode = "Alert"
+  dnsSettings = new firewallpolicy.DnsSettings {
+    enableProxy = false
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  policy
+
+  new rulecollectiongroup.FirewallPolicyRuleCollectionGroup {
+    label = "plugin-sdk-test-fw-rule-collection-group"
+    name = "formae-plugin-sdk-test-fwrcg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    firewallPolicyName = policy.res.name
+    priority = 300
+    ruleCollections {
+      new rulecollectiongroup.RuleCollection {
+        name = "allow-outbound"
+        priority = 400
+        action = "Allow"
+        networkRules {
+          new rulecollectiongroup.NetworkRule {
+            name = "allow-https"
+            description = "outbound https from the app subnet"
+            ipProtocols { "TCP" }
+            sourceAddresses { "10.0.1.0/24" }
+            destinationAddresses { "*" }
+            destinationPorts { "443" }
+          }
+        }
+      }
+      new rulecollectiongroup.RuleCollection {
+        name = "deny-rest"
+        priority = 500
+        action = "Deny"
+        networkRules {
+          new rulecollectiongroup.NetworkRule {
+            name = "deny-all"
+            ipProtocols { "Any" }
+            sourceAddresses { "10.0.1.0/24" }
+            destinationAddresses { "*" }
+            destinationPorts { "*" }
+          }
+        }
+      }
+    }
+  }
+}

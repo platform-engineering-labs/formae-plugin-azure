@@ -1,0 +1,56 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/dnsresolver.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dns-resolver-test-rg"
+  name = "formae-plugin-sdk-test-dnsr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// One resolver per virtual network, and the binding is createOnly, so the vnet
+// exists purely to be bound.
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dns-resolver-test-vnet"
+  name = "formae-plugin-sdk-test-dnsr-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+
+  // The resolver alone costs nothing and answers nothing: billing and DNS
+  // traffic both start at the inbound/outbound endpoints, which are separate
+  // resources and need a subnet delegated to Microsoft.Network/dnsResolvers.
+  new dnsresolver.DnsResolver {
+    label = "plugin-sdk-test-dns-resolver"
+    name = "formae-plugin-sdk-test-dnsr-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    virtualNetworkId = vnet.res.id
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

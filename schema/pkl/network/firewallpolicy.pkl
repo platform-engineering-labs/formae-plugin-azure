@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.firewallpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::FirewallPolicy"
+const apiVersion = "2023-05-01"
+
+/// DNS behaviour for the firewalls using this policy.
+class DnsSettings {
+    /// Let the firewall act as a DNS proxy for the vnets behind it. Required for
+    /// FQDN filtering in network rules.
+    @azure.FieldHint { required = true }
+    enableProxy: Boolean
+
+    /// Custom upstream resolvers. Empty means Azure-provided DNS.
+    @azure.FieldHint { hasProviderDefault = true }
+    servers: Listing<String>?
+}
+
+open class FirewallPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FirewallPolicyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FirewallPolicyResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Firewall policy — the rule collections, threat intelligence settings
+/// and DNS behaviour that one or more firewalls share.
+///
+/// The policy itself is free: billing starts with the Azure Firewall that attaches
+/// to it, which is one of the more expensive Azure resources (a deployment hour
+/// plus data processed). A policy with no firewall costs nothing.
+///
+/// Rule collection groups are separate child resources, not an inline list.
+/// Intrusion detection, TLS inspection, explicit proxy settings, SNAT ranges, base
+/// policy inheritance and the SQL redirect toggle are not modelled, and the
+/// provider does not read them back — surfacing a field the schema cannot express
+/// would show as drift forever.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class FirewallPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// createOnly: ARM cannot retier a policy in place, and the tier must match the
+    /// firewall that uses it. `Premium` is required for TLS inspection and IDPS;
+    /// `Basic` is capped at 250 rules and cannot use threat intelligence.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    skuTier: ("Basic"|"Standard"|"Premium")?
+
+    /// `Alert` logs matches against Microsoft's threat feed, `Deny` blocks them,
+    /// `Off` disables the check. Not available on the Basic tier.
+    @azure.FieldHint { hasProviderDefault = true }
+    threatIntelMode: ("Alert"|"Deny"|"Off")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    dnsSettings: DnsSettings?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: FirewallPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
