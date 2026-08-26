@@ -1,0 +1,143 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerinstance.containergroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ContainerInstance::ContainerGroup"
+const apiVersion = "2023-05-01"
+
+/// Compute reserved for a container. ARM requires both values.
+class ResourceRequests {
+    /// vCPU cores, e.g. 0.5, 1, 2.
+    cpu: Number
+
+    /// Memory in GB, e.g. 0.5, 1.5.
+    memoryInGB: Number
+}
+
+/// A port the container listens on.
+class ContainerPort {
+    port: Int(this > 0 && this <= 65535)
+
+    protocol: ("TCP"|"UDP") = "TCP"
+}
+
+/// A plain environment variable. Secret values are not modelled: ARM never
+/// returns `secureValue` on read, so it would drift against desired state on
+/// every reconcile.
+class EnvironmentVariable {
+    name: String(length >= 1)
+
+    value: String
+}
+
+class Container {
+    name: String(length >= 1 && length <= 63)
+
+    /// Container image reference, e.g. "mcr.microsoft.com/hello-world:latest".
+    image: String(length >= 1)
+
+    resources: ResourceRequests
+
+    ports: Listing<ContainerPort>?
+
+    /// Entrypoint override. Each element is one argv entry, not a shell string.
+    command: Listing<String>?
+
+    environmentVariables: Listing<EnvironmentVariable>?
+}
+
+/// A port exposed on the group's IP address.
+class ExposedPort {
+    port: Int(this > 0 && this <= 65535)
+
+    protocol: ("TCP"|"UDP") = "TCP"
+}
+
+/// The group's IP configuration.
+class IPAddress {
+    /// "Public" gives the group an internet-facing IP; "Private" requires
+    /// `subnetIds` on the group.
+    type: ("Public"|"Private") = "Public"
+
+    ports: Listing<ExposedPort>
+
+    /// DNS label for the public IP, producing <label>.<region>.azurecontainer.io.
+    /// Globally unique within the region.
+    dnsNameLabel: String?
+}
+
+open class ContainerGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ContainerGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ContainerGroupResolvable = (this) {
+        property = "name"
+    }
+    /// Fully-qualified domain name, present when `ipAddress.dnsNameLabel` is set.
+    hidden fqdn: ContainerGroupResolvable = (this) {
+        property = "fqdn"
+    }
+}
+
+/// An Azure Container Instances container group.
+///
+/// Nearly the whole body is createOnly: ARM's PATCH on a container group only
+/// accepts tags, so any change to containers, OS type or networking replaces the
+/// group. Private registry credentials, volumes, init containers, probes and GPU
+/// requests are intentionally not modelled yet — registry passwords in particular
+/// are write-only and would drift.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ContainerGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    containers: Listing<Container>
+
+    @azure.FieldHint { required = true; createOnly = true }
+    osType: ("Linux"|"Windows")
+
+    @azure.FieldHint { createOnly = true }
+    ipAddress: IPAddress?
+
+    /// What to do when a container exits. "Never" keeps a finished group around so
+    /// its logs stay readable.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    restartPolicy: ("Always"|"OnFailure"|"Never")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    fqdn: String?
+
+    hidden parent = this
+
+    hidden res: ContainerGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerregistry.webhook
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ContainerRegistry::Webhook"
+const apiVersion = "2023-07-01"
+
+/// Registry events that trigger the webhook. `chart_push` / `chart_delete` cover
+/// Helm chart operations.
+typealias WebhookAction = "push"|"delete"|"quarantine"|"chart_push"|"chart_delete"
+
+open class WebhookResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WebhookResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WebhookResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A container registry webhook — POSTs to an endpoint when images are pushed,
+/// deleted or quarantined.
+///
+/// Webhooks need a Standard or Premium registry; Basic does not support them.
+///
+/// `serviceUri` is write-only by ARM's own design: it is accepted on create and
+/// update but never returned from Get (ARM exposes it only through a separate
+/// GetCallbackConfig call, alongside any custom headers). So it is declared
+/// writeOnly here, and drift in it cannot be detected — changing it in a forma
+/// still pushes the new value.
+///
+/// Custom headers are not modelled at all: they commonly carry an authorization
+/// token, and the same write-only asymmetry would apply.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ContainerRegistry::Registry"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "registryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Webhook extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 5 && length <= 50 && matches(Regex("^[a-zA-Z0-9]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    registryName: String(length >= 5 && length <= 50)|formae.Resolvable
+
+    /// Must match the registry's region.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    /// Endpoint the registry POSTs to. Write-only — see the note above.
+    @azure.FieldHint { required = true; writeOnly = true }
+    serviceUri: (formae.Value|String)
+
+    @azure.FieldHint { required = true }
+    actions: Listing<WebhookAction>
+
+    /// A disabled webhook stays configured but fires nothing.
+    @azure.FieldHint { hasProviderDefault = true }
+    status: ("enabled"|"disabled")?
+
+    /// Limits the webhook to one repository, optionally one tag:
+    /// `"myrepo"`, `"myrepo:latest"`. Empty means every repository.
+    @azure.FieldHint { hasProviderDefault = true }
+    scope: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: WebhookResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

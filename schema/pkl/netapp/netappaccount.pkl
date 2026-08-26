@@ -1,0 +1,68 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.netapp.netappaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::NetApp::Account"
+const apiVersion = "2024-07-01"
+
+open class AccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AccountResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure NetApp Files account — the top of the ANF hierarchy, above capacity
+/// pools and volumes.
+///
+/// The account itself is free; cost starts at the capacity pool, which bills for
+/// provisioned TiB whether or not any volume uses them.
+///
+/// Active Directory connections are deliberately NOT modelled. They carry a
+/// domain-join username and password, and putting those in a forma would persist
+/// live credentials in resource state — configure them out of band. Customer-
+/// managed-key encryption is likewise out of scope for now.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Account extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Domain used to map NFSv4.1 user IDs, e.g. "contoso.com". Only meaningful
+    /// once NFSv4.1 volumes exist under the account.
+    @azure.FieldHint { hasProviderDefault = true }
+    nfsV4IdDomain: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,52 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/cache/redis.pkl" as rediscache
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "redis-test-rg"
+  name = "formae-plugin-sdk-test-redis-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Basic C0 is the smallest and cheapest cache (~250 MB, no SLA). Even so a
+  // create takes 15-20 minutes, so this fixture needs FORMAE_TEST_TIMEOUT raised
+  // well above the harness default of 5.
+  new rediscache.Redis {
+    label = "plugin-sdk-test-redis"
+    name = "fpsdt-redis-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new rediscache.SKU {
+      name = "Basic"
+      family = "C"
+      capacity = 0
+    }
+    enableNonSslPort = false
+    minimumTlsVersion = "1.2"
+    // Update: add a tag. Deliberately NOT a SKU change — scaling a cache is
+    // another 15-20 minute operation, and tags exercise the in-place PATCH path
+    // without doubling the run time.
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+    publicNetworkAccess = "Enabled"
+  }
+}

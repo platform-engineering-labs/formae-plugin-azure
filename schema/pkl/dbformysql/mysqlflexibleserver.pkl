@@ -1,0 +1,151 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dbformysql.mysqlflexibleserver
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DBforMySQL::FlexibleServer"
+const apiVersion = "2023-12-30"
+
+typealias SKUTier = "Burstable"|"GeneralPurpose"|"MemoryOptimized"
+
+typealias ServerVersion = "5.7"|"8.0.21"
+
+typealias EnableStatus = "Enabled"|"Disabled"
+
+typealias HighAvailabilityMode = "Disabled"|"ZoneRedundant"|"SameZone"
+
+/// Compute size. `name` is the VM size, e.g. "Standard_B1ms" (Burstable) or
+/// "Standard_D2ds_v4" (GeneralPurpose); `tier` must match the family.
+class SKU {
+    name: String(length >= 1)
+
+    tier: SKUTier
+}
+
+class Storage {
+    /// Provisioned storage in GB, 20-16384.
+    storageSizeGB: Int(this >= 20)?
+
+    /// Provisioned IOPS. Bounded by the storage size and tier.
+    iops: Int?
+
+    /// Grow storage automatically instead of failing writes when full.
+    autoGrow: EnableStatus?
+}
+
+class Backup {
+    /// Retention window in days, 1-35.
+    backupRetentionDays: Int(this >= 1 && this <= 35)?
+
+    geoRedundantBackup: EnableStatus?
+}
+
+class HighAvailability {
+    mode: HighAvailabilityMode?
+
+    /// Zone for the standby replica. Only meaningful with ZoneRedundant.
+    standbyAvailabilityZone: String?
+}
+
+class Network {
+    /// Set "Disabled" to reach the server only over a private endpoint or
+    /// delegated subnet.
+    publicNetworkAccess: EnableStatus?
+
+    /// Delegated subnet for VNet integration. createOnly on the server.
+    delegatedSubnetResourceId: (String|formae.Resolvable)?
+
+    /// Private DNS zone paired with the delegated subnet.
+    privateDnsZoneResourceId: (String|formae.Resolvable)?
+}
+
+open class FlexibleServerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FlexibleServerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FlexibleServerResolvable = (this) {
+        property = "name"
+    }
+    /// Hostname clients connect to, e.g. <name>.mysql.database.azure.com.
+    hidden fullyQualifiedDomainName: FlexibleServerResolvable = (this) {
+        property = "fullyQualifiedDomainName"
+    }
+}
+
+/// An Azure Database for MySQL flexible server.
+///
+/// `administratorLoginPassword` is write-only: ARM never returns it, so it is
+/// createOnly here and is never surfaced back in state. Rotating it means
+/// replacing the server — use `formae.value(...).opaque` to keep it out of plain
+/// state on the way in.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class FlexibleServer extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[a-z0-9]+(-[a-z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    @azure.FieldHint { required = true; createOnly = true }
+    version: ServerVersion
+
+    @azure.FieldHint { required = true; createOnly = true }
+    administratorLogin: String(length >= 1)
+
+    @azure.FieldHint { requiredOnCreate = true; createOnly = true }
+    administratorLoginPassword: (String(length >= 8)|formae.Resolvable|formae.Value|formae.SecretValue)
+
+    /// Availability zone for the primary, e.g. "1". createOnly.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    availabilityZone: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    storage: Storage?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    backup: Backup?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    highAvailability: HighAvailability?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    network: Network?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    fullyQualifiedDomainName: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    state: String?
+
+    hidden parent = this
+
+    hidden res: FlexibleServerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

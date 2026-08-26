@@ -1,0 +1,45 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/search/searchservice.pkl" as searchsvc
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "search-test-rg"
+  name = "formae-plugin-sdk-test-search-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // `basic` rather than `free`: the free tier allows one service per subscription,
+  // which would collide across conformance runs. Basic is the cheapest tier that
+  // still permits replicas.
+  new searchsvc.Service {
+    label = "plugin-sdk-test-search"
+    name = "fpsdt-search-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new searchsvc.SKU { name = "basic" }
+    // Update: scale out to 2 query replicas. In-place PATCH; sku and hostingMode
+    // are createOnly because ARM cannot retier or rehost a service.
+    replicaCount = 2
+    partitionCount = 1
+    publicNetworkAccess = "enabled"
+    semanticSearch = "disabled"
+  }
+}

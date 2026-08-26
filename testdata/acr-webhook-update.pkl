@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerregistry/registry.pkl"
+import "@azure/containerregistry/webhook.pkl" as webhook
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "acrwh-test-rg"
+  name = "formae-plugin-sdk-test-acrwh-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Standard, not Basic: Basic registries do not support webhooks.
+local registrySku = new registry.RegistrySKU {
+  name = "Standard"
+}
+
+local reg = new registry.Registry {
+  label = "acrwh-test-acr"
+  name = "fpsdtacrwh\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = registrySku
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  reg
+
+  // serviceUri is write-only: ARM accepts it but never returns it from Get, so it
+  // is not part of resource state and the endpoint below is never contacted during
+  // the test — ARM performs no validation handshake on ACR webhooks.
+  new webhook.Webhook {
+    label = "plugin-sdk-test-acr-webhook"
+    name = "fpsdtacrwh\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    registryName = reg.res.name
+    location = "eastus"
+    serviceUri = "https://example.invalid/acr-hook"
+    actions = new Listing { "push"; "delete" }
+    // Update: disable the webhook. It stays configured but fires nothing. The
+    // update body (WebhookUpdateParameters) has no location field — a webhook
+    // cannot change region.
+    status = "disabled"
+    scope = "myrepo:latest"
+  }
+}

@@ -1,0 +1,109 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.search.searchservice
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Search::Service"
+const apiVersion = "2024-03-01-preview"
+
+/// Pricing tier. `free` allows one service per subscription and supports no
+/// replicas or partitions, so it is unsuitable for anything shared.
+typealias SKUName = "free"|"basic"|"standard"|"standard2"|"standard3"|"storage_optimized_l1"|"storage_optimized_l2"
+
+class SKU {
+    name: SKUName
+}
+
+open class SearchServiceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SearchServiceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SearchServiceResolvable = (this) {
+        property = "name"
+    }
+    /// Query endpoint, e.g. https://<name>.search.windows.net.
+    hidden endpoint: SearchServiceResolvable = (this) {
+        property = "endpoint"
+    }
+}
+
+/// An Azure AI Search service.
+///
+/// Service names are globally unique. The admin and query API keys are NOT
+/// surfaced as properties: ARM returns them only from separate ListAdminKeys /
+/// ListQueryKeys calls, so exposing them would persist live credentials in
+/// resource state. Read them out of band when wiring an application.
+///
+/// Indexes, indexers, data sources and skillsets are data-plane objects rather
+/// than ARM resources and are therefore out of scope for this plugin entirely.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Service extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 2 && length <= 60 && matches(Regex("^[a-z0-9]+(-[a-z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// createOnly: ARM cannot move a service between tiers in place.
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: SKU
+
+    /// Query replicas, 1-12. More replicas raise query throughput and are the
+    /// requirement for a read SLA. `free` supports 1 only.
+    @azure.FieldHint { hasProviderDefault = true }
+    replicaCount: Int(this >= 1)?
+
+    /// Index partitions, 1/2/3/4/6/12. More partitions raise index size limits.
+    /// `free` and `basic` support 1 only.
+    @azure.FieldHint { hasProviderDefault = true }
+    partitionCount: Int(this >= 1)?
+
+    /// "default" is one index per service partition; "highDensity" packs many
+    /// small indexes and is standard3-only.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    hostingMode: ("default"|"highDensity")?
+
+    /// Turn off API-key auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("enabled"|"disabled")?
+
+    /// Semantic ranker tier. "disabled" turns it off; "free" allows a small
+    /// monthly quota of semantic queries.
+    @azure.FieldHint { hasProviderDefault = true }
+    semanticSearch: ("disabled"|"free"|"standard")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    endpoint: String?
+
+    hidden parent = this
+
+    hidden res: SearchServiceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

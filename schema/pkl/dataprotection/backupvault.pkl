@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dataprotection.backupvault
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataProtection::BackupVault"
+const apiVersion = "2024-04-01"
+
+/// Which store the redundancy setting applies to. `VaultStore` is the long-term
+/// vault tier; `OperationalStore` is the snapshot tier held in the source
+/// subscription; `ArchiveStore` is the cold tier.
+typealias DatastoreType = "VaultStore"|"OperationalStore"|"ArchiveStore"
+
+/// Redundancy for the store. `GeoRedundant` and `ZoneRedundant` are createOnly in
+/// practice — ARM will not downgrade redundancy on an existing vault.
+typealias StorageRedundancy = "LocallyRedundant"|"ZoneRedundant"|"GeoRedundant"
+
+class StorageSetting {
+    datastoreType: DatastoreType
+
+    type: StorageRedundancy
+}
+
+open class BackupVaultResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupVaultResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupVaultResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Backup vault (Azure Backup's newer data-protection stack, distinct from the
+/// older Recovery Services vault).
+///
+/// Backup policies and backup instances are separate ARM sub-resources and are not
+/// modelled here. A backup instance in particular needs a protectable source
+/// resource plus role grants on it, so it cannot be provisioned from the vault
+/// alone.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class BackupVault extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 2 && length <= 50 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// At least one store must be configured; ARM rejects an empty list.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageSettings: Listing<StorageSetting>
+
+    /// Retain deleted backup data for a recovery window. "AlwaysON" cannot be
+    /// turned off again, so leave it off for anything short-lived.
+    @azure.FieldHint { hasProviderDefault = true }
+    softDeleteState: ("Off"|"On"|"AlwaysON")?
+
+    /// Days deleted data stays recoverable, 14-180. Only meaningful when soft
+    /// delete is on.
+    @azure.FieldHint { hasProviderDefault = true }
+    softDeleteRetentionDays: Int?
+
+    /// Allow restore into a different subscription.
+    @azure.FieldHint { hasProviderDefault = true }
+    crossSubscriptionRestoreState: ("Enabled"|"Disabled"|"PermanentlyDisabled")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: BackupVaultResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

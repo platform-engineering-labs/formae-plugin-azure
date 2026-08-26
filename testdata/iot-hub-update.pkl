@@ -1,0 +1,45 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/devices/iothub.pkl" as iot
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "iothub-test-rg"
+  name = "formae-plugin-sdk-test-iothub-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // S1 with one unit rather than the F1 free tier: F1 is limited to one hub per
+  // subscription, which would collide across conformance runs.
+  new iot.IotHub {
+    label = "plugin-sdk-test-iothub"
+    name = "fpsdt-iothub-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new iot.SKU {
+      name = "S1"
+      capacity = 1
+    }
+    publicNetworkAccess = "Enabled"
+    // Update: change the comment. ARM's PATCH body is a TagsResource and cannot
+    // carry properties, so the handler issues a full CreateOrUpdate PUT.
+    comments = "managed by formae - updated"
+  }
+}

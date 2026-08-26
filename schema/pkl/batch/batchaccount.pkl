@@ -1,0 +1,108 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.batch.batchaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Batch::Account"
+const apiVersion = "2024-07-01"
+
+/// How compute nodes are allocated. `BatchService` allocates pools in
+/// subscriptions owned by Batch; `UserSubscription` allocates them in this
+/// subscription (and then requires `keyVaultReference`, which this resource does
+/// not model).
+typealias PoolAllocationMode = "BatchService"|"UserSubscription"
+
+typealias AuthenticationMode = "AAD"|"SharedKey"|"TaskAuthenticationToken"
+
+/// Auto-storage is the linked storage account Batch uses for application
+/// packages and task output. Without it, application packages are unavailable.
+class AutoStorage {
+    /// ARM ID of the storage account. Must be in the same region as the account.
+    @azure.FieldHint { required = true }
+    storageAccountId: (String|formae.Resolvable)
+
+    /// `StorageKeys` lets Batch use the account keys; `BatchAccountManagedIdentity`
+    /// requires an identity on the Batch account with a data role on the storage
+    /// account.
+    @azure.FieldHint { hasProviderDefault = true }
+    authenticationMode: ("StorageKeys"|"BatchAccountManagedIdentity")?
+}
+
+open class AccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AccountResolvable = (this) {
+        property = "name"
+    }
+    /// Account endpoint, e.g. <name>.<region>.batch.azure.com.
+    hidden accountEndpoint: AccountResolvable = (this) {
+        property = "accountEndpoint"
+    }
+}
+
+/// An Azure Batch account.
+///
+/// The shared account keys are NOT surfaced as properties: ARM returns them only
+/// from a separate GetKeys call, so exposing them would persist live credentials
+/// in resource state. Prefer `allowedAuthenticationModes = ["AAD"]` and Entra ID
+/// auth; read the keys out of band if an application needs them.
+///
+/// Pools, jobs and applications are separate resources and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Account extends formae.Resource {
+
+    /// Lowercase alphanumeric, unique within the region.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 24 && matches(Regex("^[a-z0-9]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// createOnly: ARM cannot switch allocation mode after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    poolAllocationMode: PoolAllocationMode?
+
+    /// Which ways clients may authenticate to the account's data plane. Dropping
+    /// `SharedKey` disables key auth entirely. ARM does not preserve the order
+    /// given here, so the provider reads the list back sorted.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowedAuthenticationModes: Listing<AuthenticationMode>?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    autoStorage: AutoStorage?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled"|"SecuredByPerimeter")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    accountEndpoint: String?
+
+    hidden parent = this
+
+    hidden res: AccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

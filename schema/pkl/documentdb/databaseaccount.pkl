@@ -1,0 +1,132 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.databaseaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::DatabaseAccount"
+const apiVersion = "2024-05-15"
+
+/// API surface the account exposes. "GlobalDocumentDB" is the NoSQL (Core) API;
+/// "MongoDB" speaks the Mongo wire protocol. Not changeable after create.
+typealias AccountKind = "GlobalDocumentDB"|"MongoDB"|"Parse"
+
+typealias ConsistencyLevel = "Eventual"|"ConsistentPrefix"|"Session"|"BoundedStaleness"|"Strong"
+
+/// Default consistency for reads. `maxStalenessPrefix` and `maxIntervalInSeconds`
+/// apply to BoundedStaleness only and ARM rejects them for other levels.
+class ConsistencyPolicy {
+    defaultConsistencyLevel: ConsistencyLevel = "Session"
+
+    /// Bounded staleness: tolerated lag in operations, 10-2147483647.
+    maxStalenessPrefix: Int?
+
+    /// Bounded staleness: tolerated lag in seconds, 5-86400.
+    maxIntervalInSeconds: Int?
+}
+
+/// A region the account is replicated to. Exactly one location must have
+/// failoverPriority 0 — that is the write region.
+class GeoLocation {
+    locationName: azure.Location
+
+    /// 0 is the write region; higher numbers are read replicas in failover order.
+    failoverPriority: Int(this >= 0)
+
+    isZoneRedundant: Boolean = false
+}
+
+open class DatabaseAccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatabaseAccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatabaseAccountResolvable = (this) {
+        property = "name"
+    }
+    /// Data-plane endpoint, e.g. https://<name>.documents.azure.com:443/.
+    hidden documentEndpoint: DatabaseAccountResolvable = (this) {
+        property = "documentEndpoint"
+    }
+}
+
+/// An Azure Cosmos DB database account.
+///
+/// Account names are globally unique. The master keys and connection strings are
+/// NOT surfaced as properties: ARM returns them only from separate ListKeys /
+/// ListConnectionStrings calls, so exposing them would persist live credentials in
+/// resource state. Read them out of band when wiring an application.
+///
+/// SQL databases/containers, Mongo databases/collections, throughput settings and
+/// role assignments are separate ARM sub-resources and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class DatabaseAccount extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 44 && matches(Regex("^[a-z0-9]+(-[a-z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { createOnly = true }
+    kind: AccountKind = "GlobalDocumentDB"
+
+    /// Replica regions. At least one is required, and exactly one must carry
+    /// failoverPriority 0.
+    @azure.FieldHint { required = true }
+    geoLocations: Listing<GeoLocation>
+
+    @azure.FieldHint { hasProviderDefault = true }
+    consistencyPolicy: ConsistencyPolicy?
+
+    /// Let Azure fail over automatically to the next-priority region.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableAutomaticFailover: Boolean?
+
+    /// Accept writes in every region rather than only the priority-0 one.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableMultipleWriteLocations: Boolean?
+
+    /// One free-tier account is allowed per subscription. createOnly.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    enableFreeTier: Boolean?
+
+    /// Turn off key-based auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled"|"SecuredByPerimeter")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    minimalTlsVersion: ("Tls"|"Tls11"|"Tls12")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    documentEndpoint: String?
+
+    hidden parent = this
+
+    hidden res: DatabaseAccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
