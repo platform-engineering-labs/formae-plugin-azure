@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerregistry/registry.pkl"
+import "@azure/containerregistry/scopemap.pkl" as scopemap
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sm-test-rg"
+  name = "formae-plugin-sdk-test-sm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Premium is required: repository-scoped permissions are not offered on Basic or
+// Standard, and ARM rejects the scope map outright on those tiers. Premium is billed
+// per day and prorated, so a few minutes costs fractions of a cent.
+local registrySku = new registry.RegistrySKU {
+  name = "Premium"
+}
+
+local acr = new registry.Registry {
+  label = "sm-test-acr"
+  name = "fpsdtsm\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = registrySku
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  acr
+
+  // Free. The referenced repository need not exist — a scope map is just a named
+  // permission set, and nothing is pushed to this registry during the test.
+  new scopemap.ScopeMap {
+    label = "plugin-sdk-test-scope-map"
+    name = "formae-plugin-sdk-test-sm-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    registryName = acr.res.name
+    description = "pull and inspect"
+    actions {
+      "repositories/samples/nginx/content/read"
+      "repositories/samples/nginx/metadata/read"
+    }
+  }
+}

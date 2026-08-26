@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerregistry.scopemap
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ContainerRegistry::ScopeMap"
+const apiVersion = "2023-01-01-preview"
+
+open class ScopeMapResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ScopeMapResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ScopeMapResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A named set of repository permissions inside a container registry. Tokens are
+/// granted a scope map rather than individual actions, so the same permission set
+/// can be handed to several tokens and revised in one place.
+///
+/// Free — scope maps carry no charge of their own. They require a PREMIUM registry:
+/// repository-scoped permissions are not offered on Basic or Standard, and ARM
+/// rejects the create outright on those tiers.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ContainerRegistry::Registry"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "registryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class ScopeMap extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 5 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    registryName: String(length >= 5 && length <= 50)|formae.Resolvable
+
+    /// Permissions granted, in the registry's own syntax — e.g.
+    /// `repositories/samples/nginx/content/read`,
+    /// `repositories/samples/nginx/content/write`,
+    /// `repositories/samples/nginx/metadata/read`, or
+    /// `gateway/samples/config/read`. A repository need not exist yet.
+    @azure.FieldHint { required = true }
+    actions: Listing<String>
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: ScopeMapResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerregistry/registry.pkl"
+import "@azure/containerregistry/scopemap.pkl" as scopemap
+import "@azure/containerregistry/token.pkl" as token
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "tk-test-rg"
+  name = "formae-plugin-sdk-test-tk-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Premium is required: repository-scoped permissions are not offered on Basic or
+// Standard, and ARM rejects the scope map outright on those tiers. Premium is billed
+// per day and prorated, so a few minutes costs fractions of a cent.
+local registrySku = new registry.RegistrySKU {
+  name = "Premium"
+}
+
+local acr = new registry.Registry {
+  label = "tk-test-acr"
+  name = "fpsdttk\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = registrySku
+}
+
+local permissions = new scopemap.ScopeMap {
+  label = "tk-test-scope-map"
+  name = "formae-plugin-sdk-test-tk-sm-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  registryName = acr.res.name
+  description = "pull only"
+  actions {
+    "repositories/samples/nginx/content/read"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  acr
+
+  permissions
+
+  // Free. No password is generated here — a token without one is created enabled but
+  // cannot log in, which is exactly what a conformance test wants: nothing to leak.
+  new token.Token {
+    label = "plugin-sdk-test-registry-token"
+    name = "formae-plugin-sdk-test-tk-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    registryName = acr.res.name
+    scopeMapId = permissions.res.id
+    status = "enabled"
+  }
+}

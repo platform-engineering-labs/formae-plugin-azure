@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/diskaccess.pkl" as diskaccess
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "diskaccess-test-rg"
+  name = "formae-plugin-sdk-test-diskacc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Free on its own: a disk access is the private-link target that a disk or
+  // snapshot points at when its networkAccessPolicy is AllowPrivate. Cost would
+  // start with the private endpoint attached to it, which is a separate resource.
+  //
+  // Tags are the only mutable property — ARM's update body carries nothing else.
+  new diskaccess.DiskAccess {
+    label = "plugin-sdk-test-disk-access"
+    name = "formae-plugin-sdk-test-diskacc-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

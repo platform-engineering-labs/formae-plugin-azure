@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.containerregistry.token
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ContainerRegistry::Token"
+const apiVersion = "2023-01-01-preview"
+
+open class TokenResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TokenResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TokenResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A registry identity that authenticates with repository-scoped permissions: the
+/// token names a scope map, and whoever holds its password gets exactly those
+/// permissions.
+///
+/// Free, and requires a PREMIUM registry — as does the scope map it points at.
+///
+/// NO CREDENTIALS ARE MANAGED HERE. ARM's `credentials` block carries password
+/// values, and a password is issued by a separate `generateCredentials` call on the
+/// registry rather than by creating this resource. Neither passwords nor certificates
+/// are sent or read back, so a token's secrets never enter formae state and a
+/// credential generated out of band survives every apply.
+///
+/// A token with no password is created `Enabled` but cannot log in until one is
+/// generated for it.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ContainerRegistry::Registry"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "registryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Token extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 5 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    registryName: String(length >= 5 && length <= 50)|formae.Resolvable
+
+    /// ARM ID of the scope map whose permissions this token carries.
+    @azure.FieldHint { required = true }
+    scopeMapId: (String|formae.Resolvable)
+
+    /// `disabled` revokes the token's access without deleting it or its passwords.
+    @azure.FieldHint { hasProviderDefault = true }
+    status: ("enabled"|"disabled")?
+
+    hidden parent = this
+
+    hidden res: TokenResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

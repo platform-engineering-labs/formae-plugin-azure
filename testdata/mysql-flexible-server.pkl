@@ -1,0 +1,55 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/dbformysql/mysqlflexibleserver.pkl" as mysqlserver
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "mysql-test-rg"
+  name = "formae-plugin-sdk-test-mysql-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Burstable B1ms with the 20 GB storage floor: the cheapest server MySQL will
+  // provision. HA is left off (ZoneRedundant doubles the cost and the create time).
+  new mysqlserver.FlexibleServer {
+    label = "plugin-sdk-test-mysql"
+    name = "fpsdt-mysql-\(vars.testRunID)"
+    location = "westus2"
+    resourceGroupName = rg.res.name
+    sku = new mysqlserver.SKU {
+      name = "Standard_B1ms"
+      tier = "Burstable"
+    }
+    version = "8.0.21"
+    administratorLogin = "mysqladmin"
+    administratorLoginPassword = "T3stP@ssw0rd!"
+    storage = new mysqlserver.Storage {
+      storageSizeGB = 20
+      autoGrow = "Enabled"
+    }
+    backup = new mysqlserver.Backup {
+      backupRetentionDays = 7
+      geoRedundantBackup = "Disabled"
+    }
+    network = new mysqlserver.Network {
+      publicNetworkAccess = "Enabled"
+    }
+  }
+}

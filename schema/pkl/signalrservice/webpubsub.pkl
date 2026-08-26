@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.signalrservice.webpubsub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::SignalRService::WebPubSub"
+const apiVersion = "2024-03-01"
+
+/// Pricing tier. `Free_F1` is limited to one instance per subscription per region,
+/// so it is unsuitable for anything shared.
+typealias SKUName = "Free_F1"|"Standard_S1"|"Premium_P1"|"Premium_P2"
+
+class SKU {
+    name: SKUName
+
+    /// Unit count. Free allows 1; Standard allows 1, 2, 5, 10, 20, 50, 100.
+    capacity: Int(this >= 1) = 1
+}
+
+open class WebPubSubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WebPubSubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WebPubSubResolvable = (this) {
+        property = "name"
+    }
+    /// Client-facing hostname, e.g. <name>.webpubsub.azure.com.
+    hidden hostName: WebPubSubResolvable = (this) {
+        property = "hostName"
+    }
+}
+
+/// An Azure Web PubSub service instance.
+///
+/// Sibling of AZURE::SignalRService::SignalR under the same ARM namespace. Unlike
+/// SignalR this API has no generic `features` list, so there is no service-mode
+/// flag to model.
+///
+/// The access keys and connection strings are NOT surfaced as properties: ARM
+/// returns them only from a separate ListKeys call.
+///
+/// Hubs, custom domains/certificates and shared private link resources are
+/// separate ARM sub-resources and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class WebPubSub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    /// "WebPubSub" is the standard service; "SocketIO" runs the Socket.IO
+    /// protocol instead. createOnly.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    kind: ("WebPubSub"|"SocketIO")?
+
+    /// Turn off access-key auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    /// Turn off Entra ID auth, leaving access keys as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableAadAuth: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    hostName: String?
+
+    hidden parent = this
+
+    hidden res: WebPubSubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

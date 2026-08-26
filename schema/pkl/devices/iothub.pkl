@@ -1,0 +1,99 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.devices.iothub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Devices::IotHub"
+const apiVersion = "2023-06-30"
+
+/// Tier and size. `F1` is the free tier — one per subscription, so unsuitable for
+/// anything shared. `B*` are basic (no cloud-to-device), `S*` standard.
+typealias IotHubSKUName = "F1"|"B1"|"B2"|"B3"|"S1"|"S2"|"S3"
+
+class SKU {
+    name: IotHubSKUName
+
+    /// Number of provisioned units. Each unit adds daily message quota.
+    capacity: Int(this >= 1) = 1
+}
+
+open class IotHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IotHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IotHubResolvable = (this) {
+        property = "name"
+    }
+    /// Device-facing hostname, e.g. <name>.azure-devices.net.
+    hidden hostName: IotHubResolvable = (this) {
+        property = "hostName"
+    }
+}
+
+/// An Azure IoT Hub.
+///
+/// The shared-access-policy keys are NOT surfaced as properties: ARM returns them
+/// inline under `authorizationPolicies` on a read, so they are explicitly stripped
+/// rather than merely not fetched — serializing the response through would leak
+/// live credentials into resource state. Read them out of band, or via
+/// GetKeysForKeyName, when wiring a device or application.
+///
+/// Routing endpoints, routes, enrichments, certificates and DPS are separate ARM
+/// sub-resources and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class IotHub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 50 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    /// Turn off SAS-key auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    minTlsVersion: String?
+
+    /// Free-form note stored on the hub.
+    @azure.FieldHint { hasProviderDefault = true }
+    comments: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    hostName: String?
+
+    hidden parent = this
+
+    hidden res: IotHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

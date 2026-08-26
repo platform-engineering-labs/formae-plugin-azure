@@ -265,6 +265,32 @@ jobs:
           # falls back to returns only subscription-LEVEL subscriptions, not the
           # topic-scoped one the fixture creates. CRUD passes; run live locally with:
           #   make conformance-test-crud TEST=event-grid-event-subscription
+          # --- Remaining resources, added wholesale so one CI run shows which of them
+          # the discovery phase can actually see. Discovery needs either a
+          # subscription-wide List or a parent chain to hand scope down; a resource
+          # with neither is invisible to it however well its CRUD lifecycle works.
+          # Expected to pass both phases (each has a subscription-wide List):
+          - app-configuration-store
+          - batch-account
+          - container-group
+          - cosmos-database-account
+          - disk-access
+          - iot-hub
+          - mysql-flexible-server
+          - netapp-account
+          - redis-cache
+          - search-service
+          - signalr-service
+          - web-pubsub
+          # Parent-scoped, so discovery depends on the parent chain resolving:
+          - acr-webhook
+          - scope-map
+          - registry-token
+          - gallery-application
+          - sql-elastic-pool
+          - management-policy
+          # Unclear: lists per resource group with no subscription-wide fallback.
+          - backup-vault
           # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
           # a managed environment takes ~5 min to provision (container-app builds on top),
           # exceeding the CI command timeout — same class as the AKS extension. Both are

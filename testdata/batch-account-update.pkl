@@ -1,0 +1,46 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/batch/batchaccount.pkl" as batch
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "batch-test-rg"
+  name = "formae-plugin-sdk-test-batch-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // A Batch account itself carries no compute cost; only pools do, and none are
+  // created here. Names are lowercase alphanumeric only and unique per region.
+  new batch.Account {
+    label = "plugin-sdk-test-batch"
+    name = "fpsdtbatch\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    poolAllocationMode = "BatchService"
+    allowedAuthenticationModes = new Listing { "AAD"; "SharedKey" }
+    // Update: close the account to the public internet. In-place PATCH.
+    // The mutated field is deliberately a scalar: changing only
+    // allowedAuthenticationModes produced no diff at all (core created no
+    // command for the apply), and ARM reorders that list anyway.
+    // poolAllocationMode is createOnly — AccountUpdateProperties has no field
+    // for it.
+    publicNetworkAccess = "Disabled"
+  }
+}

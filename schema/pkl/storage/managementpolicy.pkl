@@ -1,0 +1,101 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.managementpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::ManagementPolicy"
+const apiVersion = "2024-01-01"
+
+/// Age threshold for a lifecycle action, in days since last modification.
+class DaysAfterModification {
+    daysAfterModificationGreaterThan: Int(this >= 0)
+}
+
+/// Lifecycle actions for the current version of a blob. Snapshot and previous-version
+/// actions are intentionally not modelled yet — add them when a consumer needs them.
+class BaseBlobActions {
+    /// Move to the Cool tier after the given age.
+    tierToCool: DaysAfterModification?
+
+    /// Move to the Archive tier after the given age.
+    tierToArchive: DaysAfterModification?
+
+    /// Delete after the given age. Named `deleteAfter` because `delete` is a
+    /// reserved word in PKL; it maps to the ARM `delete` action.
+    deleteAfter: DaysAfterModification?
+}
+
+class RuleActions {
+    baseBlob: BaseBlobActions
+}
+
+class RuleFilters {
+    /// Blob types the rule applies to. ARM requires at least one.
+    blobTypes: Listing<"blockBlob"|"appendBlob"> = new { "blockBlob" }
+
+    /// Optional blob-name prefixes, e.g. "logs/" — omit to match the whole account.
+    prefixMatch: Listing<String>?
+}
+
+class RuleDefinition {
+    actions: RuleActions
+    filters: RuleFilters = new {}
+}
+
+class Rule {
+    /// Rule name, unique within the policy.
+    name: String(length >= 1 && length <= 256)
+
+    /// Set false to keep the rule defined but inactive.
+    enabled: Boolean = true
+
+    definition: RuleDefinition
+}
+
+open class ManagementPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagementPolicyResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// Blob lifecycle-management policy for a storage account. ARM models this as a
+/// singleton child whose name is always `default`, so this resource carries no
+/// `name` field: one policy per storage account.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class ManagementPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent storage account.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Lifecycle rules. ARM requires at least one rule; an empty policy is a delete.
+    @azure.FieldHint { required = true }
+    rules: Listing<Rule>
+
+    hidden parent = this
+
+    hidden res: ManagementPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

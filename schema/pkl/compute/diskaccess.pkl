@@ -1,0 +1,68 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.diskaccess
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::DiskAccess"
+const apiVersion = "2023-04-02"
+
+open class DiskAccessResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DiskAccessResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DiskAccessResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A disk access resource — the private-link target that lets a managed disk or
+/// snapshot be exported over a private endpoint instead of a public SAS URL.
+///
+/// This is what a disk or snapshot needs before its `networkAccessPolicy` can be
+/// set to `AllowPrivate`; without one ARM rejects that policy outright
+/// ("ConflictingUserInput: AllowPrivate NetworkAccessPolicy can only supported with
+/// Disk Access").
+///
+/// The resource itself is free and carries no settable configuration beyond
+/// location and tags — everything else about it is either derived (the private-link
+/// resource IDs) or attached separately (the private endpoint connections
+/// themselves, which are their own resources).
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class DiskAccess extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Must match the region of the disks or snapshots that will use it.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Tags are the only mutable property: ARM's update body (DiskAccessUpdate)
+    /// carries nothing else.
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: DiskAccessResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

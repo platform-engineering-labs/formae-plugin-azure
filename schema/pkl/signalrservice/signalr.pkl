@@ -1,0 +1,108 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.signalrservice.signalr
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::SignalRService::SignalR"
+const apiVersion = "2023-02-01"
+
+/// Pricing tier. `Free_F1` is limited to one instance per subscription per region,
+/// so it is unsuitable for anything shared.
+typealias SKUName = "Free_F1"|"Standard_S1"|"Premium_P1"|"Premium_P2"
+
+typealias SKUTier = "Free"|"Basic"|"Standard"|"Premium"
+
+class SKU {
+    name: SKUName
+
+    /// Unit count. Free allows 1; Standard allows 1, 2, 5, 10, 20, 50, 100.
+    capacity: Int(this >= 1) = 1
+}
+
+open class SignalRResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SignalRResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SignalRResolvable = (this) {
+        property = "name"
+    }
+    /// Client-facing hostname, e.g. <name>.service.signalr.net.
+    hidden hostName: SignalRResolvable = (this) {
+        property = "hostName"
+    }
+}
+
+/// An Azure SignalR Service instance.
+///
+/// The access keys and connection strings are NOT surfaced as properties: ARM
+/// returns them only from a separate ListKeys call, so exposing them would persist
+/// live credentials in resource state.
+///
+/// Shared private link resources and custom domains/certificates are separate ARM
+/// sub-resources and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class SignalR extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    /// Service flavour. "SignalR" is the classic hub service; "RawWebSockets" is
+    /// the bare WebSocket variant. createOnly.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    kind: ("SignalR"|"RawWebSockets")?
+
+    /// Hub model: "Default" runs your own hub server, "Serverless" has none,
+    /// "Classic" is the legacy auto-detect mode.
+    ///
+    /// This is deliberately a single scalar rather than the generic ARM `features`
+    /// list. ARM returns every flag it knows about with its default value, so a
+    /// caller declaring one entry of a modelled list would drift against a
+    /// four-entry read forever. The log/trace flags are not modelled for the same
+    /// reason — add them as scalars when a consumer needs them.
+    @azure.FieldHint { hasProviderDefault = true }
+    serviceMode: ("Default"|"Serverless"|"Classic")?
+
+    /// Turn off access-key auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    hostName: String?
+
+    hidden parent = this
+
+    hidden res: SignalRResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
