@@ -1,0 +1,98 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.policyassignment
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Authorization::PolicyAssignment"
+const apiVersion = "2022-06-01"
+
+/// Text shown to a user whose request is denied, or on a non-compliant resource.
+class NonComplianceMessage {
+    @azure.FieldHint { required = true }
+    message: String
+
+    /// Which definition inside an initiative the message belongs to. Omit for a
+    /// single policy definition.
+    @azure.FieldHint { }
+    policyDefinitionReferenceId: String?
+}
+
+open class PolicyAssignmentResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PolicyAssignmentResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PolicyAssignmentResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Puts a policy definition into effect over a scope. Until a definition is
+/// assigned it evaluates nothing.
+///
+/// Free — assignments and policy evaluation carry no charge.
+///
+/// An assignment CHANGES BEHAVIOUR over everything in its scope: a definition whose
+/// effect is `deny` will start refusing non-compliant requests as soon as this
+/// resource exists. `enforcementMode` is the safety valve — `DoNotEnforce` evaluates
+/// compliance and reports it without applying the effect.
+///
+/// Not modelled: `parameters` and `metadata` (arbitrary JSON, as on the definition),
+/// `overrides` and `resourceSelectors` (selective rollout), managed `identity` with
+/// its `location` (needed only for `deployIfNotExists` and `modify` effects), and
+/// `definitionVersion` pinning. None is read back, so an assignment authored
+/// elsewhere reads without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class PolicyAssignment extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    /// Scope the policy is applied over — a subscription, a resource group, a single
+    /// resource, or a management group. Everything beneath it is evaluated.
+    @azure.FieldHint { required = true; createOnly = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// ARM ID of the policy definition or initiative to apply.
+    @azure.FieldHint { required = true }
+    policyDefinitionId: (String|formae.Resolvable)
+
+    @azure.FieldHint { }
+    displayName: String?
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// `Default` applies the definition's effect. `DoNotEnforce` evaluates and
+    /// reports compliance without applying it.
+    @azure.FieldHint { hasProviderDefault = true }
+    enforcementMode: ("Default"|"DoNotEnforce")?
+
+    /// Scopes carved out of `scope` and left unevaluated.
+    @azure.FieldHint { }
+    notScopes: Listing<(String|formae.Resolvable)>?
+
+    /// At most ONE message when assigning a single policy definition — ARM rejects
+    /// more. Several are allowed only for an initiative, where each names the
+    /// definition inside it via `policyDefinitionReferenceId`.
+    @azure.FieldHint { }
+    nonComplianceMessages: Listing<NonComplianceMessage>?
+
+    hidden parent = this
+
+    hidden res: PolicyAssignmentResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

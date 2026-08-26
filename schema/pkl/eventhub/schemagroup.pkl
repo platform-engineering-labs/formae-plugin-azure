@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.eventhub.schemagroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::EventHub::SchemaGroup"
+const apiVersion = "2024-01-01"
+
+open class SchemaGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SchemaGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SchemaGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A group in an Event Hubs namespace's schema registry: producers and consumers
+/// register Avro schemas here and reference them by ID instead of embedding them in
+/// every message.
+///
+/// Free — the group carries no charge, and schemas stored in it do not bill either.
+/// It requires a STANDARD or higher namespace: the schema registry is not offered on
+/// Basic.
+///
+/// The group holds no schemas of its own. Schemas are pushed through the data-plane
+/// schema registry client, not ARM, so this resource only manages the container and
+/// the compatibility rule enforced on what lands in it.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::EventHub::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class SchemaGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// Serialization format of the schemas in the group. `Avro` is the only real
+    /// choice; ARM also reports `Unknown` for groups created before the field
+    /// existed.
+    @azure.FieldHint { required = true; createOnly = true }
+    schemaType: ("Avro"|"Unknown")
+
+    /// Which schema changes the registry accepts: `Backward` lets new schemas read
+    /// data written with the old one, `Forward` the reverse, `None` disables the
+    /// check.
+    ///
+    /// Immutable, despite ARM exposing a PUT that appears to set it:
+    ///
+    ///   MessagingGatewayForbidden: SubCode=40301, Cannot change compatibility in a
+    ///   group.
+    ///
+    /// so changing it replaces the group — which discards the schemas registered in
+    /// it. Every field here is createOnly, making the group immutable as a whole.
+    @azure.FieldHint { required = true; createOnly = true }
+    schemaCompatibility: ("Backward"|"Forward"|"None")
+
+    hidden parent = this
+
+    hidden res: SchemaGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

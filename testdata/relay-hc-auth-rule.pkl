@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/relay/relaynamespace.pkl" as relay
+import "@azure/relay/hybridconnection.pkl" as hybrid
+import "@azure/relay/hybridconnectionauthorizationrule.pkl" as authrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "relayhcar-test-rg"
+  name = "formae-plugin-sdk-test-relayhcar-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new relay.Namespace {
+  label = "relayhcar-test-namespace"
+  name = "fpsdt-relayhcar-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Standard"
+}
+
+local hc = new hybrid.HybridConnection {
+  label = "relayhcar-test-hybrid-connection"
+  name = "conformance-hc"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+  requiresClientAuthorization = true
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ns
+  hc
+
+  // Connection-scoped rather than namespace-wide: the keys this rule mints reach
+  // only this hybrid connection. They are not part of resource state — ARM returns
+  // them from a separate ListKeys call.
+  new authrule.HybridConnectionAuthorizationRule {
+    label = "plugin-sdk-test-relay-hc-auth-rule"
+    name = "conformance-rule"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    hybridConnectionName = hc.res.name
+    rights = new Listing { "Listen" }
+  }
+}

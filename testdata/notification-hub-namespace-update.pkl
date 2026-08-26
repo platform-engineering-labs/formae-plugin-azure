@@ -1,0 +1,47 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/notificationhubs/notificationhubnamespace.pkl" as nh
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nhns-test-rg"
+  name = "formae-plugin-sdk-test-nhns-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // `Basic` rather than `Free`: the free tier allows one namespace per
+  // subscription, which would collide across conformance runs. Names are globally
+  // unique — Notification Hubs shares servicebus.windows.net with Service Bus and
+  // Relay.
+  new nh.Namespace {
+    label = "plugin-sdk-test-notification-hub-namespace"
+    name = "fpsdt-nhns-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    skuName = "Basic"
+    namespaceType = "NotificationHub"
+    // Update: retag. The Patch body carries only sku and tags; a sku change to
+    // Standard would work in place too but costs an order of magnitude more, so
+    // the tag is the cheaper mutation for a lifecycle test.
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

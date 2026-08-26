@@ -1,0 +1,81 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/servicebus/servicebusnamespace.pkl" as namespace
+import "@azure/servicebus/servicebustopic.pkl" as topic
+import "@azure/servicebus/servicebussubscription.pkl" as subscription
+import "@azure/servicebus/rule.pkl" as rule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sbrule-test-rg"
+  name = "formae-plugin-sdk-test-sbrule-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Standard, not Basic: Basic namespaces have queues only, no topics.
+local namespaceSku = new namespace.NamespaceSKU {
+  name = "Standard"
+}
+
+local ns = new namespace.Namespace {
+  label = "sbrule-test-ns"
+  name = "fpsdt-sbrule-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = namespaceSku
+}
+
+local tp = new topic.Topic {
+  label = "sbrule-test-topic"
+  name = "formae-plugin-sdk-test-sbruletopic-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+}
+
+local sub = new subscription.Subscription {
+  label = "sbrule-test-subscription"
+  name = "formae-plugin-sdk-test-sbrulesub-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+  topicName = tp.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ns
+  tp
+  sub
+
+  // Without a rule the subscription keeps ARM's implicit $Default rule, which
+  // matches everything. This one narrows it, and rewrites the message on the way
+  // through.
+  new rule.Rule {
+    label = "plugin-sdk-test-sbrule"
+    name = "high-priority"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    topicName = tp.res.name
+    subscriptionName = sub.res.name
+    filterType = "SqlFilter"
+    sqlFilter = new rule.SqlFilter {
+      sqlExpression = "priority = 'high'"
+    }
+    action = new rule.RuleAction {
+      sqlExpression = "SET routed = 'yes'"
+    }
+  }
+}

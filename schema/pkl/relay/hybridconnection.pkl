@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.relay.hybridconnection
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Relay::HybridConnection"
+const apiVersion = "2021-11-01"
+
+open class HybridConnectionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: HybridConnectionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: HybridConnectionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Relay hybrid connection — a rendezvous point that lets a listener behind a
+/// firewall accept connections without any inbound port being opened.
+///
+/// The connection itself is just configuration; nothing flows until a listener
+/// connects to it. Its send/listen keys live in authorization rules, which are
+/// separate resources, so no credentials appear in this resource's state.
+///
+/// Unlike the namespace this resource is not an LRO: ARM answers create, update
+/// and delete synchronously, and it carries no tags or location of its own.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Relay::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class HybridConnection extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// Require a SAS token from clients. Defaults to true, and ARM cannot flip it
+    /// in place — changing it replaces the connection.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    requiresClientAuthorization: Boolean?
+
+    /// Free-form string carried with the connection, up to 1 KB. Commonly used to
+    /// describe what is listening on the other end.
+    @azure.FieldHint { hasProviderDefault = true }
+    userMetadata: String?
+
+    hidden parent = this
+
+    hidden res: HybridConnectionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

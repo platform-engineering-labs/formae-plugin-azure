@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/relay/relaynamespace.pkl" as relay
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "relay-test-rg"
+  name = "formae-plugin-sdk-test-relay-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Names are globally unique — Relay shares the servicebus.windows.net namespace
+  // with Service Bus. Standard is the only tier, and an empty namespace costs
+  // nothing: charges start with hybrid connections and listeners.
+  new relay.Namespace {
+    label = "plugin-sdk-test-relay-namespace"
+    name = "fpsdt-relay-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    skuName = "Standard"
+    publicNetworkAccess = "Enabled"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/relay/relaynamespace.pkl" as relay
+import "@azure/relay/namespaceauthorizationrule.pkl" as authrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "relayar-test-rg"
+  name = "formae-plugin-sdk-test-relayar-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new relay.Namespace {
+  label = "relayar-test-namespace"
+  name = "fpsdt-relayar-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Standard"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ns
+
+  // rights is this resource's only mutable property, so the update fixture has
+  // nothing else to change. The keys this rule mints are not part of resource
+  // state — they come from a separate ListKeys call.
+  new authrule.NamespaceAuthorizationRule {
+    label = "plugin-sdk-test-relay-namespace-auth-rule"
+    name = "conformance-rule"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    // Update: grant Manage as well. Deliberately a GROWTH of the list rather than
+    // a shrink — a shrink of allowedAuthenticationModes on Batch produced no diff
+    // at all, and this resource has no other field to mutate, so this fixture also
+    // probes whether core detects list growth.
+    rights = new Listing { "Listen"; "Send"; "Manage" }
+  }
+}

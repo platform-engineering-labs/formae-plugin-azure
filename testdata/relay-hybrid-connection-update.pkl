@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/relay/relaynamespace.pkl" as relay
+import "@azure/relay/hybridconnection.pkl" as hybrid
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "relayhc-test-rg"
+  name = "formae-plugin-sdk-test-relayhc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new relay.Namespace {
+  label = "relayhc-test-namespace"
+  name = "fpsdt-relayhc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Standard"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ns
+
+  // Nothing flows until a listener connects, so this is pure configuration and
+  // costs nothing. Send/listen keys live in authorization rules, which are
+  // separate resources.
+  new hybrid.HybridConnection {
+    label = "plugin-sdk-test-relay-hybrid-connection"
+    name = "conformance-hc"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    requiresClientAuthorization = true
+    // Update: change the metadata. requiresClientAuthorization is createOnly —
+    // ARM will not flip it on an existing connection — and this API has no PATCH
+    // verb, so the update re-PUTs through CreateOrUpdate.
+    userMetadata = "conformance listener updated"
+  }
+}

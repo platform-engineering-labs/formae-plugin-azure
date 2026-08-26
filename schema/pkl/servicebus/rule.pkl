@@ -1,0 +1,126 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.servicebus.rule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ServiceBus::Rule"
+const apiVersion = "2021-11-01"
+
+/// Matches on a SQL-92 subset evaluated against message properties, e.g.
+/// `priority = 'high' AND region = 'emea'`. `1=1` matches everything.
+class SqlFilter {
+    @azure.FieldHint { required = true }
+    sqlExpression: String(length >= 1 && length <= 1024)
+}
+
+/// Matches on exact equality of the listed system and user properties. Cheaper to
+/// evaluate than a SQL filter, and the properties left unset are ignored.
+class CorrelationFilter {
+    @azure.FieldHint { hasProviderDefault = true }
+    correlationId: String?
+
+    /// Matches the message's `Label` / `Subject`.
+    @azure.FieldHint { hasProviderDefault = true }
+    label: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    contentType: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    messageId: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    replyTo: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    sessionId: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    to: String?
+}
+
+/// Rewrites a matching message before it lands in the subscription, e.g.
+/// `SET priority = 'low'`.
+class RuleAction {
+    @azure.FieldHint { required = true }
+    sqlExpression: String(length >= 1 && length <= 1024)
+}
+
+open class RuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A filter rule on a Service Bus topic subscription.
+///
+/// A subscription created without rules gets ARM's implicit `$Default` rule, which
+/// matches everything. Adding a rule here is how a subscription receives only part
+/// of a topic's traffic.
+///
+/// `filterType` decides which of `sqlFilter` / `correlationFilter` ARM reads; the
+/// other is ignored. ARM also echoes `compatibilityLevel` and
+/// `requiresPreprocessing` back on both filter kinds — neither is modelled, and the
+/// provider does not read them back, since nested fields with provider defaults
+/// read as drift.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ServiceBus::Subscription"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "subscriptionName" },
+        new formae.ListProperty { parentProperty = "topicName" listParameter = "topicName" },
+        new formae.ListProperty { parentProperty = "namespaceName" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Rule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    topicName: String(length >= 1 && length <= 260)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    subscriptionName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    filterType: ("SqlFilter"|"CorrelationFilter")
+
+    /// Read by ARM only when `filterType = "SqlFilter"`.
+    @azure.FieldHint { hasProviderDefault = true }
+    sqlFilter: SqlFilter?
+
+    /// Read by ARM only when `filterType = "CorrelationFilter"`.
+    @azure.FieldHint { hasProviderDefault = true }
+    correlationFilter: CorrelationFilter?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    action: RuleAction?
+
+    hidden parent = this
+
+    hidden res: RuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

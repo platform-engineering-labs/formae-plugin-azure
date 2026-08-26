@@ -1,0 +1,69 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.relay.namespaceauthorizationrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Relay::NamespaceAuthorizationRule"
+const apiVersion = "2021-11-01"
+
+typealias AccessRight = "Listen"|"Send"|"Manage"
+
+open class NamespaceAuthorizationRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NamespaceAuthorizationRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NamespaceAuthorizationRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A namespace-wide SAS rule for an Azure Relay namespace.
+///
+/// The rule's primary/secondary keys and connection strings are NOT surfaced as
+/// properties: ARM returns them only from a separate ListKeys call, so exposing
+/// them would persist live credentials in resource state. Read them out of band
+/// when wiring a listener or sender.
+///
+/// `Manage` implies both `Send` and `Listen`, and ARM rejects a rule that asks
+/// for `Manage` without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Relay::Namespace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class NamespaceAuthorizationRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 50)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// The rights granted. This is the rule's only mutable property, so it is also
+    /// the only thing an update can change.
+    @azure.FieldHint { required = true }
+    rights: Listing<AccessRight>
+
+    hidden parent = this
+
+    hidden res: NamespaceAuthorizationRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

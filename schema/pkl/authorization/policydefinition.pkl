@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.policydefinition
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Authorization::PolicyDefinition"
+const apiVersion = "2021-06-01"
+
+open class PolicyDefinitionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PolicyDefinitionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PolicyDefinitionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A custom Azure Policy rule: a condition over resource properties and the effect
+/// to apply when it matches. A definition on its own evaluates nothing — assign it
+/// with a policy assignment to put it into effect.
+///
+/// Free — definitions and their evaluation carry no charge.
+///
+/// Scope: SUBSCRIPTION-level definitions only. ARM also hosts definitions at
+/// management group scope through a parallel set of verbs
+/// (`CreateOrUpdateAtManagementGroup` and friends); those are not modelled, and
+/// built-in definitions are read-only and cannot be represented here at all.
+///
+/// `policyRule` is the policy language itself — arbitrarily nested JSON that no PKL
+/// class can usefully describe — so it is carried as a JSON string. Write it as
+/// COMPACT JSON WITH SORTED KEYS: the provider canonicalises what ARM returns the
+/// same way, and a rule written with different spacing or key order would otherwise
+/// read as drift on every sync.
+///
+/// `parameters` and `metadata` are not modelled for the same reason, and are not
+/// read back: a definition authored elsewhere reads without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class PolicyDefinition extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Which resources the rule is evaluated against. `All` covers resource groups
+    /// and subscriptions too; `Indexed` only resource types that support tags and
+    /// location. Provider-specific modes such as `Microsoft.KeyVault.Data` exist for
+    /// data-plane policies.
+    @azure.FieldHint { hasProviderDefault = true }
+    mode: String?
+
+    /// The rule, as compact JSON with sorted keys — an `if` condition and a `then`
+    /// effect, e.g.
+    /// `{"if":{"field":"location","notEquals":"eastus"},"then":{"effect":"audit"}}`.
+    @azure.FieldHint { required = true }
+    policyRule: String
+
+    /// Always `Custom` for a definition this provider created. Assigned by the
+    /// service.
+    @azure.FieldHint { hasProviderDefault = true }
+    policyType: String?
+
+    hidden parent = this
+
+    hidden res: PolicyDefinitionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

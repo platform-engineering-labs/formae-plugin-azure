@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/notificationhubs/notificationhubnamespace.pkl" as nhns
+import "@azure/notificationhubs/notificationhub.pkl" as hub
+import "@azure/notificationhubs/notificationhubauthorizationrule.pkl" as authrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nhar-test-rg"
+  name = "formae-plugin-sdk-test-nhar-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local ns = new nhns.Namespace {
+  label = "nhar-test-namespace"
+  name = "fpsdt-nhar-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+  namespaceType = "NotificationHub"
+}
+
+local pushHub = new hub.NotificationHub {
+  label = "nhar-test-hub"
+  name = "conformance-hub"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  namespaceName = ns.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ns
+  pushHub
+
+  // Hub-scoped rather than namespace-wide: this is how an app backend gets Send
+  // without namespace-wide rights. ARM returns this rule's keys inline from Get;
+  // the provider strips them so they never reach resource state.
+  new authrule.NotificationHubAuthorizationRule {
+    label = "plugin-sdk-test-nh-auth-rule"
+    name = "conformance-rule"
+    resourceGroupName = rg.res.name
+    namespaceName = ns.res.name
+    notificationHubName = pushHub.res.name
+    // Update: add Send. rights is this resource's only mutable property, and list
+    // growth registers as a diff.
+    rights = new Listing { "Listen"; "Send" }
+  }
+}

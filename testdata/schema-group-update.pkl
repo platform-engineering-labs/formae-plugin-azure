@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/eventhub/eventhubnamespace.pkl" as namespace
+import "@azure/eventhub/schemagroup.pkl" as schemagroup
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "sg-test-rg"
+  name = "formae-plugin-sdk-test-sg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Standard is the floor: the schema registry is not offered on a Basic namespace.
+// capacity is pinned because Azure always returns sku.capacity and nested
+// hasProviderDefault is not honoured — omitting it fails Verify.
+local namespaceSku = new namespace.NamespaceSKU {
+  name = "Standard"
+  tier = "Standard"
+  capacity = 1
+}
+
+local ehns = new namespace.Namespace {
+  label = "sg-test-ehns"
+  name = "fpsdtsgehns\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = namespaceSku
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  ehns
+
+  // Free: the group carries no charge and stores no schemas of its own — those are
+  // pushed through the data-plane registry client, not ARM.
+  new schemagroup.SchemaGroup {
+    label = "plugin-sdk-test-schema-group"
+    name = "formae-plugin-sdk-test-sg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    namespaceName = ehns.res.name
+    schemaType = "Avro"
+    schemaCompatibility = "Forward"
+  }
+}

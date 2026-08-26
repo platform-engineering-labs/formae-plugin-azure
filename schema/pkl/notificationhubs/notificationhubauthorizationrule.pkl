@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.notificationhubs.notificationhubauthorizationrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::NotificationHubs::NotificationHubAuthorizationRule"
+const apiVersion = "2017-04-01"
+
+typealias AccessRight = "Listen"|"Send"|"Manage"
+
+open class NotificationHubAuthorizationRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NotificationHubAuthorizationRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NotificationHubAuthorizationRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A SAS rule scoped to a single notification hub.
+///
+/// This is how an app backend gets `Send` without holding namespace-wide rights,
+/// and how a client app gets `Listen` to register devices.
+///
+/// Unusually for this plugin, ARM returns this rule's primary and secondary keys
+/// INLINE from Get rather than only from ListKeys — the provider strips them, so
+/// they never reach resource state. Read them out of band when wiring an app.
+///
+/// `Manage` implies both `Send` and `Listen`, and ARM rejects a rule that asks
+/// for `Manage` without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::NotificationHubs::NotificationHub"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "notificationHubName" },
+        new formae.ListProperty { parentProperty = "namespaceName" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class NotificationHubAuthorizationRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    namespaceName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    notificationHubName: String(length >= 1 && length <= 260)|formae.Resolvable
+
+    /// The rights granted. This is the rule's only mutable property, so it is also
+    /// the only thing an update can change.
+    @azure.FieldHint { required = true }
+    rights: Listing<AccessRight>
+
+    hidden parent = this
+
+    hidden res: NotificationHubAuthorizationRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

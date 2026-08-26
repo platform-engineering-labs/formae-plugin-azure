@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/authorization/policydefinition.pkl" as policydefinition
+import "@azure/authorization/policyassignment.pkl" as policyassignment
+import "vars.pkl"
+
+// The assignment is scoped to this group rather than the subscription, so nothing
+// outside the test is ever evaluated.
+local rg = new resourcegroup.ResourceGroup {
+  label = "pa-test-rg"
+  name = "formae-plugin-sdk-test-pa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local subscriptionScope = "/subscriptions/\(vars.subscriptionId)"
+
+// Effect is `audit`, and the definition lives at subscription scope so the
+// group-scoped assignment can reference it.
+local definition = new policydefinition.PolicyDefinition {
+  label = "pa-test-policy-definition"
+  name = "formae-plugin-sdk-test-pa-pd-\(vars.testRunID)"
+  displayName = "formae plugin sdk test audit \(vars.testRunID)"
+  description = "conformance test policy definition"
+  mode = "Indexed"
+  policyRule = #"{"if":{"field":"location","notEquals":"eastus"},"then":{"effect":"audit"}}"#
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  definition
+
+  // Free, and doubly harmless: the definition's effect is `audit`, and
+  // DoNotEnforce stops even that from being applied — compliance is evaluated and
+  // reported, nothing is blocked.
+  new policyassignment.PolicyAssignment {
+    label = "plugin-sdk-test-policy-assignment"
+    name = "formae-plugin-sdk-test-pa-\(vars.testRunID)"
+    scope = "\(subscriptionScope)/resourceGroups/formae-plugin-sdk-test-pa-rg-\(vars.testRunID)"
+    policyDefinitionId = definition.res.id
+    displayName = "formae plugin sdk test assignment \(vars.testRunID)"
+    description = "conformance test policy assignment, revised"
+    enforcementMode = "Default"
+    nonComplianceMessages {
+      new policyassignment.NonComplianceMessage {
+        message = "resources must live in eastus - ask the platform team for an exemption"
+      }
+    }
+  }
+}

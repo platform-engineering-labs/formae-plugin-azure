@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.roledefinition
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Authorization::RoleDefinition"
+const apiVersion = "2022-04-01"
+
+/// One set of allowed and denied operations. A role may carry several; a caller is
+/// permitted an operation when any permission allows it and none denies it.
+class Permission {
+    /// Control-plane operations allowed, e.g. `Microsoft.Storage/storageAccounts/read`.
+    /// Wildcards are permitted.
+    @azure.FieldHint { required = true }
+    actions: Listing<String>
+
+    /// Control-plane operations subtracted from `actions`.
+    @azure.FieldHint { }
+    notActions: Listing<String>?
+
+    /// Data-plane operations allowed, e.g.
+    /// `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read`.
+    @azure.FieldHint { }
+    dataActions: Listing<String>?
+
+    /// Data-plane operations subtracted from `dataActions`.
+    @azure.FieldHint { }
+    notDataActions: Listing<String>?
+}
+
+open class RoleDefinitionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RoleDefinitionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RoleDefinitionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A custom RBAC role: the operations it grants, and the scopes it may be assigned
+/// at. Reference its `id` from an AZURE::Authorization::RoleAssignment to actually
+/// grant it to someone.
+///
+/// Free — custom roles carry no charge. A directory is limited to 5000 of them.
+///
+/// Like role assignments, a definition is a scoped resource rather than a child of a
+/// resource group, so `scope` is given explicitly. `name` must be a GUID: ARM uses
+/// it as the role's stable identity, and role assignments address the role through
+/// it.
+///
+/// Built-in roles are read-only and cannot be represented here — this resource only
+/// ever manages roles with `roleType` `CustomRole`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class RoleDefinition extends formae.Resource {
+
+    /// GUID identifying the role. ARM rejects any other form.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1)
+
+    /// Scope the definition lives at — a subscription, a management group, or a
+    /// resource group. It must also appear in `assignableScopes`.
+    @azure.FieldHint { required = true; createOnly = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// Display name shown in the portal and in `az role definition list`.
+    @azure.FieldHint { required = true }
+    roleName: String(length >= 1 && length <= 512)
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Scopes the role may be assigned at. A scope outside the definition's own is
+    /// rejected unless the caller has rights over it.
+    @azure.FieldHint { required = true }
+    assignableScopes: Listing<(String|formae.Resolvable)>
+
+    @azure.FieldHint { required = true }
+    permissions: Listing<Permission>
+
+    /// Always `CustomRole` for a role this provider created. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    roleType: String?
+
+    hidden parent = this
+
+    hidden res: RoleDefinitionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
