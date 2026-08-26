@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.appconfiguration.configurationstore
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::AppConfiguration::ConfigurationStore"
+const apiVersion = "2023-03-01"
+
+/// Store pricing tier. `free` is limited to one store per subscription per region
+/// and does not support soft delete; `standard` and `premium` do.
+class SKU {
+    name: "free"|"standard"|"premium"
+}
+
+open class ConfigurationStoreResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ConfigurationStoreResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ConfigurationStoreResolvable = (this) {
+        property = "name"
+    }
+    /// Data-plane endpoint of the store, e.g. `https://<name>.azconfig.io`.
+    hidden endpoint: ConfigurationStoreResolvable = (this) {
+        property = "endpoint"
+    }
+}
+
+/// An Azure App Configuration store.
+///
+/// Store names are globally unique and soft-deleted on destroy: a name stays
+/// reserved for `softDeleteRetentionInDays` after deletion unless purged. Access
+/// keys and connection strings are NOT exposed as properties — ARM returns them
+/// only from a separate ListKeys call, so surfacing them would persist live
+/// credentials in resource state.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ConfigurationStore extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 5 && length <= 50 && matches(Regex("^[a-zA-Z0-9_-]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    /// Reject data-plane requests from public networks.
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    /// Turn off access-key auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableLocalAuth: Boolean?
+
+    /// Days a deleted store stays recoverable (1-7 on standard; not supported on
+    /// free, which requires 0). createOnly: ARM rejects changing it in place.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    softDeleteRetentionInDays: Int?
+
+    /// Block purging of a soft-deleted store before its retention expires.
+    /// WARNING: once enabled the store cannot be fully removed until then —
+    /// leave it off for anything short-lived.
+    @azure.FieldHint { hasProviderDefault = true }
+    enablePurgeProtection: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    endpoint: String?
+
+    hidden parent = this
+
+    hidden res: ConfigurationStoreResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-test-rg"
+  name = "formae-plugin-sdk-test-cosmos-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Single-region, Session consistency: the cheapest and fastest account Cosmos
+  // will provision. enableFreeTier is left off — only one free-tier account is
+  // allowed per subscription, so it would collide across runs.
+  new cosmos.DatabaseAccount {
+    label = "plugin-sdk-test-cosmos"
+    name = "fpsdt-cosmos-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    kind = "GlobalDocumentDB"
+    geoLocations = new Listing {
+      new cosmos.GeoLocation {
+        locationName = "eastus"
+        failoverPriority = 0
+        isZoneRedundant = false
+      }
+    }
+    // Update: relax consistency Session -> Eventual. An in-place property; the
+    // NativeID stays the same. Note the handler must echo geoLocations back on
+    // update or ARM would drop the replica region.
+    consistencyPolicy = new cosmos.ConsistencyPolicy {
+      defaultConsistencyLevel = "Eventual"
+    }
+    publicNetworkAccess = "Enabled"
+  }
+}

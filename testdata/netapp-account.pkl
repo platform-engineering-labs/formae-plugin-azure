@@ -1,0 +1,44 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/netapp/netappaccount.pkl" as netapp
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "netapp-test-rg"
+  name = "formae-plugin-sdk-test-netapp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // The account itself is free: ANF cost starts at the capacity pool, which bills
+  // for provisioned TiB (4 TiB minimum) whether or not a volume uses them, so this
+  // fixture deliberately stops at the account.
+  //
+  // No Active Directory connection here — that block carries a domain-join
+  // username and password and is not modelled.
+  new netapp.Account {
+    label = "plugin-sdk-test-netapp-account"
+    name = "formae-plugin-sdk-test-netapp-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

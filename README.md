@@ -37,6 +37,7 @@ Formae plugin for managing Azure resources.
 | `AZURE::Network::PrivateEndpoint` | Private endpoints |
 | `AZURE::Network::PrivateDnsZoneGroup` | Private DNS zone group bindings |
 | `AZURE::Storage::BlobContainer` | Blob containers |
+| `AZURE::Storage::ManagementPolicy` | Blob lifecycle-management policy (tiering / expiry rules) |
 | `AZURE::Compute::Disk` | Managed disks |
 | `AZURE::Compute::VirtualMachineScaleSet` | Virtual machine scale sets |
 | `AZURE::Network::ApplicationGateway` | Application Gateway v2 (L7 load balancer / HTTPS ingress) |

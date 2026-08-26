@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.sql.elasticpool
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Sql::ElasticPool"
+const apiVersion = "2021-11-01"
+
+open class ElasticPoolResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ElasticPoolResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ElasticPoolResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// SKU (service tier) for the pool, e.g. name="StandardPool", tier="Standard",
+/// capacity=50 (pool eDTUs). A `name`/`tier` change is an in-place resize, not a
+/// replace, so the whole SKU is updatable.
+class SKU {
+    /// SKU name, e.g. "BasicPool", "StandardPool", "GP_Gen5".
+    name: String
+
+    /// Tier or edition, e.g. "Basic", "Standard", "GeneralPurpose".
+    tier: String?
+
+    /// Pool capacity in eDTUs (DTU-based tiers) or vCores (vCore-based tiers).
+    capacity: Int?
+}
+
+/// Per-database capacity bounds within the pool. Units match the pool SKU
+/// (eDTUs or vCores), and `maxCapacity` may not exceed the pool capacity.
+class PerDatabaseSettings {
+    minCapacity: Number?
+    maxCapacity: Number?
+}
+
+/// Elastic pool on an Azure SQL logical server — a shared capacity bucket that
+/// member databases draw from. Databases join a pool by setting their
+/// `elasticPoolId`; the pool itself does not list its members.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Sql::Server"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+}
+open class ElasticPool extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serverName: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint {}
+    sku: SKU?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    maxSizeBytes: Int?
+
+    @azure.FieldHint {}
+    perDatabaseSettings: PerDatabaseSettings?
+
+    /// Spread the pool across availability zones. Not available on every tier.
+    @azure.FieldHint { hasProviderDefault = true }
+    zoneRedundant: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only output (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    state: String?
+
+    hidden parent = this
+
+    hidden res: ElasticPoolResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

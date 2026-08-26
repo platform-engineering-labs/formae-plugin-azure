@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.compute.galleryapplication
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Compute::GalleryApplication"
+const apiVersion = "2023-07-03"
+
+open class GalleryApplicationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GalleryApplicationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GalleryApplicationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An application definition inside an Azure Compute Gallery — the VM Applications
+/// counterpart to an image definition. It describes an application that can be
+/// installed onto running VMs; the install/remove scripts and their packages live in
+/// `GalleryApplicationVersion` resources underneath it.
+///
+/// A definition on its own is free and installs nothing.
+///
+/// Custom actions (extra named operations a version can expose), end-of-life dates,
+/// EULA and privacy links are not modelled, and the provider does not read them
+/// back either — surfacing a field the schema cannot express would show as drift
+/// forever.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Compute::Gallery"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "galleryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class GalleryApplication extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Must match the gallery's region.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    galleryName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Which OS the application installs onto. createOnly — ARM cannot repoint an
+    /// existing definition at the other platform.
+    @azure.FieldHint { required = true; createOnly = true }
+    supportedOSType: ("Windows"|"Linux")
+
+    /// Free-text description. Changeable in place.
+    @azure.FieldHint { hasProviderDefault = true }
+    description: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: GalleryApplicationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

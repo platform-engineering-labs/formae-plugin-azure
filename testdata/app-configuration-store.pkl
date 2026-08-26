@@ -1,0 +1,44 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/appconfiguration/configurationstore.pkl" as configstore
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "app-config-test-rg"
+  name = "formae-plugin-sdk-test-appcfg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // `standard` rather than `free`: the free tier is limited to one store per
+  // subscription per region, which would collide across conformance runs.
+  // softDeleteRetentionInDays is the 1-day minimum and purge protection stays
+  // off so the destroy phase leaves nothing undeletable behind.
+  new configstore.ConfigurationStore {
+    label = "plugin-sdk-test-app-config-store"
+    name = "fpsdt-appcfg-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new configstore.SKU { name = "standard" }
+    publicNetworkAccess = "Enabled"
+    disableLocalAuth = false
+    softDeleteRetentionInDays = 1
+    enablePurgeProtection = false
+  }
+}

@@ -1,0 +1,56 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerinstance/containergroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cg-test-rg"
+  name = "formae-plugin-sdk-test-cg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // restartPolicy "Never" keeps the group in a terminal state once the container
+  // exits, instead of restarting forever and billing for it. The public image
+  // needs no registry credentials.
+  new containergroup.ContainerGroup {
+    label = "plugin-sdk-test-cg"
+    name = "fpsdt-cg-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    osType = "Linux"
+    restartPolicy = "Never"
+    containers = new Listing {
+      new containergroup.Container {
+        name = "hello"
+        image = "mcr.microsoft.com/hello-world:latest"
+        resources = new containergroup.ResourceRequests {
+          cpu = 0.5
+          memoryInGB = 0.5
+        }
+        environmentVariables = new Listing {
+          new containergroup.EnvironmentVariable {
+            name = "GREETING"
+            value = "hello"
+          }
+        }
+      }
+    }
+  }
+}

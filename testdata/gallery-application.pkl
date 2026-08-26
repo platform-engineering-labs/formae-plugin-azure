@@ -1,0 +1,55 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/compute/gallery.pkl" as gallery
+import "@azure/compute/galleryapplication.pkl" as galleryapp
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "galapp-test-rg"
+  name = "formae-plugin-sdk-test-galapp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Gallery names take underscores but not hyphens.
+local gal = new gallery.Gallery {
+  label = "galapp-test-gallery"
+  name = "fpsdt_galapp_\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  description = "conformance gallery"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  gal
+
+  // An application definition is metadata only — free, and it installs nothing. The
+  // install/remove scripts and their packages live in GalleryApplicationVersion
+  // resources underneath.
+  //
+  // supportedOSType is createOnly: ARM cannot repoint a definition at the other
+  // platform.
+  new galleryapp.GalleryApplication {
+    label = "plugin-sdk-test-gallery-application"
+    name = "conformance-app"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    galleryName = gal.res.name
+    supportedOSType = "Linux"
+    description = "conformance application definition"
+  }
+}

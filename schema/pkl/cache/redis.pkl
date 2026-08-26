@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.cache.redis
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Cache::Redis"
+const apiVersion = "2024-11-01"
+
+/// Service tier. `Basic` is single-node with no SLA; `Standard` is a replicated
+/// pair; `Premium` adds clustering, persistence and VNet injection.
+typealias SKUName = "Basic"|"Standard"|"Premium"
+
+/// Size family: `C` for Basic/Standard, `P` for Premium. Must match the tier.
+typealias SKUFamily = "C"|"P"
+
+class SKU {
+    name: SKUName
+
+    family: SKUFamily
+
+    /// Size within the family: 0-6 for C (C0 is the smallest, ~250 MB),
+    /// 1-5 for P.
+    capacity: Int(this >= 0)
+}
+
+open class RedisResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: RedisResolvable = (this) {
+        property = "id"
+    }
+    hidden name: RedisResolvable = (this) {
+        property = "name"
+    }
+    /// Hostname clients connect to, e.g. <name>.redis.cache.windows.net.
+    hidden hostName: RedisResolvable = (this) {
+        property = "hostName"
+    }
+}
+
+/// An Azure Cache for Redis instance.
+///
+/// Provisioning is slow — a Basic C0 takes 15-20 minutes, and a SKU change takes
+/// comparably long — so allow a generous conformance timeout.
+///
+/// The access keys are NOT surfaced as properties. ARM returns them inline on the
+/// resource read (unlike most services, which need a separate ListKeys call), so
+/// they are explicitly stripped rather than merely omitted: serializing the read
+/// straight through would leak live credentials into resource state.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Redis extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: SKU
+
+    /// Allow the unencrypted port 6379 in addition to 6380/TLS. Leave false.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableNonSslPort: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    minimumTlsVersion: ("1.0"|"1.1"|"1.2")?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    /// Turn off access-key auth, leaving Entra ID as the only way in.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableAccessKeyAuthentication: Boolean?
+
+    /// Cluster shards. Premium only; each shard is a separate node pair.
+    @azure.FieldHint { hasProviderDefault = true }
+    shardCount: Int?
+
+    /// Read replicas per primary. Premium only.
+    @azure.FieldHint { hasProviderDefault = true }
+    replicasPerPrimary: Int?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+    @azure.FieldHint { hasProviderDefault = true }
+    hostName: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    sslPort: Int?
+
+    hidden parent = this
+
+    hidden res: RedisResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

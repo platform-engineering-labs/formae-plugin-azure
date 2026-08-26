@@ -1,0 +1,49 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/dataprotection/backupvault.pkl" as bv
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "bv-test-rg"
+  name = "formae-plugin-sdk-test-bv-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // LocallyRedundant + soft delete Off: the cheapest vault, and Off keeps the
+  // destroy phase clean. "AlwaysON" would be irreversible and leave the vault
+  // undeletable for its retention window.
+  new bv.BackupVault {
+    label = "plugin-sdk-test-bv"
+    name = "fpsdt-bv-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    storageSettings = new Listing {
+      new bv.StorageSetting {
+        datastoreType = "VaultStore"
+        type = "LocallyRedundant"
+      }
+    }
+    softDeleteState = "Off"
+    // Update: allow cross-subscription restore. A featureSettings patch — ARM's
+    // PatchBackupVaultInput cannot carry storageSettings, which is why that field
+    // is createOnly.
+    crossSubscriptionRestoreState = "Enabled"
+  }
+}
