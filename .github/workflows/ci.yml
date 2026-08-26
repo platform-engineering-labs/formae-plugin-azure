@@ -291,6 +291,75 @@ jobs:
           - management-policy
           # Unclear: lists per resource group with no subscription-wide fallback.
           - backup-vault
+          # --- Fixtures that existed without ever being gated. Every resource in the
+          # plugin ships a conformance fixture, but the matrix is hand-maintained, so
+          # 45 of them had never run in CI or nightly — including three types merged
+          # last week (compute-gallery, compute-gallery-image, compute-snapshot). They
+          # are listed here so a regression in any of them fails a PR rather than
+          # going unnoticed.
+          #
+          # Networking and identity primitives. All free and fast.
+          - application-security-group
+          - ip-group
+          - nat-gateway
+          - public-ip-prefix
+          - route-table
+          - private-dns-record-set
+          - network-watcher
+          - network-watcher-flow-log
+          - ssh-public-key
+          - proximity-placement-group
+          - availability-set
+          # Compute images and snapshots. A snapshot and an image each stand up a
+          # small disk first; all billed per GB-month, prorated to the run.
+          - compute-gallery
+          - compute-gallery-image
+          - compute-image
+          - compute-snapshot
+          # Storage data-plane children of an existing account. Free.
+          - storage-queue
+          - storage-table
+          - file-share
+          # Messaging. An Event Hubs namespace and a Standard Service Bus namespace are
+          # billed hourly and prorated; Event Grid topics and domains bill per
+          # operation, and these fixtures publish none.
+          - event-grid-topic
+          - event-grid-domain
+          - event-grid-domain-topic
+          - event-grid-system-topic
+          - event-hub-namespace
+          - event-hub
+          - consumer-group
+          - service-bus-namespace
+          - service-bus-queue
+          - service-bus-topic
+          - service-bus-subscription
+          # SQL. The server itself is free; the fixtures that create a database use the
+          # cheapest tier. Server provisioning is a few minutes, hence the timeout
+          # override below.
+          - sql-server
+          - sql-database
+          - sql-firewall-rule
+          - sql-outbound-firewall-rule
+          - sql-virtual-network-rule
+          - sql-server-dns-alias
+          - sql-ad-administrator
+          # Other services. cognitive-services-account uses the free F0 tier;
+          # configuration and database are children of stores created by their own
+          # fixtures.
+          - cognitive-services-account
+          - configuration
+          - database
+          # Slow chains, each with a timeout override below: the three AKS-backed
+          # fixtures stand up a cluster first (~5-10 min), virtual-machine-extension a
+          # VM, and the two Grafana fixtures a managed Grafana workspace (~5 min,
+          # billed hourly).
+          - flux-configuration
+          - maintenance-configuration
+          - trusted-access-role-binding
+          - virtual-machine-extension
+          - grafana
+          - grafana-managed-private-endpoint
           # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
           # a managed environment takes ~5 min to provision (container-app builds on top),
           # exceeding the CI command timeout — same class as the AKS extension. Both are
@@ -358,6 +427,20 @@ jobs:
               export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25
               TIMEOUT_ARG="TIMEOUT=75"
               ;;
+            flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
+              # An AKS cluster or a managed Grafana workspace takes ~5-10 min before the
+              # resource under test can even be created.
+              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
+              TIMEOUT_ARG="TIMEOUT=50"
+              ;;
+            virtual-machine-extension)
+              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15
+              TIMEOUT_ARG="TIMEOUT=40"
+              ;;
+            sql-*)
+              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15
+              TIMEOUT_ARG="TIMEOUT=40"
+              ;;
           esac
           make conformance-test-crud-run $TIMEOUT_ARG
 
@@ -386,6 +469,14 @@ jobs:
             cdn-*)
               export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25 FORMAE_TEST_DISCOVERY_TIMEOUT=25
               TIMEOUT_ARG="TIMEOUT=75"
+              ;;
+            flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
+              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
+              TIMEOUT_ARG="TIMEOUT=50"
+              ;;
+            virtual-machine-extension|sql-*)
+              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15 FORMAE_TEST_DISCOVERY_TIMEOUT=15
+              TIMEOUT_ARG="TIMEOUT=40"
               ;;
           esac
           make conformance-test-discovery-run $TIMEOUT_ARG
