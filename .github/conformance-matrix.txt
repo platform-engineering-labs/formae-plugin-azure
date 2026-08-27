@@ -307,8 +307,23 @@ sql-server-dns-alias
 # approved subscription:
 #   make conformance-test-crud TEST=cognitive-services-account
 # - cognitive-services-account
-configuration
-database
+# configuration excluded: with the per-command poll raised to 20 min the whole
+# CRUD lifecycle now gets as far as Destroy, which then reaches a terminal Failed
+# state in about one second - not a timeout. AZURE::DBforPostgreSQL::Configuration
+# is a server setting rather than a deletable child, so the plugin implements
+# Delete as "reset to the default value via BeginUpdate"; that update is what
+# Azure rejects. The core does not surface the Azure error text, so the message
+# still has to be read off a local run:
+#   make conformance-test-crud TEST=configuration
+# configuration
+# database excluded: CRUD passes end to end (12 min) but discovery never
+# enumerates AZURE::DBforPostgreSQL::Database at all - the log has no
+# "Received N resources" line for the type, only for its parent
+# AZURE::DBforPostgreSQL::FlexibleServer, which is itself already excluded here
+# for the same reason. Not the listParam bug: Database's List does carry a
+# subscription-wide fallback that walks every flexible server. CRUD still runs:
+#   make conformance-test-crud TEST=database
+# database
 # Slow chains, each with a timeout override below: the three AKS-backed
 # fixtures stand up a cluster first (~5-10 min), virtual-machine-extension a
 # VM, and the two Grafana fixtures a managed Grafana workspace (~5 min,

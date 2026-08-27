@@ -202,7 +202,14 @@ jobs:
               export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15
               TIMEOUT_ARG="TIMEOUT=40"
               ;;
-            redis-cache|cosmos-database-account|configuration|database|firewall-rule|flexible-server)
+            redis-cache)
+              # Azure Redis Basic C0 is the slowest create in the matrix: it used the
+              # full 20 min budget on the previous attempt and still timed out on
+              # Create. 30 min is the observed ceiling for the tier.
+              export FORMAE_TEST_TIMEOUT=30 FORMAE_TEST_OOB_TIMEOUT=30 FORMAE_TEST_OOB_DELETE_TIMEOUT=30
+              TIMEOUT_ARG="TIMEOUT=70"
+              ;;
+            cosmos-database-account|configuration|database|firewall-rule|flexible-server|web-pubsub|signalr-service)
               # Managed data services: the control plane accepts the create call in
               # seconds but the instance is not Succeeded for 10-20 min, and Destroy
               # is just as slow. Each of these blew the default 5 min per-command
@@ -256,7 +263,11 @@ jobs:
               export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15 FORMAE_TEST_DISCOVERY_TIMEOUT=15
               TIMEOUT_ARG="TIMEOUT=40"
               ;;
-            sql-*|redis-cache|cosmos-database-account|configuration|database|firewall-rule|flexible-server)
+            redis-cache)
+              export FORMAE_TEST_TIMEOUT=30 FORMAE_TEST_OOB_TIMEOUT=30 FORMAE_TEST_OOB_DELETE_TIMEOUT=30 FORMAE_TEST_DISCOVERY_TIMEOUT=30
+              TIMEOUT_ARG="TIMEOUT=70"
+              ;;
+            sql-*|cosmos-database-account|configuration|database|firewall-rule|flexible-server|web-pubsub|signalr-service)
               # Discovery has to stand the resource up first, so it inherits the same
               # slow control planes as the CRUD phase above.
               export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
