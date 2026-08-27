@@ -6,6 +6,17 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      resources:
+        description: "Fixtures to run, comma or space separated (e.g. 'redis-cache, event-hub'). Empty runs the full matrix. Fixtures commented out of .github/conformance-matrix.txt can be named here too - that is how you re-check an excluded one."
+        required: false
+        type: string
+      phase:
+        description: "Which conformance phase to run"
+        required: false
+        default: both
+        type: choice
+        options: [both, crud, discovery]
 
 # Serialize conformance across CI runs (and with nightly) so matrix jobs
 # don't race for the same Azure test subscription. cancel-in-progress=false
@@ -111,12 +122,35 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: build
+        # SELECTED is passed through env, never interpolated into the script, so a
+        # dispatch input cannot inject shell.
+        env:
+          SELECTED: ${{ inputs.resources }}
         run: |
           set -euo pipefail
-          RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
+          if [ -n "${SELECTED:-}" ]; then
+            # Split on commas and whitespace, drop blanks, de-duplicate.
+            RESOURCES=$(printf '%s' "$SELECTED" | tr ', ' '\n\n' \
+              | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')
+            test "$(echo "$RESOURCES" | jq 'length')" -gt 0 \
+              || { echo "::error::resources input had no fixture names"; exit 1; }
+            # Validate against testdata/ rather than the matrix: an unknown name would
+            # otherwise become a job that filters to nothing and passes green, and
+            # naming a fixture excluded from the matrix is a deliberate use of this input.
+            MISSING=$(echo "$RESOURCES" | jq -r '.[]' | while IFS= read -r r; do
+              [ -f "testdata/${r}.pkl" ] || printf ' %s' "$r"
+            done)
+            if [ -n "$MISSING" ]; then
+              echo "::error::no such fixture(s):$MISSING - expected testdata/<name>.pkl"
+              exit 1
+            fi
+            echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resource(s) selected by hand"'
+          else
+            RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
+            echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
+          fi
           test "$(echo "$RESOURCES" | jq 'length')" -gt 0
           echo "resources=$RESOURCES" >> "$GITHUB_OUTPUT"
-          echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
 
   conformance-tests:
     needs: [checks, test-integration, pre-cleanup, conformance-matrix]
@@ -171,6 +205,7 @@ jobs:
       # other's resources. Cleanup is owned by the pre-/conformance-cleanup jobs;
       # the Makefile skips its inline cleanup when the filter is set.
       - name: Run CRUD conformance (${{ matrix.resource }})
+        if: ${{ inputs.phase != 'discovery' }}
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
@@ -237,6 +272,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run discovery conformance (${{ matrix.resource }})
+        if: ${{ inputs.phase != 'crud' }}
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}

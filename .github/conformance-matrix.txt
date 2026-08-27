@@ -12,6 +12,17 @@
 #
 # The matrix is curated rather than auto-discovered from testdata/: a fixture only
 # belongs here once it passes CRUD *and* discovery against live Azure.
+#
+# To run ONE fixture (or a few) instead of the whole matrix, dispatch CI by hand:
+#
+#   gh workflow run ci.yml --ref <branch> -f resources=redis-cache
+#   gh workflow run ci.yml --ref <branch> -f resources='redis-cache, event-hub' -f phase=crud
+#
+# or use the "Run workflow" button on the CI workflow in the Actions tab. Any
+# fixture with a testdata/<name>.pkl may be named, including ones commented out
+# below - that is how you re-check an exclusion without editing this file. An
+# unknown name fails the run rather than quietly testing nothing. phase is
+# both (default), crud or discovery.
 
 resource-group
 virtual-network
