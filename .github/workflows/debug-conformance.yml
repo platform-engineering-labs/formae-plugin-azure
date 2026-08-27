@@ -1,0 +1,162 @@
+name: Debug Conformance
+
+# On-demand workflow for running a focused set of conformance resources against
+# a branch. Use it to validate a resource change before opening the pull
+# request, to bisect a regression, or to iterate on a fix without paying for the
+# full matrix.
+
+on:
+  workflow_dispatch:
+    inputs:
+      resources:
+        description: "Comma-separated resources (e.g. storage-account,disk)"
+        required: true
+        type: string
+      phases:
+        description: "Which phases to run"
+        required: false
+        default: both
+        type: choice
+        options: [both, crud, discovery]
+      pre_cleanup:
+        description: "Run pre-cleanup before tests"
+        required: false
+        default: true
+        type: boolean
+
+# Share the serialization group with ci.yml and nightly.yml so runs never race
+# for the same Azure test subscription. A debug invocation queues behind an
+# in-flight CI or nightly run.
+concurrency:
+  group: azure-conformance-tests
+  cancel-in-progress: false
+
+jobs:
+  parse-input:
+    runs-on: ubuntu-latest
+    outputs:
+      resources: ${{ steps.parse.outputs.resources }}
+    steps:
+      - name: Parse resources input
+        id: parse
+        env:
+          RESOURCES_INPUT: ${{ inputs.resources }}
+        run: |
+          # Convert "a, b,c" -> ["a","b","c"]
+          RESOURCES=$(printf '%s' "$RESOURCES_INPUT" \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "Parsed resources: ${RESOURCES}"
+          echo "resources=${RESOURCES}" >> "$GITHUB_OUTPUT"
+
+  pre-cleanup:
+    needs: [parse-input]
+    if: inputs.pre_cleanup
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clean up test resources
+        run: ./scripts/ci/clean-environment.sh
+
+  conformance-tests:
+    needs: [parse-input, pre-cleanup]
+    # When pre_cleanup=false the pre-cleanup job is skipped; without an explicit
+    # if-clause this job would skip too, because a needed job did not succeed.
+    if: ${{ !cancelled() && needs.parse-input.result == 'success' && (needs.pre-cleanup.result == 'success' || needs.pre-cleanup.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        resource: ${{ fromJson(needs.parse-input.outputs.resources) }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run CRUD conformance (${{ matrix.resource }})
+        if: inputs.phases == 'both' || inputs.phases == 'crud'
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          FORMAE_TEST_RUN_ID: debug-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: ./scripts/ci/run-conformance-phase.sh ${{ matrix.resource }} crud
+
+      # The login token expires part-way through a long CRUD phase, so discovery
+      # gets a fresh one.
+      - name: Re-authenticate for discovery
+        if: inputs.phases == 'both' || inputs.phases == 'discovery'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run discovery conformance (${{ matrix.resource }})
+        if: inputs.phases == 'both' || inputs.phases == 'discovery'
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          FORMAE_TEST_RUN_ID: debug-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        run: ./scripts/ci/run-conformance-phase.sh ${{ matrix.resource }} discovery
+
+  conformance-cleanup:
+    needs: [conformance-tests]
+    runs-on: ubuntu-latest
+    if: always() && needs.conformance-tests.result != 'skipped'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clean up test resources
+        run: ./scripts/ci/clean-environment.sh

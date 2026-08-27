@@ -79,6 +79,10 @@ jobs:
   # aborted run can't collide with this one.
   pre-cleanup:
     needs: [checks, test-integration]
+    # Conformance does not run on pull requests - see debug-conformance.yml for
+    # the targeted per-branch run. Skipping pre-cleanup here skips the matrix
+    # and its cleanup with it, since both need this job.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -98,7 +102,7 @@ jobs:
         run: ./scripts/ci/clean-environment.sh
 
   # Conformance runs the full CRUD + discovery lifecycle against real Azure
-  # resources on every push, PR, and manual dispatch — so it gates merges.
+  # resources on push to main and on manual dispatch, not on pull requests.
   # The matrix is curated (not auto-discovered) to exclude resources with known
   # formae-core discovery bugs; see the exclusions below.
   conformance-tests:
@@ -411,38 +415,7 @@ jobs:
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: |
-          set -euo pipefail
-          TIMEOUT_ARG=""
-          # App Gateway v2 and Front Door are slow to provision. FORMAE_TEST_TIMEOUT
-          # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
-          # go-test timeout. Front Door's full CRUD lifecycle (create+update+destroy+
-          # recreate+OOB-delete) measures ~36 min clean, so cdn-* needs a wide margin.
-          case "${{ matrix.resource }}" in
-            application-gateway)
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            cdn-*)
-              export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25
-              TIMEOUT_ARG="TIMEOUT=75"
-              ;;
-            flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
-              # An AKS cluster or a managed Grafana workspace takes ~5-10 min before the
-              # resource under test can even be created.
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            virtual-machine-extension)
-              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15
-              TIMEOUT_ARG="TIMEOUT=40"
-              ;;
-            sql-*)
-              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15
-              TIMEOUT_ARG="TIMEOUT=40"
-              ;;
-          esac
-          make conformance-test-crud-run $TIMEOUT_ARG
+        run: ./scripts/ci/run-conformance-phase.sh ${{ matrix.resource }} crud
 
       - name: Re-authenticate for discovery
         uses: azure/login@v3
@@ -458,34 +431,13 @@ jobs:
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: |
-          set -euo pipefail
-          TIMEOUT_ARG=""
-          case "${{ matrix.resource }}" in
-            application-gateway)
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            cdn-*)
-              export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25 FORMAE_TEST_DISCOVERY_TIMEOUT=25
-              TIMEOUT_ARG="TIMEOUT=75"
-              ;;
-            flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            virtual-machine-extension|sql-*)
-              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15 FORMAE_TEST_DISCOVERY_TIMEOUT=15
-              TIMEOUT_ARG="TIMEOUT=40"
-              ;;
-          esac
-          make conformance-test-discovery-run $TIMEOUT_ARG
+        run: ./scripts/ci/run-conformance-phase.sh ${{ matrix.resource }} discovery
 
   # Clean up Azure resources after all matrix jobs complete (always runs).
   conformance-cleanup:
     needs: [conformance-tests]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.conformance-tests.result != 'skipped'
     permissions:
       id-token: write
       contents: read
