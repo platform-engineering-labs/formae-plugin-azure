@@ -107,8 +107,26 @@ jobs:
           path: /tmp/formae
           retention-days: 1
 
+  # Shared with ci.yml: both workflows build the matrix from
+  # .github/conformance-matrix.txt. Nightly used to keep its own hand-maintained
+  # list and had silently fallen 100 resources behind CI.
+  conformance-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      resources: ${{ steps.build.outputs.resources }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: build
+        run: |
+          set -euo pipefail
+          RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
+          test "$(echo "$RESOURCES" | jq 'length')" -gt 0
+          echo "resources=$RESOURCES" >> "$GITHUB_OUTPUT"
+          echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
+
   conformance-tests-main:
-    needs: [build-formae]
+    needs: [build-formae, conformance-matrix]
     runs-on: ubuntu-latest
     # 120 min: Front Door (cdn-*) and App Gateway lifecycles run ~36 min each.
     timeout-minutes: 120
@@ -116,97 +134,9 @@ jobs:
 
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
-        resource:
-          - resource-group
-          - virtual-network
-          - subnet
-          - network-security-group
-          - public-ip-address
-          - storage-account
-          - registry
-          - vault
-          # secret excluded from nightly until the CI principal is granted a
-          # Key Vault data-plane role ("Key Vault Secrets Officer"). Writing a
-          # secret is a data-plane operation: the service principal can create
-          # the vault via ARM but cannot write its secrets without that role.
-          # CRUD is validated via test-integration (mocked); run live locally
-          # with: make conformance-test-crud TEST=secret
-          # - secret
-          - sql-server
-          - sql-database
-          # sql-firewall-rule excluded from nightly due to the same formae core
-          # discovery persistence bug as flexible-server/firewall-rule below
-          # (discovered resources not appearing in inventory). CRUD validated locally.
-          # sql-ad-administrator excluded from nightly: needs a real Azure AD
-          # principal (sid/tenantId); placeholder fixtures fail provisioning.
-          # flexible-server and firewall-rule excluded from nightly due to formae core
-          # discovery persistence bug (discovered resources not appearing in inventory).
-          # CRUD tests still run via test-integration.
-          - role-assignment
-          - user-assigned-identity
-          - federated-identity-credential
-          - load-balancer
-          - application-gateway
-          - waf-policy
-          # certificate (AZURE::KeyVault::Certificate) excluded from nightly for the same
-          # reason as `secret`: it is a Key Vault DATA-PLANE resource and the CI principal
-          # lacks the "Key Vault Certificates Officer" role. CRUD validated via
-          # test-integration (mocked); run live locally with:
-          # make conformance-test-crud TEST=certificate
-          - dns-zone
-          - dns-record-set
-          - private-dns-zone
-          - private-dns-vnet-link
-          - private-endpoint
-          - private-dns-zone-group
-          - blob-container
-          - disk
-          - virtual-machine-scale-set
-          # Azure Front Door Standard (Microsoft.Cdn AFD) — profile provisioning is
-          # minutes-slow + billed. cdn-route stands up the full AFD chain.
-          - cdn-profile
-          - cdn-afd-endpoint
-          - cdn-afd-origin-group
-          - cdn-afd-origin
-          # cdn-route excluded: Route references two siblings (origin group + endpoint)
-          # created in the same apply, reliably tripping the formae core resolve-cache
-          # race (ResolveCacheMissingInAction) on first apply — 3/3 live attempts failed
-          # while siblings succeeded. Not a plugin bug (round-trip unit test + the other
-          # 4 cdn resources pass live). Re-enable when the core race is fixed.
-          # cdn-afd-custom-domain and cdn-secret excluded from nightly: custom-domain
-          # needs a REAL owned domain (Azure _dnsauth TXT challenge), secret needs a real
-          # Key Vault cert + AFD SP vault access. CRUD validated via test-integration
-          # (mocked) + round-trip; run live locally with a real domain/cert.
-          # Container Apps (managed-environment, container-app) excluded from nightly:
-          # environment provisioning (~5 min, container-app builds on top) exceeds the
-          # command timeout, same class as the AKS extension; both billed. CRUD validated
-          # via test-integration (mocked); run live locally with TIMEOUT=15.
-          # extension and flux-configuration excluded: each requires AKS cluster (~8m) +
-          # extension install (~5m), exceeding the 10m command timeout. CRUD validated locally.
-          # maintenance-configuration and trusted-access-role-binding excluded: Create returns
-          # empty NativeID in ~9s (fails before Azure API call). Plugin-side diagnosis needed;
-          # tracked as follow-up.
-          - route-table
-          # event-hub-namespace and service-bus-namespace excluded from nightly: both provision
-          # correctly against live Azure (verified locally, Active), but first-apply of the
-          # resource-group + namespace in a single command intermittently times out in the formae
-          # core "resolving" state (ResolveCacheMissingInAction) and succeeds on re-apply. Nightly
-          # does a single first-apply, so these would flake until the core resolve-cache race is
-          # fixed. CRUD validated via test-integration (mocked) + local live apply.
-          # - event-hub-namespace
-          # - service-bus-namespace
-          # virtual-machine-extension excluded: its fixture provisions the full parent chain
-          # (rg, vnet, subnet, nic, vm) before the extension, which is too heavy/slow for the
-          # 10m command timeout. CRUD validated via test-integration (mocked).
-          # event-grid-system-topic excluded: the fixture is self-contained (creates its storage
-          # account event source inline), but it has not been live-verified yet; enable after a
-          # local conformance run confirms it. CRUD validated via test-integration (mocked).
-          # cognitive-services-account excluded: may require subscription quota/approval
-          # (Azure OpenAI kind in particular) not available to the CI principal.
-          # grafana and grafana-managed-private-endpoint excluded: Managed Grafana provisioning is
-          # slow (minutes) and the managed private endpoint needs a Grafana workspace + a
-          # private-link target. Not yet live-verified; CRUD validated via test-integration.
+        resource: ${{ fromJSON(needs.conformance-matrix.outputs.resources) }}
 
     permissions:
       id-token: write

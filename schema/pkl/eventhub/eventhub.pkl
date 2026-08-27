@@ -56,7 +56,10 @@ open class EventHubResolvable extends formae.Resolvable {
     identifier = "id"
     apiVersion = module.apiVersion
     parent = "AZURE::EventHub::Namespace"
-    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" }
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "namespaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
 }
 open class EventHub extends formae.Resource {
 

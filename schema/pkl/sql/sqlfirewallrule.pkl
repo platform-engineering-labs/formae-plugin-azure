@@ -28,7 +28,10 @@ open class FirewallRuleResolvable extends formae.Resolvable {
     identifier = "id"
     apiVersion = module.apiVersion
     parent = "AZURE::Sql::Server"
-    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "serverName" }
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "serverName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
 }
 open class FirewallRule extends formae.Resource {
 

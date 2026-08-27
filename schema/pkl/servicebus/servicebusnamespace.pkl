@@ -31,7 +31,14 @@ class NamespaceSKU {
     /// SKU name (Basic, Standard, Premium)
     name: NamespaceSKUName
 
-    /// Billing tier (Basic, Standard, Premium)
+    /// Billing tier (Basic, Standard, Premium). Azure echoes it back matching
+    /// `name` when omitted.
+    ///
+    /// NOTE: the hint below documents that, but the conformance framework does not
+    /// currently honour `hasProviderDefault` on fields of a nested class - only on
+    /// top-level resource fields - so a forma that omits `tier` will still show
+    /// drift on `sku.tier`. Set it explicitly until nested provider defaults land.
+    @azure.FieldHint { hasProviderDefault = true }
     tier: String?
 
     /// Messaging units for the Premium tier (1, 2 or 4)
