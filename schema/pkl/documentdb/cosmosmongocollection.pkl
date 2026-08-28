@@ -1,0 +1,123 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmosmongocollection
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::MongoCollection"
+const apiVersion = "2025-10-15"
+
+/// One MongoDB index on the collection.
+///
+/// Every collection has an implicit `_id` index that the service adds and echoes
+/// back. Declare it here as well — `keys = new Listing { "_id" }` — or the next read
+/// reports drift.
+class MongoIndex {
+    /// Document fields making up the index, in order. A single-field index takes one
+    /// entry; a compound index takes several.
+    keys: Listing<String>(length >= 1)
+
+    /// Enforce uniqueness. Only legal on an index whose keys include the shard key.
+    unique: Boolean?
+
+    /// TTL index: documents expire this many seconds after the indexed timestamp
+    /// field. Only legal on a single-field index over `_ts`.
+    expireAfterSeconds: Int?
+}
+
+open class MongoCollectionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: MongoCollectionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: MongoCollectionResolvable = (this) {
+        property = "name"
+    }
+    hidden databaseName: MongoCollectionResolvable = (this) {
+        property = "databaseName"
+    }
+    hidden accountName: MongoCollectionResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: MongoCollectionResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A collection in a Cosmos DB MongoDB-API database.
+///
+/// A collection needs throughput from somewhere: either the parent database carries
+/// shared throughput, or the collection carries its own, or the account is
+/// serverless. An account with provisioned throughput rejects a collection that has
+/// neither.
+///
+/// `shardKey` is the entity-set rendering of ARM's `shardKey` map. ARM accepts only
+/// `"Hash"` as the value, so `value` defaults to it and normally needs no thought:
+///
+///     shardKey = new Listing {
+///       new azure.Tag { key = "/customerId"; value = "Hash" }
+///     }
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::MongoDatabase"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "databaseName" },
+        new formae.ListProperty { parentProperty = "accountName" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class MongoCollection extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255 && !contains("/") && !contains("\\") && !contains("#") && !contains("?") && !contains("$"))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Cosmos DB account holding the database.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Name of the parent Mongo database.
+    @azure.FieldHint { required = true; createOnly = true }
+    databaseName: String|formae.Resolvable
+
+    /// Shard key paths. createOnly — a collection cannot be resharded in place.
+    /// Leave unset for an unsharded (single-partition) collection.
+    @azure.FieldHint { createOnly = true; updateMethod = "EntitySet"; indexField = "Key" }
+    shardKey: Listing<azure.Tag>?
+
+    /// Secondary indexes. Include the implicit `_id` index; see MongoIndex.
+    @azure.FieldHint { hasProviderDefault = true }
+    indexes: Listing<MongoIndex>?
+
+    /// Analytical-store retention in seconds; -1 is infinite. Requires the account
+    /// to have analytical storage enabled, and it cannot be turned on for a
+    /// collection after it exists.
+    @azure.FieldHint { createOnly = true }
+    analyticalStorageTtl: Int(this == -1 || this >= 0)?
+
+    /// Manual dedicated throughput in RU/s. Mutually exclusive with
+    /// `autoscaleMaxThroughput`.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: MongoCollectionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

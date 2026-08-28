@@ -1,0 +1,86 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmosmongodatabase.pkl" as mongodb
+import "@azure/documentdb/cosmosmongocollection.pkl" as mongocl
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-mongocl-test-rg"
+  name = "formae-plugin-sdk-test-cmongocl-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// MongoDB wire protocol: kind = MongoDB.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-mongocl-test-account"
+  name = "fpsdt-cmongocl-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "MongoDB"
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+// No throughput on the database: the collection carries its own dedicated RU/s.
+local database = new mongodb.MongoDatabase {
+  label = "cosmos-mongocl-test-database"
+  name = "fpsdt-catalog-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  accountName = account.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  database
+
+  // The implicit `_id` index is declared explicitly: the service adds it and echoes
+  // it back, so omitting it here would read as drift on the next sync.
+  new mongocl.MongoCollection {
+    label = "plugin-sdk-test-cosmos-mongocl"
+    name = "fpsdt-products-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    databaseName = database.res.name
+    shardKey = new Listing {
+      new azure.Tag { key = "/sku"; value = "Hash" }
+    }
+    // Update: add a unique index over the shard key. `indexes` is the only mutable
+    // field here; shardKey is createOnly because a collection cannot be resharded.
+    indexes = new Listing {
+      new mongocl.MongoIndex {
+        keys = new Listing { "_id" }
+      }
+      new mongocl.MongoIndex {
+        keys = new Listing { "sku" }
+        unique = true
+      }
+    }
+    throughput = 400
+  }
+}

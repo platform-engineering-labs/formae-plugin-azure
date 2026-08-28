@@ -1,0 +1,81 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmosmongodatabase
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::MongoDatabase"
+const apiVersion = "2025-10-15"
+
+open class MongoDatabaseResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: MongoDatabaseResolvable = (this) {
+        property = "id"
+    }
+    hidden name: MongoDatabaseResolvable = (this) {
+        property = "name"
+    }
+    hidden accountName: MongoDatabaseResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: MongoDatabaseResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A database in a Cosmos DB account speaking the MongoDB wire protocol.
+///
+/// The parent account must have been created with `kind = "MongoDB"` — that is a
+/// createOnly property of the account, so an existing GlobalDocumentDB account
+/// cannot be converted. A GlobalDocumentDB account rejects these outright.
+///
+/// `throughput` and `autoscaleMaxThroughput` are createOnly: throughput lives in a
+/// separate ARM sub-resource that only accepts values at create time through
+/// request headers. Leave both unset on a serverless account.
+///
+/// Mongo role and user definitions are separate ARM sub-resources and are not
+/// modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::DatabaseAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class MongoDatabase extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255 && !contains("/") && !contains("\\") && !contains("#") && !contains("?") && !contains("$"))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Cosmos DB account.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Manual database-level throughput in RU/s, shared by every collection in the
+    /// database. Mutually exclusive with `autoscaleMaxThroughput`.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: MongoDatabaseResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
