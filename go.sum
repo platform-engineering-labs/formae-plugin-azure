@@ -12,6 +12,8 @@ github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontai
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers v1.1.0/go.mod h1:qV+BWew22CAalRTwJEAHs+aSLP49k/csNlspqhMIDRU=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/applicationinsights/armapplicationinsights v1.2.0 h1:7FX6sHNPamIAyukt6w9Gw5Qa5bu+gVN2Iy70yHc0xns=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/applicationinsights/armapplicationinsights v1.2.0/go.mod h1:S7Ss6Rm0nlKDRHKrO9eL2Be5EnX29Z09CNPWgK7o4+I=
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v5 v5.1.0 h1:cdUJ1Y6Hj/LMjl7T7KpNisea77UkNzK0ddA0UsF/Qzo=
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v5 v5.1.0/go.mod h1:yE0/qUSNzuqmuWyYjB9/x/kzrPL1hmnQE3BRMXrjIOQ=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.2.0 h1:Hp+EScFOu9HeCbeW8WU2yQPJd4gGwhMgKxWe+G6jNzw=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.2.0/go.mod h1:/pz8dyNQe+Ey3yBp/XuYz7oqX8YDNWVpPB0hH3XWfbc=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v3 v3.0.1 h1:6aObZUybvkz7Sm2d/GxgsZ+0hbhA0RC5p+81aAxQ/Po=
