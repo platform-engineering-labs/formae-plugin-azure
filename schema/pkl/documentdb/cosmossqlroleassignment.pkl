@@ -1,0 +1,86 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmossqlroleassignment
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::SqlRoleAssignment"
+const apiVersion = "2025-10-15"
+
+open class SqlRoleAssignmentResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SqlRoleAssignmentResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SqlRoleAssignmentResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Cosmos DB NoSQL data-plane RBAC role assignment: it binds one AAD principal to
+/// one role definition at one data-plane scope.
+///
+/// `name` is a GUID the caller chooses — ARM does not generate one — and re-PUTting
+/// the same GUID edits the assignment in place rather than adding a second one.
+///
+/// The two built-in role definitions are addressable without declaring a
+/// SqlRoleDefinition:
+///
+///   - `.../sqlRoleDefinitions/00000000-0000-0000-0000-000000000001` — Data Reader
+///   - `.../sqlRoleDefinitions/00000000-0000-0000-0000-000000000002` — Data Contributor
+///
+/// `principalId` is the AAD *object* ID of the identity, not its client ID. A
+/// UserAssignedIdentity exposes it as `res.principalId`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::DatabaseAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class SqlRoleAssignment extends formae.Resource {
+
+    /// GUID naming the assignment inside the account.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(matches(Regex(#"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Cosmos DB account.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Fully qualified ARM ID of the role definition being granted. Updatable: a
+    /// re-PUT swaps which role the same assignment carries.
+    @azure.FieldHint { required = true }
+    roleDefinitionId: String|formae.Resolvable
+
+    /// AAD object ID of the user, group, service principal or managed identity.
+    /// createOnly — a different principal is a different grant, so pointing the
+    /// existing GUID at one would silently repurpose the assignment.
+    @azure.FieldHint { required = true; createOnly = true }
+    principalId: String|formae.Resolvable
+
+    /// Data-plane path the grant applies to: the account's ARM ID for the whole
+    /// account, or an ARM ID ending in `/dbs/<db>` or `/dbs/<db>/colls/<container>`
+    /// to narrow it. createOnly for the same reason as principalId.
+    @azure.FieldHint { required = true; createOnly = true }
+    scope: String|formae.Resolvable
+
+    hidden parent = this
+
+    hidden res: SqlRoleAssignmentResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

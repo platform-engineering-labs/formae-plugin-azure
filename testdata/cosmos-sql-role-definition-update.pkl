@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmossqlroledefinition.pkl" as sqlrd
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-sqlrd-test-rg"
+  name = "formae-plugin-sdk-test-csqlrd-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-sqlrd-test-account"
+  name = "fpsdt-csqlrd-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  // Data-plane RBAC, not ARM RBAC: `name` is a GUID the caller picks, and ARM edits
+  // the definition in place when the same GUID is re-PUT.
+  new sqlrd.SqlRoleDefinition {
+    label = "plugin-sdk-test-cosmos-sqlrd"
+    name = "6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    // Update: rename the role. roleName is mutable; the GUID stays put.
+    roleName = "formae-conformance-reader-renamed"
+    type = "CustomRole"
+    assignableScopes = new Listing {
+      account.res.id
+    }
+    permissions = new Listing {
+      new sqlrd.RolePermission {
+        dataActions = new Listing {
+          "Microsoft.DocumentDB/databaseAccounts/readMetadata"
+          "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/read"
+        }
+      }
+    }
+  }
+}
