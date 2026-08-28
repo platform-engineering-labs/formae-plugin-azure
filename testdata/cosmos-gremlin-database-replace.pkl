@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmosgremlindatabase.pkl" as gremdb
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-gremdb-test-rg"
+  name = "formae-plugin-sdk-test-cgremdb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Gremlin (graph) API: selected by the EnableGremlin capability, not by `kind`.
+// Capabilities are createOnly, so this needs its own account.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-gremdb-test-account"
+  name = "fpsdt-cgremdb-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  capabilities = new Listing {
+    "EnableGremlin"
+  }
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  // Database-level shared throughput at the 400 RU/s floor. A Gremlin database has
+  // no mutable properties, so the -replace fixture changes `name` instead.
+  new gremdb.GremlinDatabase {
+    label = "plugin-sdk-test-cosmos-gremdb"
+    // Replace: change name, a createOnly field, so formae deletes and recreates.
+    name = "fpsdt-social-replaced-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    throughput = 400
+  }
+}

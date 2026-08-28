@@ -1,0 +1,67 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmostable.pkl" as cosmostable
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-table-test-rg"
+  name = "formae-plugin-sdk-test-ctable-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Cosmos Table API: selected by the EnableTable capability. This is NOT Azure
+// Storage tables (AZURE::Storage::Table). Capabilities are createOnly, so this
+// needs its own account.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-table-test-account"
+  name = "fpsdt-ctable-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  capabilities = new Listing {
+    "EnableTable"
+  }
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  // Table-API tables hang directly off the account; there is no database in between.
+  // A table has no mutable properties, so the -replace fixture changes `name`.
+  new cosmostable.Table {
+    label = "plugin-sdk-test-cosmos-table"
+    // Replace: change name, a createOnly field, so formae deletes and recreates.
+    // Table-API names are alphanumeric only.
+    name = "fpsdtordersreplaced"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    throughput = 400
+  }
+}

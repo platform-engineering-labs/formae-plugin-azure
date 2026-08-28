@@ -1,0 +1,195 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmosgremlingraph
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::GremlinGraph"
+const apiVersion = "2025-10-15"
+
+typealias GraphPartitionKind = "Hash"|"MultiHash"|"Range"
+
+typealias GraphIndexingMode = "consistent"|"lazy"|"none"
+
+typealias GraphIndexKind = "Hash"|"Range"|"Spatial"
+
+typealias GraphIndexDataType = "String"|"Number"|"Point"|"Polygon"|"LineString"|"MultiPolygon"
+
+typealias GraphSpatialType = "Point"|"Polygon"|"LineString"|"MultiPolygon"
+
+typealias GraphConflictResolutionMode = "LastWriterWins"|"Custom"
+
+/// How vertices are spread over physical partitions. Cannot be changed after the
+/// graph exists.
+class GraphPartitionKeyDefinition {
+    /// Vertex property paths, e.g. `/region`. MultiHash takes up to three, in order.
+    paths: Listing<String>(length >= 1 && length <= 3)
+
+    kind: GraphPartitionKind = "Hash"
+
+    /// 1 is the legacy 100-byte key; 2 is the large (2 KB) key. Use 2 for anything
+    /// new, and 2 is required for MultiHash.
+    version: Int(this == 1 || this == 2)?
+}
+
+class GraphIndexSpec {
+    kind: GraphIndexKind = "Range"
+
+    dataType: GraphIndexDataType = "String"
+
+    /// -1 means maximum precision.
+    precision: Int?
+}
+
+class GraphIncludedPath {
+    path: String
+
+    indexes: Listing<GraphIndexSpec>?
+}
+
+class GraphExcludedPath {
+    path: String
+}
+
+class GraphCompositePath {
+    path: String
+
+    order: ("ascending"|"descending")?
+}
+
+class GraphSpatialSpec {
+    path: String
+
+    types: Listing<GraphSpatialType>?
+}
+
+/// Indexing configuration.
+///
+/// ARM does not accept a partial policy: whatever you declare here is the complete
+/// policy, and it echoes back the service defaults it fills in. Declare the policy
+/// in full — including `excludedPaths` for `/"_etag"/?`, which the service always
+/// adds — or the next read reports drift.
+class GraphIndexingPolicy {
+    automatic: Boolean = true
+
+    indexingMode: GraphIndexingMode = "consistent"
+
+    includedPaths: Listing<GraphIncludedPath>?
+
+    excludedPaths: Listing<GraphExcludedPath>?
+
+    /// Each inner listing is one composite index; order matters within it.
+    compositeIndexes: Listing<Listing<GraphCompositePath>>?
+
+    spatialIndexes: Listing<GraphSpatialSpec>?
+}
+
+/// Conflict resolution for a multi-region-write account. `conflictResolutionPath`
+/// applies to LastWriterWins; `conflictResolutionProcedure` applies to Custom.
+class GraphConflictResolutionPolicy {
+    mode: GraphConflictResolutionMode = "LastWriterWins"
+
+    conflictResolutionPath: String?
+
+    conflictResolutionProcedure: String?
+}
+
+open class GremlinGraphResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GremlinGraphResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GremlinGraphResolvable = (this) {
+        property = "name"
+    }
+    hidden databaseName: GremlinGraphResolvable = (this) {
+        property = "databaseName"
+    }
+    hidden accountName: GremlinGraphResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: GremlinGraphResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A graph in a Cosmos DB Gremlin-API database.
+///
+/// A graph is a SQL container underneath, which is why it carries the same
+/// partition-key, indexing-policy and conflict-resolution shapes as
+/// AZURE::DocumentDB::SqlContainer.
+///
+/// The parent account must carry the `EnableGremlin` capability.
+///
+/// A graph needs throughput from somewhere: either the parent database carries
+/// shared throughput, or the graph carries its own, or the account is serverless.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::GremlinDatabase"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "databaseName" },
+        new formae.ListProperty { parentProperty = "accountName" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class GremlinGraph extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255 && !contains("/") && !contains("\\") && !contains("#") && !contains("?"))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Cosmos DB account holding the database.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Name of the parent Gremlin database.
+    @azure.FieldHint { required = true; createOnly = true }
+    databaseName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    partitionKey: GraphPartitionKeyDefinition
+
+    /// Declare the policy in full if you declare it at all; see GraphIndexingPolicy.
+    @azure.FieldHint { hasProviderDefault = true }
+    indexingPolicy: GraphIndexingPolicy?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    conflictResolutionPolicy: GraphConflictResolutionPolicy?
+
+    /// Vertex lifetime in seconds. -1 keeps vertices forever but lets a per-vertex
+    /// TTL apply; omit the field to disable TTL entirely.
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultTtl: Int(this == -1 || this >= 0)?
+
+    /// Analytical-store retention in seconds; -1 is infinite. Requires the account
+    /// to have analytical storage enabled, and it cannot be turned on for a graph
+    /// after it exists.
+    @azure.FieldHint { createOnly = true }
+    analyticalStorageTtl: Int(this == -1 || this >= 0)?
+
+    /// Manual dedicated throughput in RU/s. Mutually exclusive with
+    /// `autoscaleMaxThroughput`.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: GremlinGraphResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
