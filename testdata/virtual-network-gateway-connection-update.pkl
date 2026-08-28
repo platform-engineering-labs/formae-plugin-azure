@@ -1,0 +1,157 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "@azure/network/localnetworkgateway.pkl"
+import "@azure/network/virtualnetworkgateway.pkl"
+import "@azure/network/virtualnetworkgatewayconnection.pkl"
+import "vars.pkl"
+
+// EXTREMELY SLOW AND BILLED, for the same reason as virtual-network-gateway: the
+// connection itself provisions in a minute or two, but it is useless without its
+// virtual network gateway, and that gateway takes 30-45 minutes to create and the
+// same again to delete. Budget 60-90 minutes for one CRUD lifecycle and raise
+// FORMAE_TEST_TIMEOUT far past its 5-minute default.
+//
+// This is a complete site-to-site fixture: the Azure end is a
+// VirtualNetworkGateway, the on-premises end is the plugin's existing
+// LocalNetworkGateway, and the connection joins them. Nothing bills against the
+// connection or the local network gateway; the virtual network gateway does.
+//
+// No tunnel is ever established: every address comes from the documentation /
+// private ranges (RFC 5737, RFC 1918), so 203.0.113.50 is not a real VPN peer.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vngw-conn-test-rg"
+  name = "formae-plugin-sdk-test-vngwconn-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vngw-conn-test-vnet"
+  name = "formae-plugin-sdk-test-vngwconn-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing {
+      "10.30.0.0/16"
+    }
+  }
+}
+
+// The name is load-bearing: Azure rejects a virtual network gateway whose subnet
+// is called anything other than "GatewaySubnet".
+local gatewaySubnet = new subnet.Subnet {
+  label = "vngw-conn-test-subnet"
+  name = "GatewaySubnet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.30.255.0/27"
+}
+
+local pip = new publicipaddress.PublicIPAddress {
+  label = "vngw-conn-test-pip"
+  name = "formae-plugin-sdk-test-vngwconn-pip-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new publicipaddress.PublicIPAddressSKU {
+    name = "Standard"
+    tier = "Regional"
+  }
+  publicIPAllocationMethod = "Static"
+}
+
+local gateway = new virtualnetworkgateway.VirtualNetworkGateway {
+  label = "vngw-conn-test-gateway"
+  name = "formae-plugin-sdk-test-vngwconn-gw-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  gatewayType = "Vpn"
+  vpnType = "RouteBased"
+  sku = new virtualnetworkgateway.VirtualNetworkGatewaySku {
+    name = "VpnGw1"
+    tier = "VpnGw1"
+  }
+  ipConfigurations {
+    new virtualnetworkgateway.VirtualNetworkGatewayIPConfiguration {
+      name = "default"
+      subnetId = gatewaySubnet.res.id
+      publicIpAddressId = pip.res.id
+    }
+  }
+  activeActive = false
+  enableBgp = false
+  vpnGatewayGeneration = "Generation1"
+}
+
+// Free and independent: only a description of the far end of the tunnel.
+local localGateway = new localnetworkgateway.LocalNetworkGateway {
+  label = "vngw-conn-test-local-gateway"
+  name = "formae-plugin-sdk-test-vngwconn-lng-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  gatewayIpAddress = "203.0.113.50"
+  localNetworkAddressSpace {
+    "192.168.30.0/24"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  gatewaySubnet
+  pip
+  gateway
+  localGateway
+
+  // sharedKey is write-only: ARM accepts it, and although Get does return it the
+  // plugin never surfaces it, so it is not part of resource state. The value below
+  // is not a credential — no tunnel is ever established against a documentation
+  // address.
+  new virtualnetworkgatewayconnection.VirtualNetworkGatewayConnection {
+    label = "plugin-sdk-test-virtual-network-gateway-connection"
+    name = "formae-plugin-sdk-test-vngwconn-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    connectionType = "IPsec"
+    virtualNetworkGateway1Id = gateway.res.id
+    localNetworkGateway2Id = localGateway.res.id
+    sharedKey = "conformance-test-not-a-real-psk"
+    enableBgp = false
+    connectionProtocol = "IKEv2"
+    connectionMode = "Default"
+    routingWeight = 20
+    dpdTimeoutSeconds = 60
+    usePolicyBasedTrafficSelectors = false
+    ipsecPolicies {
+      new virtualnetworkgatewayconnection.IpsecPolicy {
+        saLifeTimeSeconds = 27000
+        saDataSizeKilobytes = 102400000
+        ipsecEncryption = "GCMAES256"
+        ipsecIntegrity = "GCMAES256"
+        ikeEncryption = "AES256"
+        ikeIntegrity = "SHA384"
+        dhGroup = "DHGroup24"
+        pfsGroup = "PFS24"
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}
