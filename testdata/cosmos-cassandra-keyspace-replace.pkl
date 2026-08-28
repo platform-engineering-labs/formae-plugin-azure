@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmoscassandrakeyspace.pkl" as casks
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-casks-test-rg"
+  name = "formae-plugin-sdk-test-ccasks-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Cassandra API: selected by the EnableCassandra capability, not by `kind`.
+// Capabilities are createOnly, so this needs its own account.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-casks-test-account"
+  name = "fpsdt-ccasks-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  capabilities = new Listing {
+    "EnableCassandra"
+  }
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  // Keyspace-level shared throughput at the 400 RU/s floor. A keyspace has no
+  // mutable properties, so the -replace fixture changes `name` instead.
+  new casks.CassandraKeyspace {
+    label = "plugin-sdk-test-cosmos-casks"
+    // Replace: change name, a createOnly field, so formae deletes and recreates.
+    // Cassandra identifiers allow only letters, digits and underscores.
+    name = "telemetry_replaced"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    throughput = 400
+  }
+}
