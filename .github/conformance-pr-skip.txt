@@ -26,6 +26,28 @@ custom-hostname-binding
 # the referenced plan; with no verified domain, no certificate is accepted.
 app-service-certificate
 
+# The conformance subscription has a dedicated-VM quota of 0, and an App Service
+# plan of ANY sku runs on dedicated VMs - verified 2026-08-28 against both B1
+# (Basic) and F1 (Free); both are refused identically:
+#
+#   Code: Unauthorized
+#   Operation cannot be completed without additional quota.
+#   Current Limit (Total VMs): 0 / Amount required for this deployment: 1
+#
+# So no plan can be created there, and every Microsoft.Web fixture that needs one
+# fails on the plan rather than on anything the plugin did. Raising the
+# subscription's "Total Regional vCPUs"/App Service quota is the only unblock;
+# remove these four lines when that lands. AZURE::Web::StaticSite is unaffected
+# (Static Web Apps are serverless) and stays in PR scope.
+#
+# CRUD for all four is covered by the mocked integration tests; run live against
+# a quota-bearing subscription with:
+#   make conformance-test-crud TEST=app-service-plan
+app-service-plan
+web-app
+function-app
+web-app-slot
+
 # --- Exceed the conformance-tests job's timeout-minutes: 120 ----------------
 # Measured lifecycles: vpn-gateway ~60 min, the two virtual-network-gateway
 # fixtures ~60-90 min, and a lifecycle runs create + update + destroy +
