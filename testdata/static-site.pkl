@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/staticsite.pkl"
+
+import "vars.pkl"
+
+// An Azure Static Web App on the Free SKU, created DETACHED — no repositoryUrl, so
+// no GitHub PAT is needed and Azure serves its default placeholder page. Content
+// would be pushed with the SWA CLI or a deployment token afterwards.
+//
+// Free tier: no charge, and provisioning takes well under a minute. Static Web Apps
+// is only available in a handful of regions, hence eastus2 rather than the eastus the
+// other Microsoft.Web fixtures use.
+//
+// `buildProperties` is write-only — ARM accepts it in the create body but returns
+// nothing for it on a GET — so it is sent on every write and never read back. It is
+// declared here anyway so the marshalling path is exercised.
+//
+// The nested `sku.tier` is spelled out because `hasProviderDefault` is not honoured
+// on fields of a nested class; the top-level provider defaults are left out.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "static-site-test-rg"
+  name = "formae-plugin-sdk-test-swa-rg-\(vars.testRunID)"
+  location = "eastus2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new staticsite.StaticSite {
+    label = "plugin-sdk-test-static-site"
+    name = "fpsdt-swa-\(vars.testRunID)"
+    location = "eastus2"
+    resourceGroupName = rg.res.name
+    sku = new staticsite.StaticSiteSKU {
+      name = "Free"
+      tier = "Free"
+    }
+    stagingEnvironmentPolicy = "Enabled"
+    allowConfigFileUpdates = true
+    buildProperties = new staticsite.StaticSiteBuildProperties {
+      appLocation = "/"
+      outputLocation = "dist"
+      skipGithubActionWorkflowGeneration = true
+    }
+  }
+}

@@ -1,0 +1,154 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.web.staticsite
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Web::StaticSite"
+const apiVersion = "2025-03-01"
+
+open class StaticSiteResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: StaticSiteResolvable = (this) {
+        property = "id"
+    }
+    hidden name: StaticSiteResolvable = (this) {
+        property = "name"
+    }
+    hidden defaultHostname: StaticSiteResolvable = (this) {
+        property = "defaultHostname"
+    }
+}
+
+/// Whether pull-request staging environments are allowed.
+typealias StagingEnvironmentPolicy = "Enabled"|"Disabled"
+
+/// Whether public network traffic reaches the site.
+typealias PublicNetworkAccess = "Enabled"|"Disabled"
+
+/// SKU of the static web app.
+///
+/// Azure echoes `tier` back matching `name` whether or not the create body set it,
+/// and the conformance framework does not honour `hasProviderDefault` on fields of a
+/// nested class — only on top-level resource fields. Set both explicitly.
+class StaticSiteSKU {
+    /// `Free` or `Standard`.
+    @azure.FieldHint { }
+    name: "Free"|"Standard"
+
+    /// Billing tier; matches `name`.
+    @azure.FieldHint { hasProviderDefault = true }
+    tier: String?
+}
+
+/// Build configuration handed to the generated GitHub Actions / Azure Pipelines
+/// workflow. Write-only — see `StaticSite.buildProperties`.
+class StaticSiteBuildProperties {
+    /// Path to the app source within the repository, e.g. `/`.
+    @azure.FieldHint { }
+    appLocation: String?
+
+    /// Path to the Azure Functions API source within the repository, e.g. `api`.
+    @azure.FieldHint { }
+    apiLocation: String?
+
+    /// Path the build writes its artifacts to, e.g. `dist` or `build`.
+    @azure.FieldHint { }
+    outputLocation: String?
+
+    /// Custom build command for the static content.
+    @azure.FieldHint { }
+    appBuildCommand: String?
+
+    /// Custom build command for the API.
+    @azure.FieldHint { }
+    apiBuildCommand: String?
+
+    /// Do not generate a CI workflow file in the repository.
+    @azure.FieldHint { }
+    skipGithubActionWorkflowGeneration: Boolean?
+}
+
+/// An Azure Static Web App (`Microsoft.Web/staticSites`).
+///
+/// A site with no `repositoryUrl` is created "detached": it serves the default
+/// placeholder page and content is pushed with the SWA CLI or a deployment token.
+/// Supplying `repositoryUrl` + `branch` + `repositoryToken` makes Azure commit a CI
+/// workflow to the repository, which needs a GitHub PAT with `repo` and `workflow`
+/// scope.
+///
+/// `buildProperties` and `repositoryToken` are write-only: ARM does not return
+/// either on a GET, so they are sent on every write and never read back, and drift
+/// in them cannot be detected.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class StaticSite extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 60)
+
+    /// Static Web Apps is available in a limited set of regions, e.g. `eastus2`,
+    /// `centralus`, `westus2`, `westeurope`, `eastasia`.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { hasProviderDefault = true }
+    sku: StaticSiteSKU?
+
+    /// URL of the source repository, e.g. `https://github.com/org/repo`.
+    @azure.FieldHint { }
+    repositoryUrl: String?
+
+    /// Branch the site builds from, e.g. `main`.
+    @azure.FieldHint { }
+    branch: String?
+
+    /// GitHub personal access token used once to write the CI workflow. Write-only;
+    /// wrap with `formae.value(...).opaque`.
+    @azure.FieldHint { writeOnly = true }
+    repositoryToken: (formae.Value|String)?
+
+    /// Build configuration. Write-only: sent on every write, never read back.
+    @azure.FieldHint { writeOnly = true }
+    buildProperties: StaticSiteBuildProperties?
+
+    /// Whether pull requests get their own staging environment. `Standard` SKU only
+    /// for more than three environments.
+    @azure.FieldHint { hasProviderDefault = true }
+    stagingEnvironmentPolicy: StagingEnvironmentPolicy?
+
+    /// Allow the repository's `staticwebapp.config.json` to change routing and auth.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowConfigFileUpdates: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: PublicNetworkAccess?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    /// Read-only output: the site's autogenerated hostname.
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultHostname: String?
+
+    hidden parent = this
+
+    hidden res: StaticSiteResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
