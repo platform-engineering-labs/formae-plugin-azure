@@ -13,6 +13,13 @@
 # The matrix is curated rather than auto-discovered from testdata/: a fixture only
 # belongs here once it passes CRUD *and* discovery against live Azure.
 #
+# That evidence now arrives on the pull request itself. ci.yml scopes a PR's
+# conformance to the fixtures the PR added or modified and runs both phases on
+# them, so a green PR is the proof needed to add the line here. A PR that
+# changes shared code without touching a fixture runs no conformance - label it
+# `full-conformance` for the whole matrix, or rely on push-to-main, which always
+# runs everything. See scripts/ci/conformance-scope.sh.
+#
 # To run one resource (or a few) instead of the whole matrix, use the Debug
 # Conformance workflow - it takes the names you give it and runs them against
 # the ref you dispatch on:

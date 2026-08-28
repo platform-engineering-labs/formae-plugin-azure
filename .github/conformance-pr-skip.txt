@@ -1,0 +1,37 @@
+# Fixtures that must never be auto-run by a pull request's scoped conformance.
+#
+# ci.yml scopes a PR's conformance to the fixtures the PR touched. Some fixtures
+# cannot pass in CI no matter what the PR changed - the blocker is the test
+# environment or the job's time budget, not the diff - so running them turns
+# every PR that touches them red and bills Azure for the privilege. They are
+# listed here and subtracted from the PR scope, with the reason on each.
+#
+# Same format as conformance-matrix.txt: one fixture per line, '#' comments and
+# blank lines ignored. A name may NOT appear in both files - conformance-scope.sh
+# fails the run if one does, so the two cannot drift into disagreement.
+#
+# This file does NOT affect push-to-main or nightly. Those are driven purely by
+# conformance-matrix.txt; a fixture absent from that file already does not run.
+#
+# Removing a line here is how a fixture becomes PR-eligible again - do it once
+# the blocker below is gone.
+
+# --- Blocked by the CI environment: no diff can make these pass -------------
+
+# Needs a real owned domain (Azure serves an ownership challenge the CI
+# subscription cannot answer).
+custom-hostname-binding
+
+# Azure validates an App Service certificate against a verified custom domain on
+# the referenced plan; with no verified domain, no certificate is accepted.
+app-service-certificate
+
+# --- Exceed the conformance-tests job's timeout-minutes: 120 ----------------
+# Measured lifecycles: vpn-gateway ~60 min, the two virtual-network-gateway
+# fixtures ~60-90 min, and a lifecycle runs create + update + destroy +
+# recreate + OOB-delete. scripts/ci/run-conformance-phase.sh already carries
+# their per-command budgets, so raising the job cap is the only change needed to
+# make them runnable.
+vpn-gateway
+virtual-network-gateway
+virtual-network-gateway-connection

@@ -57,6 +57,9 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
+      - name: Conformance scope self-check
+        run: ./scripts/ci/conformance-scope_test.sh
+
   # Integration tests are mock-based (fake SDK clients) and need no cloud creds.
   # Run on PRs too so they gate merges alongside conformance.
   test-integration:
@@ -78,11 +81,12 @@ jobs:
   # Clear stale test resources before the conformance matrix runs, so a prior
   # aborted run can't collide with this one.
   pre-cleanup:
-    needs: [checks, test-integration]
-    # Conformance does not run on pull requests - see debug-conformance.yml for
-    # the targeted per-branch run. Skipping pre-cleanup here skips the matrix
-    # and its cleanup with it, since both need this job.
-    if: github.event_name != 'pull_request'
+    needs: [checks, test-integration, conformance-matrix]
+    # Gated on the resolved scope rather than the event type: a pull request that
+    # touches no fixture resolves to zero resources and skips the matrix and its
+    # cleanup along with this job, while one that adds or edits a fixture runs
+    # them. See scripts/ci/conformance-scope.sh.
+    if: needs.conformance-matrix.outputs.count != '0'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -102,28 +106,46 @@ jobs:
         run: ./scripts/ci/clean-environment.sh
 
   # Conformance runs the full CRUD + discovery lifecycle against real Azure
-  # resources on push to main and on manual dispatch, not on pull requests.
-  # The matrix is curated (not auto-discovered) to exclude resources with known
-  # formae-core discovery bugs; see the exclusions below.
-  # Both this workflow and nightly.yml build their conformance matrix from
-  # .github/conformance-matrix.txt so the two can never drift apart again.
+  # resources. Scope depends on the event:
+  #
+  #   push to main / workflow_dispatch  -> the whole curated matrix
+  #   pull request                      -> only the fixtures the PR touched
+  #   pull request + full-conformance   -> the whole curated matrix
+  #
+  # A PR used to run no conformance at all, so a new fixture was unverified
+  # until it reached main and the only early check was dispatching
+  # debug-conformance.yml by hand. main still gets full coverage on every merge,
+  # which is the backstop for a PR that changes shared code without touching a
+  # fixture - label such a PR `full-conformance` to get the whole matrix on it.
+  #
+  # The curated list lives in .github/conformance-matrix.txt, shared with
+  # nightly.yml so the two can never drift apart. Resolution logic and its
+  # self-check are in scripts/ci/conformance-scope{,_test}.sh.
   conformance-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       resources: ${{ steps.build.outputs.resources }}
+      count: ${{ steps.build.outputs.count }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # A pull request diffs against its base commit, which needs history.
+          # Unconditional 0 rather than a ternary: in a GitHub expression 0 is
+          # falsy, so `event_name == 'pull_request' && 0 || 1` yields 1 on a
+          # pull request - exactly backwards.
+          fetch-depth: 0
       - id: build
-        run: |
-          set -euo pipefail
-          RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
-          test "$(echo "$RESOURCES" | jq 'length')" -gt 0
-          echo "resources=$RESOURCES" >> "$GITHUB_OUTPUT"
-          echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-conformance') }}
+        run: ./scripts/ci/conformance-scope.sh
 
   conformance-tests:
     needs: [checks, test-integration, pre-cleanup, conformance-matrix]
+    # An empty matrix vector is a workflow error, not a skip, so gate on the count.
+    if: needs.conformance-matrix.outputs.count != '0'
     runs-on: ubuntu-latest
     # 120 min: App Gateway and Front Door each run the CRUD lifecycle + discovery.
     # A single Front Door cdn-* lifecycle measures ~36 min; App Gateway ~35 min.
