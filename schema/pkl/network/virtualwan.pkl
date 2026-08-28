@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.virtualwan
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VirtualWan"
+const apiVersion = "2023-05-01"
+
+/// Virtual WAN tier. `Basic` allows exactly one hub with a Basic VPN gateway and no
+/// ExpressRoute; `Standard` is required for everything else (hub-to-hub transit,
+/// ExpressRoute, Azure Firewall in the hub). An in-place Basic -> Standard upgrade
+/// is supported; the reverse is not.
+typealias VirtualWanTier = "Basic"|"Standard"
+
+open class VirtualWanResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualWanResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualWanResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The root of a Virtual WAN topology. The WAN itself carries no data path and
+/// nothing bills against it — it is the container that hubs
+/// (`AZURE::Network::VirtualHub`) and branch definitions
+/// (`AZURE::Network::VpnSite`) attach to, so create it first and reference it from
+/// both.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualWan extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Virtual WAN tier. Named `virtualWanTier` rather than ARM's
+    /// `properties.type` because the flattened property map already carries the
+    /// resource's own `type`.
+    @azure.FieldHint { hasProviderDefault = true }
+    virtualWanTier: VirtualWanTier?
+
+    /// Disable IPsec encryption on VPN connections into this WAN. Azure defaults
+    /// to false.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableVpnEncryption: Boolean?
+
+    /// Allow branch-to-branch (site-to-site via the hub) transit. Azure defaults
+    /// to false.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowBranchToBranchTraffic: Boolean?
+
+    /// Allow vnet-to-vnet transit through the WAN. Azure defaults to false and
+    /// rejects `true` on a Basic WAN.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowVnetToVnetTraffic: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualWanResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

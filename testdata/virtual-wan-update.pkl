@@ -1,0 +1,45 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/virtualwan.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vwan-test-rg"
+  name = "formae-plugin-sdk-test-vwan-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // The WAN on its own is free and provisions in well under a minute: it is only a
+  // container for hubs and branch definitions, with no data path of its own.
+  // `allowVnetToVnetTraffic` is deliberately omitted — Virtual WAN ignores it, so
+  // declaring it would compare a value the service never honours.
+  new virtualwan.VirtualWan {
+    label = "plugin-sdk-test-virtual-wan"
+    name = "formae-plugin-sdk-test-vwan-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    virtualWanTier = "Standard"
+    disableVpnEncryption = false
+    allowBranchToBranchTraffic = true
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

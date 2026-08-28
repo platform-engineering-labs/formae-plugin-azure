@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/virtualwan.pkl"
+import "@azure/network/virtualhub.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vhub-test-rg"
+  name = "formae-plugin-sdk-test-vhub-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The hub belongs to a WAN and cannot outlive it. Declaring both in one forma and
+// referencing the WAN through `wan.res.id` lets formae order create and destroy;
+// there is no explicit dependency to write down.
+local wan = new virtualwan.VirtualWan {
+  label = "vhub-test-wan"
+  name = "formae-plugin-sdk-test-vhub-wan-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  virtualWanTier = "Standard"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  wan
+
+  // SLOW AND BILLED: a hub takes roughly 10 minutes to provision and about the
+  // same to delete, and it bills for the whole time it exists even with no gateway
+  // attached. `allowBranchToBranchTraffic` is deliberately omitted: Virtual WAN
+  // reports it only for Route Server hubs, so declaring it would compare a value
+  // the service does not honour here.
+  new virtualhub.VirtualHub {
+    label = "plugin-sdk-test-virtual-hub"
+    name = "formae-plugin-sdk-test-vhub-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    virtualWanId = wan.res.id
+    // /23 is Azure's recommended hub prefix; it must not overlap any connected
+    // network. RFC 1918 space that nothing else in the fixture uses.
+    addressPrefix = "10.100.0.0/23"
+    sku = "Standard"
+    hubRoutingPreference = "ASPath"
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

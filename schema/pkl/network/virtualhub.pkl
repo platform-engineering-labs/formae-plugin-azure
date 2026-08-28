@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.virtualhub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VirtualHub"
+const apiVersion = "2023-05-01"
+
+/// Hub tier. Must match the parent WAN: a Basic WAN accepts only a Basic hub.
+typealias VirtualHubSku = "Basic"|"Standard"
+
+/// Which gateway the hub prefers when the same prefix is learned from several
+/// sources.
+typealias HubRoutingPreference = "ExpressRoute"|"VpnGateway"|"ASPath"
+
+open class VirtualHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualHubResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A regional hub inside a Virtual WAN — the managed router that branch, vnet and
+/// ExpressRoute connections terminate on.
+///
+/// The hub is billed from the moment it exists and takes several minutes to
+/// provision (and to delete), well before any gateway is attached. It must be
+/// created after its `AZURE::Network::VirtualWan` and deleted before it, which
+/// `virtualWanId` expresses for you when you point it at `wan.res.id`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualHub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM ID of the Virtual WAN this hub belongs to, e.g. `wan.res.id`. A hub
+    /// cannot be moved between WANs.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualWanId: String|formae.Resolvable
+
+    /// Private CIDR the hub allocates its internal components from. Azure requires
+    /// /24 or larger and recommends /23; it must not overlap any connected
+    /// network, and it cannot be changed once the hub exists.
+    @azure.FieldHint { required = true; createOnly = true }
+    addressPrefix: String
+
+    /// Hub tier. Azure defaults to Standard.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    sku: VirtualHubSku?
+
+    /// Route-selection preference for prefixes learned from more than one source.
+    /// Azure defaults to ExpressRoute.
+    @azure.FieldHint { hasProviderDefault = true }
+    hubRoutingPreference: HubRoutingPreference?
+
+    /// Allow traffic between two branches to transit this hub.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowBranchToBranchTraffic: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
