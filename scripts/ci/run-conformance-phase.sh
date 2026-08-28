@@ -63,6 +63,39 @@ case "$RESOURCE" in
     # in this table so debug-conformance.yml gives them the same headroom.
     set_timeouts 20 50
     ;;
+  app-service-plan|static-site)
+    # A plan and a Static Web App create in a couple of minutes, but the
+    # lifecycle does several of them.
+    set_timeouts 10 30
+    ;;
+  web-app|web-app-slot|function-app)
+    # The site itself is quick; these fixtures build a plan first (and a storage
+    # account for function-app), and Destroy is slower than Create.
+    set_timeouts 15 40
+    ;;
+  virtual-wan|vpn-site)
+    # Virtual WAN control plane only - nothing is provisioned behind it.
+    set_timeouts 10 30
+    ;;
+  virtual-hub|bastion-host)
+    # A hub programs routing and a Bastion deploys real instances: ~20-25 min
+    # per lifecycle, measured.
+    set_timeouts 30 90
+    ;;
+  vpn-gateway|virtual-network-gateway|virtual-network-gateway-connection)
+    # 60-90 min per lifecycle. That exceeds the conformance-tests job's
+    # timeout-minutes: 120 in both ci.yml and debug-conformance.yml, so these
+    # are not dispatchable there yet. The budget lives here so a local run gets
+    # a usable one, and so raising the job cap is the only change needed later.
+    set_timeouts 60 150
+    ;;
+  cosmos-*)
+    # Every Cosmos child fixture stands up its own account first (10-20 min
+    # before the child can be created at all), and a container or graph create
+    # is minutes on top. Deliberately after the cosmos-database-account arm, so
+    # that keeps its own budget.
+    set_timeouts 30 90
+    ;;
   redis-cache)
     # Out of the matrix because a Basic C0 create is ~20 min and the lifecycle
     # does several; at 30 min the job still ran 60 min before failing on the

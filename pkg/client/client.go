@@ -16,6 +16,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appconfiguration/armappconfiguration"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/applicationinsights/armapplicationinsights"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v3"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
@@ -219,8 +220,32 @@ type Client struct {
 	CdnRoutesClient           *armcdn.RoutesClient
 	CdnAFDCustomDomainsClient *armcdn.AFDCustomDomainsClient
 	CdnSecretsClient          *armcdn.SecretsClient
-	credential                azcore.TokenCredential
-	clientOptions             *arm.ClientOptions
+
+	// Microsoft.Web (App Service) clients. One WebAppsClient covers sites, slots,
+	// function apps and hostname bindings — ARM models them all under /sites.
+	AppServicePlansClient        *armappservice.PlansClient
+	AppServiceWebAppsClient      *armappservice.WebAppsClient
+	AppServiceCertificatesClient *armappservice.CertificatesClient
+	AppServiceStaticSitesClient  *armappservice.StaticSitesClient
+
+	// Cosmos DB data-model clients (Microsoft.DocumentDB). The account itself is
+	// CosmosDatabaseAccountsClient above; these carry its per-API child resources.
+	CosmosSQLResourcesClient       *armcosmos.SQLResourcesClient
+	CosmosMongoDBResourcesClient   *armcosmos.MongoDBResourcesClient
+	CosmosCassandraResourcesClient *armcosmos.CassandraResourcesClient
+	CosmosGremlinResourcesClient   *armcosmos.GremlinResourcesClient
+	CosmosTableResourcesClient     *armcosmos.TableResourcesClient
+
+	// Gateway and Virtual WAN clients (Microsoft.Network).
+	VirtualNetworkGatewaysClient           *armnetwork.VirtualNetworkGatewaysClient
+	VirtualNetworkGatewayConnectionsClient *armnetwork.VirtualNetworkGatewayConnectionsClient
+	VirtualWansClient                      *armnetwork.VirtualWansClient
+	VirtualHubsClient                      *armnetwork.VirtualHubsClient
+	VPNGatewaysClient                      *armnetwork.VPNGatewaysClient
+	VPNSitesClient                         *armnetwork.VPNSitesClient
+	BastionHostsClient                     *armnetwork.BastionHostsClient
+	credential                             azcore.TokenCredential
+	clientOptions                          *arm.ClientOptions
 	// armClient provides access to the pipeline for resuming pollers
 	armClient *arm.Client
 }
@@ -1056,6 +1081,86 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 
+	appServicePlansClient, err := armappservice.NewPlansClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	appServiceWebAppsClient, err := armappservice.NewWebAppsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	appServiceCertificatesClient, err := armappservice.NewCertificatesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	appServiceStaticSitesClient, err := armappservice.NewStaticSitesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cosmosSQLResourcesClient, err := armcosmos.NewSQLResourcesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cosmosMongoDBResourcesClient, err := armcosmos.NewMongoDBResourcesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cosmosCassandraResourcesClient, err := armcosmos.NewCassandraResourcesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cosmosGremlinResourcesClient, err := armcosmos.NewGremlinResourcesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	cosmosTableResourcesClient, err := armcosmos.NewTableResourcesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNetworkGatewaysClient, err := armnetwork.NewVirtualNetworkGatewaysClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualNetworkGatewayConnectionsClient, err := armnetwork.NewVirtualNetworkGatewayConnectionsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualWansClient, err := armnetwork.NewVirtualWansClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	virtualHubsClient, err := armnetwork.NewVirtualHubsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	vpnGatewaysClient, err := armnetwork.NewVPNGatewaysClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	vpnSitesClient, err := armnetwork.NewVPNSitesClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	bastionHostsClient, err := armnetwork.NewBastionHostsClient(cfg.SubscriptionId, cred, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a low-level ARM client for pipeline access (needed for resuming pollers)
 	armClient, err := arm.NewClient(moduleName, moduleVersion, cred, clientOptions)
 	if err != nil {
@@ -1207,6 +1312,22 @@ func buildClient(cfg *config.Config) (*Client, error) {
 		CdnRoutesClient:                          cdnRoutesClient,
 		CdnAFDCustomDomainsClient:                cdnAFDCustomDomainsClient,
 		CdnSecretsClient:                         cdnSecretsClient,
+		AppServicePlansClient:                    appServicePlansClient,
+		AppServiceWebAppsClient:                  appServiceWebAppsClient,
+		AppServiceCertificatesClient:             appServiceCertificatesClient,
+		AppServiceStaticSitesClient:              appServiceStaticSitesClient,
+		CosmosSQLResourcesClient:                 cosmosSQLResourcesClient,
+		CosmosMongoDBResourcesClient:             cosmosMongoDBResourcesClient,
+		CosmosCassandraResourcesClient:           cosmosCassandraResourcesClient,
+		CosmosGremlinResourcesClient:             cosmosGremlinResourcesClient,
+		CosmosTableResourcesClient:               cosmosTableResourcesClient,
+		VirtualNetworkGatewaysClient:             virtualNetworkGatewaysClient,
+		VirtualNetworkGatewayConnectionsClient:   virtualNetworkGatewayConnectionsClient,
+		VirtualWansClient:                        virtualWansClient,
+		VirtualHubsClient:                        virtualHubsClient,
+		VPNGatewaysClient:                        vpnGatewaysClient,
+		VPNSitesClient:                           vpnSitesClient,
+		BastionHostsClient:                       bastionHostsClient,
 		credential:                               cred,
 		clientOptions:                            clientOptions,
 		armClient:                                armClient,
