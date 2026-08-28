@@ -45,8 +45,29 @@ case "$RESOURCE" in
     # resource under test can even be created.
     set_timeouts 20 50
     ;;
-  virtual-machine-extension|sql-*)
+  virtual-machine-extension)
     set_timeouts 15 40
+    ;;
+  sql-*)
+    # 20 not 15: sql-firewall-rule timed out on the OOB-delete re-apply at 17 min
+    # and sql-virtual-network-rule on the out-of-band server create at 15 min.
+    # Both spend most of that waiting on the parent SQL server.
+    set_timeouts 20 50
+    ;;
+  cosmos-database-account|configuration|database|firewall-rule|flexible-server|web-pubsub|signalr-service)
+    # Managed data services: the control plane accepts the create in seconds but
+    # the instance is not Succeeded for 10-20 min, and Destroy is just as slow.
+    # cosmos-database-account blew the 5 min default on Destroy and web-pubsub on
+    # the OOB-delete re-apply, while every other phase passed. configuration,
+    # database, firewall-rule and flexible-server are out of the matrix but stay
+    # in this table so debug-conformance.yml gives them the same headroom.
+    set_timeouts 20 50
+    ;;
+  redis-cache)
+    # Out of the matrix because a Basic C0 create is ~20 min and the lifecycle
+    # does several; at 30 min the job still ran 60 min before failing on the
+    # OOB-delete re-apply. Kept here so a debug run gets a usable budget.
+    set_timeouts 30 90
     ;;
 esac
 

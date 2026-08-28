@@ -21,6 +21,10 @@ local rg = new resourcegroup.ResourceGroup {
 
 local namespaceSku = new namespace.NamespaceSKU {
   name = "Standard"
+  // Pinned explicitly: Azure echoes sku.tier back matching sku.name, and nested
+  // hasProviderDefault is not honoured by the conformance framework, so omitting
+  // it fails Verify with "Property sku.tier is not expected".
+  tier = "Standard"
 }
 
 forma {

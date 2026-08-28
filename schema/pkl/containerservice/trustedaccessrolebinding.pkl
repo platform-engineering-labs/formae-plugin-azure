@@ -28,7 +28,10 @@ open class TrustedAccessRoleBindingResolvable extends formae.Resolvable {
     identifier = "id"
     apiVersion = module.apiVersion
     parent = "AZURE::ContainerService::ManagedCluster"
-    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" }
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "clusterName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
 }
 open class TrustedAccessRoleBinding extends formae.Resource {
 

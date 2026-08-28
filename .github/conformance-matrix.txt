@@ -1,0 +1,387 @@
+# Curated conformance matrix, shared by ci.yml and nightly.yml.
+#
+# One resource fixture per line. Blank lines and lines starting with '#' are
+# ignored, so an excluded fixture stays here commented with the reason it is out
+# and the local command that still exercises it.
+#
+# This file is the single source of truth for BOTH workflows: ci.yml gates every
+# push and PR on it, nightly.yml runs the same list against formae main. It exists
+# because the two matrices were maintained by hand and drifted - nightly was still
+# running 30 of the 130 entries CI ran, so 100 resources had no nightly coverage
+# at all. Editing this file changes both.
+#
+# The matrix is curated rather than auto-discovered from testdata/: a fixture only
+# belongs here once it passes CRUD *and* discovery against live Azure.
+#
+# To run one resource (or a few) instead of the whole matrix, use the Debug
+# Conformance workflow - it takes the names you give it and runs them against
+# the ref you dispatch on:
+#
+#   gh workflow run debug-conformance.yml --ref <branch> -f resources=redis-cache
+#   gh workflow run debug-conformance.yml --ref <branch> -f resources='redis-cache,event-hub' -f phases=crud
+#
+# Any resource with a testdata/<name>.pkl may be named, including ones commented
+# out below - that is how you re-check an exclusion without editing this file. An
+# unknown name fails the run rather than quietly testing nothing.
+#
+# Caveat: dispatching from a feature branch fails at the azure/login step with
+# AADSTS700213. The Entra federated identity credential only trusts the subjects
+# main and pull_request present, and a workflow_dispatch on a branch presents
+# ref:refs/heads/<branch>. Dispatch from main, or have an Azure admin add a
+# federated credential for the branch (a ref:refs/heads/* subject covers all).
+
+resource-group
+virtual-network
+subnet
+network-security-group
+public-ip-address
+storage-account
+registry
+vault
+# flexible-server and firewall-rule excluded due to formae core
+# discovery persistence bug (discovered resources not appearing in inventory).
+# CRUD tests still run via test-integration.
+role-assignment
+user-assigned-identity
+federated-identity-credential
+load-balancer
+application-gateway
+waf-policy
+# certificate (AZURE::KeyVault::Certificate) excluded: like `secret`, it is a
+# Key Vault DATA-PLANE resource — the CI principal can create the vault via ARM
+# but cannot write certificates without the "Key Vault Certificates Officer"
+# role. CRUD is validated via test-integration (mocked); run live locally with:
+# make conformance-test-crud TEST=certificate
+dns-zone
+dns-record-set
+private-dns-zone
+private-dns-vnet-link
+private-endpoint
+private-dns-zone-group
+blob-container
+disk
+virtual-machine-scale-set
+# Azure Front Door Standard (Microsoft.Cdn AFD). Profile provisioning is
+# minutes-slow + billed; each fixture stands up the chain up to its own
+# resource (cdn-route brings up the full profile→endpoint→origin-group→
+# origin→route AFD). Uses TIMEOUT overrides in the run step.
+cdn-profile
+cdn-afd-endpoint
+cdn-afd-origin-group
+cdn-afd-origin
+# cdn-route excluded: the Route references TWO sibling resources created in
+# the same apply (origin group + endpoint), which reliably trips the formae
+# core resolve-cache race (ResolveCacheMissingInAction) on first apply — the
+# route aborts in the "resolving" state while its siblings succeed around it
+# (3/3 live attempts). NOT a plugin bug: Route marshalling is covered by
+# TestCdnRoute_MarshallerRoundTrip and profile/endpoint/origin-group/origin all
+# pass live. Re-enable once the core resolve-cache race is fixed. Run locally:
+# make conformance-test-crud TEST=cdn-route
+# cdn-afd-custom-domain and cdn-secret excluded: custom-domain needs a REAL
+# owned domain (Azure _dnsauth TXT ownership challenge) and secret needs a
+# real Key Vault certificate + AFD service-principal vault access — neither
+# is available to the CI principal. CRUD validated via test-integration
+# (mocked) + marshaller round-trip; run live locally with a real domain/cert:
+#   make conformance-test-crud TEST=cdn-afd-custom-domain
+#   make conformance-test-crud TEST=cdn-secret
+# --- Private DNS resolver family. All free (the resolver and its endpoints
+# bill nothing; only the vnet and subnet exist alongside) and each
+# provisions in ~2-4 min.
+dns-resolver
+dns-resolver-inbound-endpoint
+dns-resolver-outbound-endpoint
+dns-forwarding-ruleset
+dns-forwarding-rule
+dns-forwarding-ruleset-vnet-link
+# --- DNS security policy. Also free.
+dns-resolver-policy
+dns-resolver-policy-vnet-link
+dns-resolver-domain-list
+dns-security-rule
+# --- Azure Firewall policy. The policy and its rule collection groups are
+# free without an attached firewall, and none is created.
+firewall-policy
+firewall-policy-rule-collection-group
+# --- Remaining networking. subnet-delegated covers subnet delegation on its
+# own, independent of the resolver endpoints that consume it.
+subnet-delegated
+vnet-peering
+traffic-manager-profile
+# local-network-gateway excluded from the matrix: armnetwork offers no
+# subscription-wide listing for the type (only NewListPager(resourceGroup)),
+# and the gateway has no parent resource for discovery to hand a group down
+# from — so the discovery phase can never see it, though CRUD passes. CRUD is
+# validated via test-integration (mocked); run live locally with:
+#   make conformance-test-crud TEST=local-network-gateway
+# --- Azure Monitor alerting. Action groups and activity log alerts are free;
+# a metric alert and a scheduled query rule are ~$0.10-0.15/month each and
+# are deleted by the run.
+action-group
+activity-log-alert
+metric-alert
+scheduled-query-rule
+# --- Azure Monitor Agent ingestion. Both free; nothing is collected because
+# no machine is associated with the rule.
+data-collection-endpoint
+data-collection-rule
+# --- Azure Monitor private link. Free: the scope and its scoped resources
+# carry no charge, and the private endpoint that would bill is not created.
+private-link-scope
+private-link-scoped-resource
+# --- Log Analytics and Application Insights. The workspace is PerGB2018 with
+# a 1 GB daily cap and nothing sends data to it; destroy soft-deletes it for
+# 14 days, so fixtures carry the run ID in the name.
+log-analytics-workspace
+app-insights-component
+# saved-search excluded: CRUD passes in under 2 min, and the plugin enumerates
+# the type correctly - the log goes from "Received 39 resources for
+# AZURE::OperationalInsights::SavedSearch" (the workspace's built-in searches) to
+# "Received 40" once the test's own search exists. It still never lands in
+# inventory, so this is the same formae-core persistence bug the group above
+# carries, not a plugin defect. CRUD still runs:
+#   make conformance-test-crud TEST=saved-search
+# saved-search
+data-export
+linked-storage-account
+# diagnostic-setting excluded from the matrix: a diagnostic setting hangs off
+# an arbitrary target resource, addressed by that resource's URI, so listing
+# them means enumerating every resource in the subscription first. Discovery
+# has no parent to supply the URI and the phase times out. CRUD passes; run
+# live locally with:
+#   make conformance-test-crud TEST=diagnostic-setting
+# --- Governance. Custom roles and policy are free, and the conformance
+# fixtures stay harmless on a shared subscription: the policy effect is
+# `audit` and the assignment pins enforcementMode DoNotEnforce, scoped to the
+# test resource group rather than the subscription.
+role-definition
+policy-definition
+policy-set-definition
+policy-assignment
+# --- Relay. A namespace is ~$0.10/month prorated; hybrid connections and
+# authorization rules are free. No listen/send keys are read into state.
+relay-namespace
+relay-hybrid-connection
+# relay-namespace-auth-rule and relay-hc-auth-rule excluded: the plugin does
+# return them ("Received 1 resources for AZURE::Relay::NamespaceAuthorizationRule"
+# in the job log) but they never reach the inventory — the same formae-core
+# discovery persistence bug that already excludes flexible-server and
+# firewall-rule above. CRUD passes for both.
+# --- Notification Hubs. Free tier namespace; PNS credentials are inputs the
+# provider never sends back, so an out-of-band credential survives an apply.
+notification-hub-namespace
+notification-hub
+nh-auth-rule
+# --- Messaging odds and ends. Service Bus needs a Standard namespace for
+# topics/subscriptions (~$10/month prorated to the run); the Event Hubs schema
+# group and Event Grid subscription are free.
+service-bus-rule
+# service-bus-authorization-rule excluded for the same core persistence bug as
+# the relay authorization rules above: listed by the plugin, absent from
+# inventory.
+schema-group
+# event-grid-event-subscription excluded from the matrix: an event
+# subscription is a scoped extension resource whose scope is any ARM ID — a
+# topic, a storage account, the subscription itself — and the schema carries
+# that scope as one opaque string rather than as resource group + provider +
+# type + name. ARM's per-resource listing needs those four parts, so discovery
+# has nothing to hand down, and the subscription-wide listing the provider
+# falls back to returns only subscription-LEVEL subscriptions, not the
+# topic-scoped one the fixture creates. CRUD passes; run live locally with:
+#   make conformance-test-crud TEST=event-grid-event-subscription
+# --- Remaining resources, added wholesale so one CI run shows which of them
+# the discovery phase can actually see. Discovery needs either a
+# subscription-wide List or a parent chain to hand scope down; a resource
+# with neither is invisible to it however well its CRUD lifecycle works.
+# Expected to pass both phases (each has a subscription-wide List):
+app-configuration-store
+batch-account
+container-group
+cosmos-database-account
+disk-access
+iot-hub
+# mysql-flexible-server excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::DBforMySQL::FlexibleServer") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=mysql-flexible-server
+# - mysql-flexible-server
+netapp-account
+# redis-cache excluded: a single Basic C0 create is ~20 min, and the lifecycle
+# does several (create, replace-recreate, out-of-band delete, re-apply). With the
+# per-command poll at 30 min the job still burned 60 min and then failed on the
+# OOB-delete re-apply. Everything up to that point passed, so this is duration,
+# not correctness - it is simply too slow to gate a push on. Run locally:
+#   make conformance-test-crud TEST=redis-cache TIMEOUT=90
+# redis-cache
+search-service
+signalr-service
+web-pubsub
+# Parent-scoped, so discovery depends on the parent chain resolving:
+# acr-webhook excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::ContainerRegistry::Webhook") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=acr-webhook
+# - acr-webhook
+scope-map
+registry-token
+# gallery-application excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::Compute::GalleryApplication") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=gallery-application
+# - gallery-application
+sql-elastic-pool
+management-policy
+# Unclear: lists per resource group with no subscription-wide fallback.
+backup-vault
+# --- Fixtures that existed without ever being gated. Every resource in the
+# plugin ships a conformance fixture, but the matrix is hand-maintained, so
+# 45 of them had never run in CI or nightly — including three types merged
+# last week (compute-gallery, compute-gallery-image, compute-snapshot). They
+# are listed here so a regression in any of them fails a PR rather than
+# going unnoticed.
+#
+# Networking and identity primitives. All free and fast.
+application-security-group
+ip-group
+nat-gateway
+public-ip-prefix
+route-table
+private-dns-record-set
+network-watcher
+# network-watcher-flow-log excluded: a flow log is created inside Azure's
+# own auto-provisioned NetworkWatcherRG resource group, not the test's
+# resource group, so the discovery gate never sees it - AZURE::Network::FlowLog
+# is not enumerated at all in the run. Not a plugin bug: the List has both a
+# per-watcher path and a subscription-wide NewListAllWatchersPager fallback.
+# CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=network-watcher-flow-log
+# - network-watcher-flow-log
+ssh-public-key
+proximity-placement-group
+# availability-set excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::Compute::AvailabilitySet") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=availability-set
+# - availability-set
+# Compute images and snapshots. A snapshot and an image each stand up a
+# small disk first; all billed per GB-month, prorated to the run.
+# compute-gallery excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::Compute::Gallery") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=compute-gallery
+# - compute-gallery
+# compute-gallery-image excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::Compute::GalleryImage") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=compute-gallery-image
+# - compute-gallery-image
+# compute-image excluded: discovery works but formae-core never persists the
+# result. The plugin's List returns the resource ("Received 1 resources
+# for AZURE::Compute::Image") yet the discovery gate still fails with "resource did not
+# appear in inventory". Same core bug flexible-server/firewall-rule
+# already carry. CRUD passes and still runs locally:
+#   make conformance-test-crud TEST=compute-image
+# - compute-image
+compute-snapshot
+# Storage data-plane children of an existing account. Free.
+storage-queue
+storage-table
+file-share
+# Messaging. An Event Hubs namespace and a Standard Service Bus namespace are
+# billed hourly and prorated; Event Grid topics and domains bill per
+# operation, and these fixtures publish none.
+event-grid-topic
+event-grid-domain
+event-grid-domain-topic
+event-grid-system-topic
+event-hub-namespace
+event-hub
+consumer-group
+service-bus-namespace
+service-bus-queue
+service-bus-topic
+service-bus-subscription
+# SQL. The server itself is free; the fixtures that create a database use the
+# cheapest tier. Server provisioning is a few minutes, hence the timeout
+# override below.
+sql-server
+sql-database
+sql-firewall-rule
+sql-outbound-firewall-rule
+sql-virtual-network-rule
+sql-server-dns-alias
+# sql-ad-administrator excluded: Create fails outright because the fixture
+# carries a placeholder sid/tenantId and Azure requires a real Azure AD
+# principal. Nightly excludes it for the same reason. CRUD is validated via
+# test-integration (mocked); run live locally against a real principal:
+#   make conformance-test-crud TEST=sql-ad-administrator
+# - sql-ad-administrator
+# Other services. cognitive-services-account uses the free F0 tier;
+# configuration and database are children of stores created by their own
+# fixtures.
+# cognitive-services-account excluded: Replace reaches a terminal Failed
+# state. The kind under test needs subscription quota/approval the CI
+# principal does not hold. Nightly excludes it for the same reason.
+# CRUD is validated via test-integration (mocked); run live locally on an
+# approved subscription:
+#   make conformance-test-crud TEST=cognitive-services-account
+# - cognitive-services-account
+# configuration excluded: with the per-command poll raised to 20 min the whole
+# CRUD lifecycle now gets as far as Destroy, which then reaches a terminal Failed
+# state in about one second - not a timeout. AZURE::DBforPostgreSQL::Configuration
+# is a server setting rather than a deletable child, so the plugin implements
+# Delete as "reset to the default value via BeginUpdate"; that update is what
+# Azure rejects. The core does not surface the Azure error text, so the message
+# still has to be read off a local run:
+#   make conformance-test-crud TEST=configuration
+# configuration
+# database excluded: CRUD passes end to end (12 min) but discovery never
+# enumerates AZURE::DBforPostgreSQL::Database at all - the log has no
+# "Received N resources" line for the type, only for its parent
+# AZURE::DBforPostgreSQL::FlexibleServer, which is itself already excluded here
+# for the same reason. Not the listParam bug: Database's List does carry a
+# subscription-wide fallback that walks every flexible server. CRUD still runs:
+#   make conformance-test-crud TEST=database
+# database
+# Slow chains, each with a timeout override below: the three AKS-backed
+# fixtures stand up a cluster first (~5-10 min), virtual-machine-extension a
+# VM, and the two Grafana fixtures a managed Grafana workspace (~5 min,
+# billed hourly).
+# flux-configuration excluded: Create alone runs past 20 min - an AKS
+# cluster (~8 min) plus the flux extension install (~5 min) before the
+# configuration itself is even attempted, and the cluster is billed the
+# whole time. Nightly excludes it for the same reason. Run locally with a
+# wide timeout:
+#   make conformance-test-crud TEST=flux-configuration
+# - flux-configuration
+# maintenance-configuration excluded: the OOB-delete re-apply reaches a
+# terminal Failed state after 14 min, and like flux-configuration it needs a
+# billed AKS cluster stood up first. Nightly excludes it for the same reason.
+# Run locally with a wide timeout:
+#   make conformance-test-crud TEST=maintenance-configuration
+# - maintenance-configuration
+# trusted-access-role-binding excluded: Replace reaches a terminal Failed
+# state after 13 min, and it needs the same billed AKS cluster as
+# flux-configuration. Nightly excludes it for the same reason. Run locally:
+#   make conformance-test-crud TEST=trusted-access-role-binding
+# - trusted-access-role-binding
+virtual-machine-extension
+grafana
+grafana-managed-private-endpoint
+# Container Apps (Microsoft.App: managed-environment, container-app) excluded:
+# a managed environment takes ~5 min to provision (container-app builds on top),
+# exceeding the CI command timeout — same class as the AKS extension. Both are
+# billed. CRUD validated via test-integration (mocked); run live locally with:
+#   make conformance-test-crud TEST=managed-environment TIMEOUT=15
+#   make conformance-test-crud TEST=container-app TIMEOUT=15

@@ -105,8 +105,25 @@ jobs:
   # resources on push to main and on manual dispatch, not on pull requests.
   # The matrix is curated (not auto-discovered) to exclude resources with known
   # formae-core discovery bugs; see the exclusions below.
+  # Both this workflow and nightly.yml build their conformance matrix from
+  # .github/conformance-matrix.txt so the two can never drift apart again.
+  conformance-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      resources: ${{ steps.build.outputs.resources }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: build
+        run: |
+          set -euo pipefail
+          RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
+          test "$(echo "$RESOURCES" | jq 'length')" -gt 0
+          echo "resources=$RESOURCES" >> "$GITHUB_OUTPUT"
+          echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
+
   conformance-tests:
-    needs: [checks, test-integration, pre-cleanup]
+    needs: [checks, test-integration, pre-cleanup, conformance-matrix]
     runs-on: ubuntu-latest
     # 120 min: App Gateway and Front Door each run the CRUD lifecycle + discovery.
     # A single Front Door cdn-* lifecycle measures ~36 min; App Gateway ~35 min.
@@ -117,259 +134,7 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
-        resource:
-          - resource-group
-          - virtual-network
-          - subnet
-          - network-security-group
-          - public-ip-address
-          - storage-account
-          - registry
-          - vault
-          # flexible-server and firewall-rule excluded due to formae core
-          # discovery persistence bug (discovered resources not appearing in inventory).
-          # CRUD tests still run via test-integration.
-          - role-assignment
-          - user-assigned-identity
-          - federated-identity-credential
-          - load-balancer
-          - application-gateway
-          - waf-policy
-          # certificate (AZURE::KeyVault::Certificate) excluded: like `secret`, it is a
-          # Key Vault DATA-PLANE resource — the CI principal can create the vault via ARM
-          # but cannot write certificates without the "Key Vault Certificates Officer"
-          # role. CRUD is validated via test-integration (mocked); run live locally with:
-          # make conformance-test-crud TEST=certificate
-          - dns-zone
-          - dns-record-set
-          - private-dns-zone
-          - private-dns-vnet-link
-          - private-endpoint
-          - private-dns-zone-group
-          - blob-container
-          - disk
-          - virtual-machine-scale-set
-          # Azure Front Door Standard (Microsoft.Cdn AFD). Profile provisioning is
-          # minutes-slow + billed; each fixture stands up the chain up to its own
-          # resource (cdn-route brings up the full profile→endpoint→origin-group→
-          # origin→route AFD). Uses TIMEOUT overrides in the run step.
-          - cdn-profile
-          - cdn-afd-endpoint
-          - cdn-afd-origin-group
-          - cdn-afd-origin
-          # cdn-route excluded: the Route references TWO sibling resources created in
-          # the same apply (origin group + endpoint), which reliably trips the formae
-          # core resolve-cache race (ResolveCacheMissingInAction) on first apply — the
-          # route aborts in the "resolving" state while its siblings succeed around it
-          # (3/3 live attempts). NOT a plugin bug: Route marshalling is covered by
-          # TestCdnRoute_MarshallerRoundTrip and profile/endpoint/origin-group/origin all
-          # pass live. Re-enable once the core resolve-cache race is fixed. Run locally:
-          # make conformance-test-crud TEST=cdn-route
-          # cdn-afd-custom-domain and cdn-secret excluded: custom-domain needs a REAL
-          # owned domain (Azure _dnsauth TXT ownership challenge) and secret needs a
-          # real Key Vault certificate + AFD service-principal vault access — neither
-          # is available to the CI principal. CRUD validated via test-integration
-          # (mocked) + marshaller round-trip; run live locally with a real domain/cert:
-          #   make conformance-test-crud TEST=cdn-afd-custom-domain
-          #   make conformance-test-crud TEST=cdn-secret
-          # --- Private DNS resolver family. All free (the resolver and its endpoints
-          # bill nothing; only the vnet and subnet exist alongside) and each
-          # provisions in ~2-4 min.
-          - dns-resolver
-          - dns-resolver-inbound-endpoint
-          - dns-resolver-outbound-endpoint
-          - dns-forwarding-ruleset
-          - dns-forwarding-rule
-          - dns-forwarding-ruleset-vnet-link
-          # --- DNS security policy. Also free.
-          - dns-resolver-policy
-          - dns-resolver-policy-vnet-link
-          - dns-resolver-domain-list
-          - dns-security-rule
-          # --- Azure Firewall policy. The policy and its rule collection groups are
-          # free without an attached firewall, and none is created.
-          - firewall-policy
-          - firewall-policy-rule-collection-group
-          # --- Remaining networking. subnet-delegated covers subnet delegation on its
-          # own, independent of the resolver endpoints that consume it.
-          - subnet-delegated
-          - vnet-peering
-          - traffic-manager-profile
-          # local-network-gateway excluded from the matrix: armnetwork offers no
-          # subscription-wide listing for the type (only NewListPager(resourceGroup)),
-          # and the gateway has no parent resource for discovery to hand a group down
-          # from — so the discovery phase can never see it, though CRUD passes. CRUD is
-          # validated via test-integration (mocked); run live locally with:
-          #   make conformance-test-crud TEST=local-network-gateway
-          # --- Azure Monitor alerting. Action groups and activity log alerts are free;
-          # a metric alert and a scheduled query rule are ~$0.10-0.15/month each and
-          # are deleted by the run.
-          - action-group
-          - activity-log-alert
-          - metric-alert
-          - scheduled-query-rule
-          # --- Azure Monitor Agent ingestion. Both free; nothing is collected because
-          # no machine is associated with the rule.
-          - data-collection-endpoint
-          - data-collection-rule
-          # --- Azure Monitor private link. Free: the scope and its scoped resources
-          # carry no charge, and the private endpoint that would bill is not created.
-          - private-link-scope
-          - private-link-scoped-resource
-          # --- Log Analytics and Application Insights. The workspace is PerGB2018 with
-          # a 1 GB daily cap and nothing sends data to it; destroy soft-deletes it for
-          # 14 days, so fixtures carry the run ID in the name.
-          - log-analytics-workspace
-          - app-insights-component
-          - saved-search
-          - data-export
-          - linked-storage-account
-          # diagnostic-setting excluded from the matrix: a diagnostic setting hangs off
-          # an arbitrary target resource, addressed by that resource's URI, so listing
-          # them means enumerating every resource in the subscription first. Discovery
-          # has no parent to supply the URI and the phase times out. CRUD passes; run
-          # live locally with:
-          #   make conformance-test-crud TEST=diagnostic-setting
-          # --- Governance. Custom roles and policy are free, and the conformance
-          # fixtures stay harmless on a shared subscription: the policy effect is
-          # `audit` and the assignment pins enforcementMode DoNotEnforce, scoped to the
-          # test resource group rather than the subscription.
-          - role-definition
-          - policy-definition
-          - policy-set-definition
-          - policy-assignment
-          # --- Relay. A namespace is ~$0.10/month prorated; hybrid connections and
-          # authorization rules are free. No listen/send keys are read into state.
-          - relay-namespace
-          - relay-hybrid-connection
-          # relay-namespace-auth-rule and relay-hc-auth-rule excluded: the plugin does
-          # return them ("Received 1 resources for AZURE::Relay::NamespaceAuthorizationRule"
-          # in the job log) but they never reach the inventory — the same formae-core
-          # discovery persistence bug that already excludes flexible-server and
-          # firewall-rule above. CRUD passes for both.
-          # --- Notification Hubs. Free tier namespace; PNS credentials are inputs the
-          # provider never sends back, so an out-of-band credential survives an apply.
-          - notification-hub-namespace
-          - notification-hub
-          - nh-auth-rule
-          # --- Messaging odds and ends. Service Bus needs a Standard namespace for
-          # topics/subscriptions (~$10/month prorated to the run); the Event Hubs schema
-          # group and Event Grid subscription are free.
-          - service-bus-rule
-          # service-bus-authorization-rule excluded for the same core persistence bug as
-          # the relay authorization rules above: listed by the plugin, absent from
-          # inventory.
-          - schema-group
-          # event-grid-event-subscription excluded from the matrix: an event
-          # subscription is a scoped extension resource whose scope is any ARM ID — a
-          # topic, a storage account, the subscription itself — and the schema carries
-          # that scope as one opaque string rather than as resource group + provider +
-          # type + name. ARM's per-resource listing needs those four parts, so discovery
-          # has nothing to hand down, and the subscription-wide listing the provider
-          # falls back to returns only subscription-LEVEL subscriptions, not the
-          # topic-scoped one the fixture creates. CRUD passes; run live locally with:
-          #   make conformance-test-crud TEST=event-grid-event-subscription
-          # --- Remaining resources, added wholesale so one CI run shows which of them
-          # the discovery phase can actually see. Discovery needs either a
-          # subscription-wide List or a parent chain to hand scope down; a resource
-          # with neither is invisible to it however well its CRUD lifecycle works.
-          # Expected to pass both phases (each has a subscription-wide List):
-          - app-configuration-store
-          - batch-account
-          - container-group
-          - cosmos-database-account
-          - disk-access
-          - iot-hub
-          - mysql-flexible-server
-          - netapp-account
-          - redis-cache
-          - search-service
-          - signalr-service
-          - web-pubsub
-          # Parent-scoped, so discovery depends on the parent chain resolving:
-          - acr-webhook
-          - scope-map
-          - registry-token
-          - gallery-application
-          - sql-elastic-pool
-          - management-policy
-          # Unclear: lists per resource group with no subscription-wide fallback.
-          - backup-vault
-          # --- Fixtures that existed without ever being gated. Every resource in the
-          # plugin ships a conformance fixture, but the matrix is hand-maintained, so
-          # 45 of them had never run in CI or nightly — including three types merged
-          # last week (compute-gallery, compute-gallery-image, compute-snapshot). They
-          # are listed here so a regression in any of them fails a PR rather than
-          # going unnoticed.
-          #
-          # Networking and identity primitives. All free and fast.
-          - application-security-group
-          - ip-group
-          - nat-gateway
-          - public-ip-prefix
-          - route-table
-          - private-dns-record-set
-          - network-watcher
-          - network-watcher-flow-log
-          - ssh-public-key
-          - proximity-placement-group
-          - availability-set
-          # Compute images and snapshots. A snapshot and an image each stand up a
-          # small disk first; all billed per GB-month, prorated to the run.
-          - compute-gallery
-          - compute-gallery-image
-          - compute-image
-          - compute-snapshot
-          # Storage data-plane children of an existing account. Free.
-          - storage-queue
-          - storage-table
-          - file-share
-          # Messaging. An Event Hubs namespace and a Standard Service Bus namespace are
-          # billed hourly and prorated; Event Grid topics and domains bill per
-          # operation, and these fixtures publish none.
-          - event-grid-topic
-          - event-grid-domain
-          - event-grid-domain-topic
-          - event-grid-system-topic
-          - event-hub-namespace
-          - event-hub
-          - consumer-group
-          - service-bus-namespace
-          - service-bus-queue
-          - service-bus-topic
-          - service-bus-subscription
-          # SQL. The server itself is free; the fixtures that create a database use the
-          # cheapest tier. Server provisioning is a few minutes, hence the timeout
-          # override below.
-          - sql-server
-          - sql-database
-          - sql-firewall-rule
-          - sql-outbound-firewall-rule
-          - sql-virtual-network-rule
-          - sql-server-dns-alias
-          - sql-ad-administrator
-          # Other services. cognitive-services-account uses the free F0 tier;
-          # configuration and database are children of stores created by their own
-          # fixtures.
-          - cognitive-services-account
-          - configuration
-          - database
-          # Slow chains, each with a timeout override below: the three AKS-backed
-          # fixtures stand up a cluster first (~5-10 min), virtual-machine-extension a
-          # VM, and the two Grafana fixtures a managed Grafana workspace (~5 min,
-          # billed hourly).
-          - flux-configuration
-          - maintenance-configuration
-          - trusted-access-role-binding
-          - virtual-machine-extension
-          - grafana
-          - grafana-managed-private-endpoint
-          # Container Apps (Microsoft.App: managed-environment, container-app) excluded:
-          # a managed environment takes ~5 min to provision (container-app builds on top),
-          # exceeding the CI command timeout — same class as the AKS extension. Both are
-          # billed. CRUD validated via test-integration (mocked); run live locally with:
-          #   make conformance-test-crud TEST=managed-environment TIMEOUT=15
-          #   make conformance-test-crud TEST=container-app TIMEOUT=15
+        resource: ${{ fromJSON(needs.conformance-matrix.outputs.resources) }}
 
     permissions:
       id-token: write

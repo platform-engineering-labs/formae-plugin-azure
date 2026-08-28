@@ -37,16 +37,31 @@ jobs:
     outputs:
       resources: ${{ steps.parse.outputs.resources }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Parse resources input
         id: parse
         env:
           RESOURCES_INPUT: ${{ inputs.resources }}
         run: |
+          set -euo pipefail
           # Convert "a, b,c" -> ["a","b","c"]
           RESOURCES=$(printf '%s' "$RESOURCES_INPUT" \
             | tr ',' '\n' \
             | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          test "$(echo "$RESOURCES" | jq 'length')" -gt 0 \
+            || { echo "::error::resources input had no resource names"; exit 1; }
+          # A name with no fixture would set FORMAE_TEST_FILTER to something that
+          # matches nothing, and the run would pass green having tested nothing.
+          MISSING=$(echo "$RESOURCES" | jq -r '.[]' | while IFS= read -r r; do
+            [ -f "testdata/${r}.pkl" ] || printf ' %s' "$r"
+          done)
+          if [ -n "$MISSING" ]; then
+            echo "::error::no such resource(s):$MISSING - expected testdata/<name>.pkl"
+            exit 1
+          fi
           echo "Parsed resources: ${RESOURCES}"
           echo "resources=${RESOURCES}" >> "$GITHUB_OUTPUT"
 
