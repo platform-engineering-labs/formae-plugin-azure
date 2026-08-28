@@ -1,0 +1,146 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.vpngateway
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VpnGateway"
+const apiVersion = "2023-05-01"
+
+/// IKE version used by a site-to-site connection.
+typealias VpnConnectionProtocol = "IKEv1"|"IKEv2"
+
+/// BGP speaker settings for the gateway.
+///
+/// Only the two values a caller owns are modelled: the gateway's peering
+/// addresses are allocated by Azure out of the hub's address prefix, so they are
+/// read back and discarded rather than compared.
+class VpnGatewayBgpSettings {
+    /// The gateway's autonomous system number. Azure assigns 65515 when the
+    /// gateway is created without one; it cannot be changed afterwards.
+    @azure.FieldHint { required = true }
+    asn: Int
+
+    /// Weight added to routes learned over BGP by this gateway.
+    @azure.FieldHint { required = true }
+    peerWeight: Int
+}
+
+/// A site-to-site connection from this gateway to one `AZURE::Network::VpnSite`.
+///
+/// Only the fields a caller owns are modelled. Azure fills in one
+/// `vpnLinkConnections` entry per link on the remote site, plus the connection
+/// status and byte counters; those are read back and discarded.
+class VpnGatewayConnection {
+    /// Name of the connection, unique within the gateway.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// ARM ID of the VpnSite this connection terminates on, e.g. `site.res.id`.
+    @azure.FieldHint { required = true }
+    remoteVpnSiteId: String|formae.Resolvable
+
+    /// Expected aggregate bandwidth of the connection, in Mbps.
+    @azure.FieldHint { required = true }
+    connectionBandwidth: Int(this >= 1)
+
+    /// Run BGP over the tunnel. Requires `bgpProperties` on the remote site's links.
+    @azure.FieldHint { required = true }
+    enableBgp: Boolean
+
+    /// Route weight applied to prefixes learned over this connection.
+    @azure.FieldHint { required = true }
+    routingWeight: Int(this >= 0)
+
+    /// IKE version. Azure defaults to IKEv2.
+    @azure.FieldHint { required = true }
+    vpnConnectionProtocolType: VpnConnectionProtocol
+
+    /// Pre-shared key for the tunnel. Write-only — Azure returns it on read, but
+    /// it must never be stored in cleartext, so wrap it with
+    /// `formae.value(...).opaque`.
+    @azure.FieldHint { writeOnly = true }
+    sharedKey: (formae.Value|String)?
+}
+
+open class VpnGatewayResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VpnGatewayResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VpnGatewayResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The site-to-site VPN gateway inside a Virtual WAN hub. This is the Virtual WAN
+/// gateway, not the classic vnet-scoped one — that is
+/// `AZURE::Network::VirtualNetworkGateway`.
+///
+/// VERY SLOW AND BILLED: a VPN gateway in a hub takes roughly 30 minutes to
+/// create and about the same to delete, and it bills per scale unit for the whole
+/// time it exists. It requires an `AZURE::Network::VirtualHub`, which in turn
+/// requires an `AZURE::Network::VirtualWan`; referencing the hub through
+/// `hub.res.id` is what orders the whole chain.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VpnGateway extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM ID of the hub this gateway lives in, e.g. `hub.res.id`. A gateway
+    /// cannot be moved between hubs.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualHubId: String|formae.Resolvable
+
+    /// Scale units. Each unit is 500 Mbps of aggregate throughput and is billed
+    /// hourly; Azure defaults to 1.
+    @azure.FieldHint { hasProviderDefault = true }
+    vpnGatewayScaleUnit: Int(this >= 1 && this <= 25)?
+
+    /// BGP speaker settings. Azure assigns ASN 65515 and peer weight 0 when this
+    /// is omitted, and the ASN cannot be changed after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    bgpSettings: VpnGatewayBgpSettings?
+
+    /// Site-to-site connections from this gateway.
+    @azure.FieldHint { }
+    connections: Listing<VpnGatewayConnection>?
+
+    /// Translate BGP-learned routes for NAT rules on this gateway.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableBgpRouteTranslationForNat: Boolean?
+
+    /// Use the Internet routing preference for the gateway's public interface
+    /// instead of the Microsoft global network. Immutable.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    isRoutingPreferenceInternet: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VpnGatewayResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
