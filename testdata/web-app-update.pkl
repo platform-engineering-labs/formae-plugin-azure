@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webapp.pkl"
+
+import "vars.pkl"
+
+// Update: flip clientAffinityEnabled, turn HTTP/2 off, and change an app setting
+// value. All in-place property changes on the same site, so the NativeID stays the
+// same. name, location, resourceGroupName and kind are createOnly and are untouched.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "webapp-test-rg"
+  name = "formae-plugin-sdk-test-wa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "webapp-test-plan"
+  name = "fpsdt-wa-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+
+  new webapp.WebApp {
+    label = "plugin-sdk-test-web-app"
+    name = "fpsdt-wa-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    serverFarmId = plan.res.id
+    kind = "app,linux"
+    httpsOnly = true
+    // Update: start sending ARR affinity cookies.
+    clientAffinityEnabled = true
+    siteConfig = new webapp.SiteConfig {
+      linuxFxVersion = "PYTHON|3.12"
+      netFrameworkVersion = "v4.0"
+      alwaysOn = true
+      ftpsState = "FtpsOnly"
+      minTlsVersion = "1.2"
+      // Update: turn HTTP/2 off.
+      http20Enabled = false
+    }
+    appSettings = new Listing {
+      // Update: change a setting value.
+      new webapp.AppSetting { name = "GREETING"; value = "bonjour" }
+      new webapp.AppSetting { name = "SCM_DO_BUILD_DURING_DEPLOYMENT"; value = "false" }
+    }
+    identity = new webapp.WebAppIdentity {
+      type = "SystemAssigned"
+    }
+  }
+}

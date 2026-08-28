@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/functionapp.pkl"
+
+import "vars.pkl"
+
+// Update: turn HTTP/2 off and add an app setting. In-place property changes on the
+// same site, so the NativeID stays the same. name, location, resourceGroupName and
+// kind are createOnly and are untouched.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "functionapp-test-rg"
+  name = "formae-plugin-sdk-test-fa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "functionapp-test-sa"
+  name = "fpsdtfa\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU { name = "Standard_LRS" }
+  kind = "StorageV2"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "functionapp-test-plan"
+  name = "fpsdt-fa-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  plan
+
+  new functionapp.FunctionApp {
+    label = "plugin-sdk-test-function-app"
+    name = "fpsdt-fa-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    serverFarmId = plan.res.id
+    kind = "functionapp,linux"
+    httpsOnly = true
+    siteConfig = new functionapp.FunctionSiteConfig {
+      linuxFxVersion = "PYTHON|3.12"
+      netFrameworkVersion = "v4.0"
+      alwaysOn = true
+      ftpsState = "FtpsOnly"
+      minTlsVersion = "1.2"
+      // Update: turn HTTP/2 off.
+      http20Enabled = false
+      functionAppScaleLimit = 0
+    }
+    appSettings = new Listing {
+      new functionapp.AppSetting { name = "FUNCTIONS_EXTENSION_VERSION"; value = "~4" }
+      new functionapp.AppSetting { name = "FUNCTIONS_WORKER_RUNTIME"; value = "python" }
+      new functionapp.AppSetting { name = "AzureWebJobsStorage__accountName"; value = sa.res.name }
+      new functionapp.AppSetting { name = "AzureWebJobsStorage__credential"; value = "managedidentity" }
+      // Update: add a setting.
+      new functionapp.AppSetting { name = "WEBSITE_RUN_FROM_PACKAGE"; value = "0" }
+    }
+    identity = new functionapp.FunctionAppIdentity {
+      type = "SystemAssigned"
+    }
+  }
+}

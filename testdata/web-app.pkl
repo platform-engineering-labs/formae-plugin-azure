@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webapp.pkl"
+
+import "vars.pkl"
+
+// A Linux web app on its own Basic B1 plan.
+//
+// Two things about siteConfig are worth knowing before editing this fixture:
+//
+//  1. Azure returns a value for every siteConfig field whether or not the create
+//     body set it, and `hasProviderDefault` is only honoured on top-level fields.
+//     So every siteConfig field the plugin reads back is spelled out here —
+//     including netFrameworkVersion, which Azure defaults to "v4.0" even on Linux.
+//     healthCheckPath is left out on purpose: Azure returns it empty when unset and
+//     the plugin skips empty values, so an omitted path is drift-free.
+//  2. appSettings is write-only. Azure serves app settings from a separate endpoint
+//     that also returns platform-injected settings no forma declared, so the plugin
+//     sends them on every write and never reads them back.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "webapp-test-rg"
+  name = "formae-plugin-sdk-test-wa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "webapp-test-plan"
+  name = "fpsdt-wa-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+
+  new webapp.WebApp {
+    label = "plugin-sdk-test-web-app"
+    name = "fpsdt-wa-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    serverFarmId = plan.res.id
+    kind = "app,linux"
+    httpsOnly = true
+    clientAffinityEnabled = false
+    siteConfig = new webapp.SiteConfig {
+      linuxFxVersion = "PYTHON|3.12"
+      netFrameworkVersion = "v4.0"
+      alwaysOn = true
+      ftpsState = "FtpsOnly"
+      minTlsVersion = "1.2"
+      http20Enabled = true
+    }
+    appSettings = new Listing {
+      new webapp.AppSetting { name = "GREETING"; value = "hello" }
+      new webapp.AppSetting { name = "SCM_DO_BUILD_DURING_DEPLOYMENT"; value = "false" }
+    }
+    identity = new webapp.WebAppIdentity {
+      type = "SystemAssigned"
+    }
+  }
+}
