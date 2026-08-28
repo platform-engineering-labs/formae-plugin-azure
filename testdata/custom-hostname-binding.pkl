@@ -1,0 +1,92 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webapp.pkl"
+import "@azure/web/customhostnamebinding.pkl"
+
+import "vars.pkl"
+
+// A custom hostname binding on a Linux web app.
+//
+// CANNOT PASS CONFORMANCE, and not because of the plugin: Azure verifies domain
+// ownership before it accepts a binding. The hostname has to already resolve to the
+// app through a CNAME (or an A record plus an `asuid.<host>` TXT record) in the
+// domain's REAL DNS zone. The conformance subscription owns no domain, so every
+// create fails with `CustomDomainVerificationFailed` — there is no hostname it could
+// succeed with.
+//
+// Same class of exclusion as `cdn-afd-custom-domain`, which is out of the matrix for
+// exactly this reason. Run it locally against a domain you own by replacing the
+// hostname below and pointing DNS at the app first:
+//   make conformance-test-crud TEST=custom-hostname-binding
+//
+// `example.com` is IANA-reserved for documentation, so the placeholder cannot
+// accidentally bind someone's real domain.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "hostname-binding-test-rg"
+  name = "formae-plugin-sdk-test-chb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "hostname-binding-test-plan"
+  name = "fpsdt-chb-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+local app = new webapp.WebApp {
+  label = "hostname-binding-test-app"
+  name = "fpsdt-chb-app-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  serverFarmId = plan.res.id
+  kind = "app,linux"
+  httpsOnly = true
+  siteConfig = new webapp.SiteConfig {
+    linuxFxVersion = "PYTHON|3.12"
+    netFrameworkVersion = "v4.0"
+    alwaysOn = true
+    ftpsState = "FtpsOnly"
+    minTlsVersion = "1.2"
+    http20Enabled = true
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+  app
+
+  new customhostnamebinding.CustomHostnameBinding {
+    label = "plugin-sdk-test-custom-hostname-binding"
+    name = "www.example.com"
+    siteName = app.res.name
+    resourceGroupName = rg.res.name
+    hostNameType = "Verified"
+    customHostNameDnsRecordType = "CName"
+    azureResourceType = "Website"
+  }
+}

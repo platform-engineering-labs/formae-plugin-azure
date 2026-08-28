@@ -1,0 +1,117 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.web.webcertificate
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Web::Certificate"
+const apiVersion = "2025-03-01"
+
+open class WebCertificateResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WebCertificateResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WebCertificateResolvable = (this) {
+        property = "name"
+    }
+    hidden thumbprint: WebCertificateResolvable = (this) {
+        property = "thumbprint"
+    }
+}
+
+/// An App Service certificate (`Microsoft.Web/certificates`) — a TLS certificate
+/// that hostname bindings on apps in the same region and App Service plan can use.
+///
+/// Supply the certificate material one of two ways:
+///   * `pfxBlob` (+ `password`) — a base-64 encoded PFX uploaded directly, or
+///   * `keyVaultId` + `keyVaultSecretName` — a Key Vault certificate Azure pulls.
+///     The App Service resource provider needs `get` on the vault's secrets.
+///
+/// Azure validates the certificate against the hostnames of apps on the referenced
+/// App Service plan: a certificate whose subject matches no verified custom domain
+/// in that plan is rejected at create time.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class WebCertificate extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    /// Must match the region of the App Service plan in `serverFarmId`.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM ID of the App Service plan the certificate is scoped to, e.g.
+    /// `plan.res.id`.
+    @azure.FieldHint { createOnly = true }
+    serverFarmId: (String|formae.Resolvable)?
+
+    /// Hostnames the certificate covers. Azure derives them from the certificate's
+    /// subject and SANs when omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    hostNames: Listing<String>?
+
+    /// Base-64 encoded PFX. Write-only and immutable after creation; wrap with
+    /// `formae.value(...).opaque` so it is not stored in cleartext.
+    @azure.FieldHint { createOnly = true; writeOnly = true }
+    pfxBlob: (formae.Value|String)?
+
+    /// Password for the PFX in `pfxBlob`. Write-only.
+    @azure.FieldHint { writeOnly = true }
+    password: (formae.Value|String)?
+
+    /// ARM ID of the Key Vault holding the certificate, e.g. `vault.res.id`.
+    /// Mutually exclusive with `pfxBlob`.
+    @azure.FieldHint { createOnly = true }
+    keyVaultId: (String|formae.Resolvable)?
+
+    /// Name of the Key Vault secret (or certificate) to import.
+    @azure.FieldHint { createOnly = true }
+    keyVaultSecretName: String?
+
+    /// CNAME of the certificate to issue as an App Service managed certificate.
+    @azure.FieldHint { createOnly = true }
+    canonicalName: String?
+
+    /// Domain validation method for a managed certificate, e.g. `cname-delegation`
+    /// or `http-token`.
+    @azure.FieldHint { createOnly = true }
+    domainValidationMethod: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    /// Read-only output: SHA-1 thumbprint, the value a hostname binding references.
+    @azure.FieldHint { hasProviderDefault = true }
+    thumbprint: String?
+
+    /// Read-only output: certificate subject name.
+    @azure.FieldHint { hasProviderDefault = true }
+    subjectName: String?
+
+    /// Read-only output: certificate issuer.
+    @azure.FieldHint { hasProviderDefault = true }
+    issuer: String?
+
+    hidden parent = this
+
+    hidden res: WebCertificateResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

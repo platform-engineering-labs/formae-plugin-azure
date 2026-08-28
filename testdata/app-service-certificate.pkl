@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webcertificate.pkl"
+
+import "vars.pkl"
+
+// An App Service certificate uploaded as a PFX.
+//
+// CANNOT PASS CONFORMANCE AS WRITTEN, and not because of the plugin: Azure validates
+// the certificate against the hostnames of apps on the referenced App Service plan
+// and rejects anything whose subject matches no verified custom domain in it. The
+// conformance subscription owns no domain, so there is no certificate it would
+// accept. `pfxBlob` below is a syntactically valid but meaningless base-64 string so
+// the fixture still evaluates and still exercises the marshalling path.
+//
+// This is the same class of exclusion `cdn-secret` and `cdn-afd-custom-domain`
+// already carry. Run it locally against a real certificate and domain with:
+//   make conformance-test-crud TEST=app-service-certificate
+//
+// `pfxBlob` and `password` are write-only: Azure returns only derived metadata
+// (thumbprint, subjectName, issuer, hostNames), never the key material.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "webcert-test-rg"
+  name = "formae-plugin-sdk-test-wcert-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "webcert-test-plan"
+  name = "fpsdt-wcert-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+
+  new webcertificate.WebCertificate {
+    label = "plugin-sdk-test-app-service-certificate"
+    name = "fpsdt-wcert-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    serverFarmId = plan.res.id
+    pfxBlob = formae.value("cGxhY2Vob2xkZXItcGZ4LXJlcGxhY2UtbWU=").opaque
+    password = formae.value("placeholder-pfx-password").opaque
+  }
+}

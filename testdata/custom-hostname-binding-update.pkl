@@ -1,0 +1,86 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webapp.pkl"
+import "@azure/web/customhostnamebinding.pkl"
+
+import "vars.pkl"
+
+// Update: pin sslState explicitly to Disabled. A hostname binding is almost entirely
+// immutable — only sslState and thumbprint can change in place, and raising sslState
+// above Disabled needs a certificate whose subject matches the hostname, so
+// Disabled is the one change that stands alone.
+//
+// Same caveat as custom-hostname-binding.pkl: the create this update builds on cannot
+// succeed without a verified custom domain, so this pair cannot pass conformance on
+// the shared subscription.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "hostname-binding-test-rg"
+  name = "formae-plugin-sdk-test-chb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "hostname-binding-test-plan"
+  name = "fpsdt-chb-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+local app = new webapp.WebApp {
+  label = "hostname-binding-test-app"
+  name = "fpsdt-chb-app-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  serverFarmId = plan.res.id
+  kind = "app,linux"
+  httpsOnly = true
+  siteConfig = new webapp.SiteConfig {
+    linuxFxVersion = "PYTHON|3.12"
+    netFrameworkVersion = "v4.0"
+    alwaysOn = true
+    ftpsState = "FtpsOnly"
+    minTlsVersion = "1.2"
+    http20Enabled = true
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+  app
+
+  new customhostnamebinding.CustomHostnameBinding {
+    label = "plugin-sdk-test-custom-hostname-binding"
+    name = "www.example.com"
+    siteName = app.res.name
+    resourceGroupName = rg.res.name
+    hostNameType = "Verified"
+    customHostNameDnsRecordType = "CName"
+    azureResourceType = "Website"
+    // Update: state the TLS binding state explicitly.
+    sslState = "Disabled"
+  }
+}
