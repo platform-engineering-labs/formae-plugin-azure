@@ -13,20 +13,20 @@
 # The matrix is curated rather than auto-discovered from testdata/: a fixture only
 # belongs here once it passes CRUD *and* discovery against live Azure.
 #
-# To run ONE fixture (or a few) instead of the whole matrix, dispatch CI by hand:
+# To run one resource (or a few) instead of the whole matrix, use the Debug
+# Conformance workflow - it takes the names you give it and runs them against
+# the ref you dispatch on:
 #
-#   gh workflow run ci.yml --ref <branch> -f resources=redis-cache
-#   gh workflow run ci.yml --ref <branch> -f resources='redis-cache, event-hub' -f phase=crud
+#   gh workflow run debug-conformance.yml --ref <branch> -f resources=redis-cache
+#   gh workflow run debug-conformance.yml --ref <branch> -f resources='redis-cache,event-hub' -f phases=crud
 #
-# or use the "Run workflow" button on the CI workflow in the Actions tab. Any
-# fixture with a testdata/<name>.pkl may be named, including ones commented out
-# below - that is how you re-check an exclusion without editing this file. An
-# unknown name fails the run rather than quietly testing nothing. phase is
-# both (default), crud or discovery.
+# Any resource with a testdata/<name>.pkl may be named, including ones commented
+# out below - that is how you re-check an exclusion without editing this file. An
+# unknown name fails the run rather than quietly testing nothing.
 #
 # Caveat: dispatching from a feature branch fails at the azure/login step with
 # AADSTS700213. The Entra federated identity credential only trusts the subjects
-# main and pull_request presents, and a workflow_dispatch on a branch presents
+# main and pull_request present, and a workflow_dispatch on a branch presents
 # ref:refs/heads/<branch>. Dispatch from main, or have an Azure admin add a
 # federated credential for the branch (a ref:refs/heads/* subject covers all).
 

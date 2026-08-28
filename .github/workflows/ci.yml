@@ -6,17 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      resources:
-        description: "Fixtures to run, comma or space separated (e.g. 'redis-cache, event-hub'). Empty runs the full matrix. Fixtures commented out of .github/conformance-matrix.txt can be named here too - that is how you re-check an excluded one."
-        required: false
-        type: string
-      phase:
-        description: "Which conformance phase to run"
-        required: false
-        default: both
-        type: choice
-        options: [both, crud, discovery]
 
 # Serialize conformance across CI runs (and with nightly) so matrix jobs
 # don't race for the same Azure test subscription. cancel-in-progress=false
@@ -90,6 +79,10 @@ jobs:
   # aborted run can't collide with this one.
   pre-cleanup:
     needs: [checks, test-integration]
+    # Conformance does not run on pull requests - see debug-conformance.yml for
+    # the targeted per-branch run. Skipping pre-cleanup here skips the matrix
+    # and its cleanup with it, since both need this job.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -109,7 +102,7 @@ jobs:
         run: ./scripts/ci/clean-environment.sh
 
   # Conformance runs the full CRUD + discovery lifecycle against real Azure
-  # resources on every push, PR, and manual dispatch — so it gates merges.
+  # resources on push to main and on manual dispatch, not on pull requests.
   # The matrix is curated (not auto-discovered) to exclude resources with known
   # formae-core discovery bugs; see the exclusions below.
   # Both this workflow and nightly.yml build their conformance matrix from
@@ -122,35 +115,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: build
-        # SELECTED is passed through env, never interpolated into the script, so a
-        # dispatch input cannot inject shell.
-        env:
-          SELECTED: ${{ inputs.resources }}
         run: |
           set -euo pipefail
-          if [ -n "${SELECTED:-}" ]; then
-            # Split on commas and whitespace, drop blanks, de-duplicate.
-            RESOURCES=$(printf '%s' "$SELECTED" | tr ', ' '\n\n' \
-              | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')
-            test "$(echo "$RESOURCES" | jq 'length')" -gt 0 \
-              || { echo "::error::resources input had no fixture names"; exit 1; }
-            # Validate against testdata/ rather than the matrix: an unknown name would
-            # otherwise become a job that filters to nothing and passes green, and
-            # naming a fixture excluded from the matrix is a deliberate use of this input.
-            MISSING=$(echo "$RESOURCES" | jq -r '.[]' | while IFS= read -r r; do
-              [ -f "testdata/${r}.pkl" ] || printf ' %s' "$r"
-            done)
-            if [ -n "$MISSING" ]; then
-              echo "::error::no such fixture(s):$MISSING - expected testdata/<name>.pkl"
-              exit 1
-            fi
-            echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resource(s) selected by hand"'
-          else
-            RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
-            echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
-          fi
+          RESOURCES=$(grep -vE '^[[:space:]]*(#|$)' .github/conformance-matrix.txt | jq -R . | jq -sc .)
           test "$(echo "$RESOURCES" | jq 'length')" -gt 0
           echo "resources=$RESOURCES" >> "$GITHUB_OUTPUT"
+          echo "$RESOURCES" | jq -r 'length as $n | "conformance matrix: \($n) resources"'
 
   conformance-tests:
     needs: [checks, test-integration, pre-cleanup, conformance-matrix]
@@ -205,56 +175,12 @@ jobs:
       # other's resources. Cleanup is owned by the pre-/conformance-cleanup jobs;
       # the Makefile skips its inline cleanup when the filter is set.
       - name: Run CRUD conformance (${{ matrix.resource }})
-        if: ${{ inputs.phase != 'discovery' }}
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: |
-          set -euo pipefail
-          TIMEOUT_ARG=""
-          # App Gateway v2 and Front Door are slow to provision. FORMAE_TEST_TIMEOUT
-          # is the per-command poll (default 5 min — too short); TIMEOUT is the overall
-          # go-test timeout. Front Door's full CRUD lifecycle (create+update+destroy+
-          # recreate+OOB-delete) measures ~36 min clean, so cdn-* needs a wide margin.
-          case "${{ matrix.resource }}" in
-            application-gateway)
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            cdn-*)
-              export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25
-              TIMEOUT_ARG="TIMEOUT=75"
-              ;;
-            flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
-              # An AKS cluster or a managed Grafana workspace takes ~5-10 min before the
-              # resource under test can even be created.
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            virtual-machine-extension)
-              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15
-              TIMEOUT_ARG="TIMEOUT=40"
-              ;;
-            cosmos-database-account|configuration|database|firewall-rule|flexible-server|web-pubsub|signalr-service)
-              # Managed data services: the control plane accepts the create call in
-              # seconds but the instance is not Succeeded for 10-20 min, and Destroy
-              # is just as slow. Each blew the default 5 min per-command poll on a
-              # single phase - cosmos-database-account on Destroy, web-pubsub on the
-              # OOB-delete re-apply - while every other phase passed.
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            sql-*)
-              # 20 not 15: sql-firewall-rule timed out on the OOB-delete re-apply at
-              # 17 min, and sql-virtual-network-rule on the out-of-band server create
-              # at 15 min. Both spend most of that waiting on the parent SQL server.
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-          esac
-          make conformance-test-crud-run $TIMEOUT_ARG
+        run: ./scripts/ci/run-conformance-phase.sh ${{ matrix.resource }} crud
 
       - name: Re-authenticate for discovery
         uses: azure/login@v3
@@ -264,47 +190,19 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run discovery conformance (${{ matrix.resource }})
-        if: ${{ inputs.phase != 'crud' }}
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_FILTER: ${{ matrix.resource }}
           FORMAE_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.resource }}
           FORMAE_TEST_DISCOVERY_TIMEOUT: "5"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: |
-          set -euo pipefail
-          TIMEOUT_ARG=""
-          case "${{ matrix.resource }}" in
-            application-gateway)
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            cdn-*)
-              export FORMAE_TEST_TIMEOUT=25 FORMAE_TEST_OOB_TIMEOUT=25 FORMAE_TEST_OOB_DELETE_TIMEOUT=25 FORMAE_TEST_DISCOVERY_TIMEOUT=25
-              TIMEOUT_ARG="TIMEOUT=75"
-              ;;
-            flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-            virtual-machine-extension)
-              export FORMAE_TEST_TIMEOUT=15 FORMAE_TEST_OOB_TIMEOUT=15 FORMAE_TEST_OOB_DELETE_TIMEOUT=15 FORMAE_TEST_DISCOVERY_TIMEOUT=15
-              TIMEOUT_ARG="TIMEOUT=40"
-              ;;
-            sql-*|cosmos-database-account|configuration|database|firewall-rule|flexible-server|web-pubsub|signalr-service)
-              # Discovery has to stand the resource up first, so it inherits the same
-              # slow control planes as the CRUD phase above.
-              export FORMAE_TEST_TIMEOUT=20 FORMAE_TEST_OOB_TIMEOUT=20 FORMAE_TEST_OOB_DELETE_TIMEOUT=20 FORMAE_TEST_DISCOVERY_TIMEOUT=20
-              TIMEOUT_ARG="TIMEOUT=50"
-              ;;
-          esac
-          make conformance-test-discovery-run $TIMEOUT_ARG
+        run: ./scripts/ci/run-conformance-phase.sh ${{ matrix.resource }} discovery
 
   # Clean up Azure resources after all matrix jobs complete (always runs).
   conformance-cleanup:
     needs: [conformance-tests]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.conformance-tests.result != 'skipped'
     permissions:
       id-token: write
       contents: read
