@@ -8,6 +8,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -72,4 +73,54 @@ func TestNewClient_Validation(t *testing.T) {
 
 	_, err = NewClient(&config.Config{SubscriptionId: "   "})
 	require.Error(t, err)
+}
+
+// namedCredential distinguishes itself from another instance by name, so a
+// test can tell which credential ended up wired into a cached Client without
+// reaching into the Azure SDK's sub-clients.
+type namedCredential struct{ name string }
+
+func (namedCredential) GetToken(context.Context, policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	return azcore.AccessToken{}, nil
+}
+
+// The cache key must capture the auth block, not just the subscription: two
+// targets on the same subscription with different auth must never share a
+// credential, and adding an OidcAuth block to a target that already has a
+// cached ambient client - exactly the onboarding path this plugin exists to
+// support - must not keep serving the old ambient credential until the
+// process restarts.
+func TestNewClient_CacheKeyCapturesAuthBlock(t *testing.T) {
+	orig := newCredential
+	clientCache = map[string]*clientEntry{}
+	t.Cleanup(func() {
+		newCredential = orig
+		clientCache = map[string]*clientEntry{}
+	})
+
+	var built []string
+	newCredential = func(cfg *config.Config) (azcore.TokenCredential, error) {
+		if len(cfg.Auth) == 0 {
+			built = append(built, "ambient")
+			return namedCredential{name: "ambient"}, nil
+		}
+		built = append(built, "oidc")
+		return namedCredential{name: "oidc"}, nil
+	}
+
+	ambient, err := NewClient(&config.Config{SubscriptionId: "sub-A"})
+	require.NoError(t, err)
+
+	withAuth, err := NewClient(&config.Config{
+		SubscriptionId: "sub-A",
+		Auth:           json.RawMessage(`{"Type":"Oidc","TenantId":"11111111-1111-1111-1111-111111111111","ClientId":"22222222-2222-2222-2222-222222222222"}`),
+	})
+	require.NoError(t, err)
+
+	require.NotSame(t, ambient, withAuth,
+		"adding an auth block to a subscription with a cached client must not reuse the ambient client")
+	require.Equal(t, []string{"ambient", "oidc"}, built,
+		"the second build must actually construct the federated credential, not skip construction because the cache already had an entry for this subscription")
+	require.Equal(t, namedCredential{name: "oidc"}, withAuth.Credential(),
+		"the client built for the Oidc-auth config must carry the federated credential, not the ambient one")
 }

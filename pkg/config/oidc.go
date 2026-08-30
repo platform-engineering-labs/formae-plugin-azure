@@ -77,16 +77,11 @@ func (d *OidcDeps) credentialFor(tenantID, clientID string) (azcore.TokenCredent
 		return cached.(azcore.TokenCredential), nil
 	}
 
-	construct := d.construct
-	if construct == nil {
-		construct = defaultConstruct
-	}
-
 	cfg := azurex.NewConfig(nil)
 	cfg.TenantID = tenantID
 	cfg.ClientID = clientID
 
-	cred, err := construct(d.Source, cfg)
+	cred, err := d.construct(d.Source, cfg)
 	if err != nil {
 		return nil, err
 	}

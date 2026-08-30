@@ -128,6 +128,11 @@ func TestOidcAuthWithoutBrokerFailsClosed(t *testing.T) {
 		// The broker's absence surfaces through the exact adapter
 		// ToAzureCredential wired the credential to: this is what a real
 		// token refresh would receive as its assertion callback's error.
+		// This only checks the adapter's pass-through, though - it does not
+		// drive a real GetToken through the full MSAL exchange (see
+		// TestTheAssertionCallbackObservesTheLiveCallContext for that). The
+		// load-bearing assertion for "no ambient fallback" on this subtest
+		// is the calls spy checked once below, after both subtests.
 		_, tokenErr := brokerClient{src: brokerlessSource{}}.Token(context.Background(), azurex.Audience)
 		assert.ErrorIs(t, tokenErr, plugin.ErrNoOidcBroker)
 	})

@@ -12,16 +12,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/platform-engineering-labs/formae/pkg/plugin"
 )
 
-// Compile-time check: Plugin must satisfy OidcAware, so the SDK can hand it
-// an OidcTokenSource at startup.
-var _ plugin.OidcAware = (*Plugin)(nil)
-
 // oidcTokenSourceFunc adapts a function to plugin.OidcTokenSource so a test
-// can script what the source answers.
+// can script what the source answers. The compile-time check that Plugin
+// satisfies plugin.OidcAware already lives in azure.go, next to the
+// production code it guards.
 type oidcTokenSourceFunc func(ctx context.Context, audience string) (string, error)
 
 func (f oidcTokenSourceFunc) IdentityToken(ctx context.Context, audience string) (string, error) {
