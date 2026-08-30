@@ -58,7 +58,7 @@ require (
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6
 	// Provides oidcx/azure, the workload identity federation credential
 	// exchange. Re-pin when oox cuts a tag.
-	github.com/platform-engineering-labs/oox v0.1.1-0.20260825170105-3bd97cb18d15
+	github.com/platform-engineering-labs/oox v0.0.0-20260830075044-0cce6834e852
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.12.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -158,5 +158,3 @@ require (
 replace ergo.services/ergo => github.com/JeroenSoeters/ergo v1.999.320-pel.1
 
 replace ergo.services/actor/statemachine => github.com/JeroenSoeters/actor/statemachine v0.0.0-20260414171442-1ef660e4a3bc
-
-replace github.com/platform-engineering-labs/oox => /home/jeroen/dev/pel/oox/.worktrees/azure-provx
