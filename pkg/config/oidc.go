@@ -40,7 +40,15 @@ type OidcDeps struct {
 	// GCP: GetToken(ctx) carries the live call context all the way to the
 	// assertion callback (verified from source), so one credential can serve
 	// every operation without ever replaying a stopped actor's context.
-	creds sync.Map
+	//
+	// A plain map behind an RWMutex, not sync.Map: this holds one entry per
+	// (tenant, client) pair - one per Azure target, a handful - written once
+	// each and read thereafter. sync.Map earns its keep with many keys or
+	// disjoint per-goroutine key sets, neither of which applies here; a
+	// mutex-guarded map is simpler and avoids the `any` boxing and type
+	// assertions sync.Map forces on every read.
+	credsMu sync.RWMutex
+	creds   map[string]azcore.TokenCredential
 
 	// construct builds one Azure credential for a (tenant, client) pair. A
 	// seam for tests; production wiring is defaultConstruct.
@@ -50,7 +58,7 @@ type OidcDeps struct {
 // NewOidcDeps builds the OidcDeps a Plugin instance owns, wired to exchange
 // identity tokens for Azure credentials for real.
 func NewOidcDeps(src plugin.OidcTokenSource) *OidcDeps {
-	return &OidcDeps{Source: src, construct: defaultConstruct}
+	return &OidcDeps{Source: src, construct: defaultConstruct, creds: map[string]azcore.TokenCredential{}}
 }
 
 // brokerClient adapts the plugin SDK's token source to the oidcx.Client the
@@ -73,19 +81,35 @@ func defaultConstruct(src plugin.OidcTokenSource, cfg azurex.Config) (azcore.Tok
 // constructing it on first use.
 func (d *OidcDeps) credentialFor(tenantID, clientID string) (azcore.TokenCredential, error) {
 	key := tenantID + "\x00" + clientID
-	if cached, ok := d.creds.Load(key); ok {
-		return cached.(azcore.TokenCredential), nil
+
+	d.credsMu.RLock()
+	cached, ok := d.creds[key]
+	d.credsMu.RUnlock()
+	if ok {
+		return cached, nil
 	}
 
 	cfg := azurex.NewConfig(nil)
 	cfg.TenantID = tenantID
 	cfg.ClientID = clientID
 
+	// Construction happens outside any lock, deliberately. azurex.Credential
+	// only builds a struct and registers a callback - it acquires no token -
+	// so two goroutines racing to build the same key is cheap and harmless;
+	// one result is kept and the other discarded below. Holding the write
+	// lock across this call would instead serialize every credentialFor
+	// caller across the plugin process on a slow build, which is exactly the
+	// stall client.go's clientEntry comment warns against.
 	cred, err := d.construct(d.Source, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	actual, _ := d.creds.LoadOrStore(key, cred)
-	return actual.(azcore.TokenCredential), nil
+	d.credsMu.Lock()
+	defer d.credsMu.Unlock()
+	if existing, ok := d.creds[key]; ok {
+		return existing, nil
+	}
+	d.creds[key] = cred
+	return cred, nil
 }

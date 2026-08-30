@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -71,6 +72,60 @@ func TestCredentialCachedPerTenantAndClient(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 2, constructCount, "a different client must construct again")
+}
+
+// idCredential is a azcore.TokenCredential carrying a distinguishing id, so a
+// test can tell distinct constructions apart. It is not zero-size (unlike
+// fakeCredential above), which matters here: the Go runtime is free to alias
+// the address of distinct zero-size values, which would make pointer-identity
+// assertions on &fakeCredential{} pass trivially regardless of whether
+// construction was actually deduplicated.
+type idCredential struct{ id int }
+
+func (idCredential) GetToken(context.Context, policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	return azcore.AccessToken{}, nil
+}
+
+// TestCredentialForConcurrent drives credentialFor from many goroutines for a
+// mix of shared and distinct keys, so `go test -race` can catch a data race
+// on the map if the RWMutex guard ever regresses, and asserts that racing
+// callers for the same key converge on one credential instance.
+func TestCredentialForConcurrent(t *testing.T) {
+	var nextID int32
+	deps := NewOidcDeps(&stubTokenSource{})
+	deps.construct = func(plugin.OidcTokenSource, azurex.Config) (azcore.TokenCredential, error) {
+		id := int(atomic.AddInt32(&nextID, 1))
+		return &idCredential{id: id}, nil
+	}
+
+	const goroutines = 50
+	const sharedKeys = 5
+
+	var wg sync.WaitGroup
+	results := make([]azcore.TokenCredential, goroutines)
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			tenant := "tenant"
+			client := string(rune('a' + i%sharedKeys))
+			cred, err := deps.credentialFor(tenant, client)
+			assert.NoError(t, err)
+			results[i] = cred
+		}(i)
+	}
+	wg.Wait()
+
+	// All goroutines sharing a key must have observed the same instance.
+	seen := make(map[string]azcore.TokenCredential)
+	for i := 0; i < goroutines; i++ {
+		client := string(rune('a' + i%sharedKeys))
+		if prior, ok := seen[client]; ok {
+			assert.Same(t, prior, results[i], "same-key callers must get the same credential instance")
+		} else {
+			seen[client] = results[i]
+		}
+	}
 }
 
 // fakeTenantID is a syntactically valid, but entirely fictional, Entra
