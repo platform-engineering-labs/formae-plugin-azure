@@ -62,9 +62,11 @@ func (b brokerClient) Token(ctx context.Context, audience string) (string, error
 }
 
 // defaultConstruct builds the real oidcx/azure credential, backed by the
-// broker's token source.
+// broker's token source. Production wiring passes nil options: azurex.Credential's
+// options parameter exists so tests can inject a transport and disable
+// instance discovery, neither of which a real plugin instance needs.
 func defaultConstruct(src plugin.OidcTokenSource, cfg azurex.Config) (azcore.TokenCredential, error) {
-	return azurex.Credential(brokerClient{src: src}, cfg)
+	return azurex.Credential(brokerClient{src: src}, cfg, nil)
 }
 
 // credentialFor returns the cached credential for tenantID and clientID,

@@ -7,13 +7,18 @@
 package config
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -68,32 +73,78 @@ func TestCredentialCachedPerTenantAndClient(t *testing.T) {
 	assert.Equal(t, 2, constructCount, "a different client must construct again")
 }
 
+// fakeTenantID is a syntactically valid, but entirely fictional, Entra
+// tenant GUID. Nothing resolves it for real: every HTTP call this test's
+// credential can make is answered by fakeEntraTransport below.
+const fakeTenantID = "11111111-1111-1111-1111-111111111111"
+
+// fakeEntraTransport answers every HTTP call MSAL's confidential client can
+// make for a client-assertion token acquisition - the tenant's OIDC metadata
+// document, and the token endpoint itself - entirely in memory. Azure's SDK
+// threads ClientOptions.Transport all the way down to the HTTP client MSAL
+// is given, so this is the only seam needed to keep the exchange offline:
+// nothing here ever opens a socket.
+//
+// The token endpoint always answers with an error, deliberately: a
+// successful exchange would let MSAL cache a valid access token and serve
+// the second draw from cache without ever calling the assertion callback
+// again, which would defeat the point of this test. Failing the exchange
+// every time forces a fresh assertion (and so a fresh callback invocation)
+// on every draw.
+type fakeEntraTransport struct{}
+
+func jsonResponse(req *http.Request, status int, body map[string]any) *http.Response {
+	b, _ := json.Marshal(body)
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(b)),
+		Request:    req,
+	}
+}
+
+func (f *fakeEntraTransport) Do(req *http.Request) (*http.Response, error) {
+	if req.Method == http.MethodGet {
+		return jsonResponse(req, http.StatusOK, map[string]any{
+			"token_endpoint":                        "https://login.microsoftonline.com/" + fakeTenantID + "/oauth2/v2.0/token",
+			"token_endpoint_auth_methods_supported": []string{"client_secret_post", "private_key_jwt"},
+			"issuer":                                "https://login.microsoftonline.com/" + fakeTenantID + "/v2.0",
+			"authorization_endpoint":                "https://login.microsoftonline.com/" + fakeTenantID + "/oauth2/v2.0/authorize",
+		}), nil
+	}
+
+	return jsonResponse(req, http.StatusBadRequest, map[string]any{
+		"error":             "invalid_client",
+		"error_description": "AADSTS5002710: Invalid JWT token: header is malformed.",
+	}), nil
+}
+
 // TestTheAssertionCallbackObservesTheLiveCallContext exercises the real
 // oidcx/azure.Credential chain (not an injected constructor, which would
 // bypass exactly the code path under test) and proves the assertion callback
 // receives the context of the call it serves, not the context of whichever
 // call first built the credential.
 //
-// It drives the credential only as far as the assertion callback. The
-// exchange itself needs the real, publicly resolvable "common" Microsoft
-// Entra tenant to get past tenant discovery without touching any customer
-// tenant or credential; the actual token request is expected to fail since
-// the assertion is not a real signed JWT. That failure is irrelevant here -
-// what matters is which context the callback observed.
+// It runs entirely offline: a fake transport answers both the tenant OIDC
+// metadata GET and the token POST, and DisableInstanceDiscovery removes the
+// separate instance-discovery call. Nothing here reaches a real host.
 func TestTheAssertionCallbackObservesTheLiveCallContext(t *testing.T) {
 	stub := &stubTokenSource{}
 	cfg := azurex.NewConfig(nil)
-	cfg.TenantID = "common"
-	cfg.ClientID = "00000000-0000-0000-0000-000000000000"
+	cfg.TenantID = fakeTenantID
+	cfg.ClientID = "22222222-2222-2222-2222-222222222222"
 
-	cred, err := azurex.Credential(brokerClient{src: stub}, cfg)
+	cred, err := azurex.Credential(brokerClient{src: stub}, cfg, &azidentity.ClientAssertionCredentialOptions{
+		ClientOptions:            azcore.ClientOptions{Transport: &fakeEntraTransport{}},
+		DisableInstanceDiscovery: true,
+	})
 	require.NoError(t, err)
 
-	ctxA, cancelA := context.WithTimeout(context.Background(), 20*time.Second)
+	ctxA, cancelA := context.WithTimeout(context.Background(), 2*time.Second)
 	_, _ = cred.GetToken(ctxA, policy.TokenRequestOptions{Scopes: cfg.Scopes()})
 	cancelA()
 
-	ctxB, cancelB := context.WithTimeout(context.Background(), 20*time.Second)
+	ctxB, cancelB := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelB()
 	_, _ = cred.GetToken(ctxB, policy.TokenRequestOptions{Scopes: cfg.Scopes()})
 

@@ -158,3 +158,5 @@ require (
 replace ergo.services/ergo => github.com/JeroenSoeters/ergo v1.999.320-pel.1
 
 replace ergo.services/actor/statemachine => github.com/JeroenSoeters/actor/statemachine v0.0.0-20260414171442-1ef660e4a3bc
+
+replace github.com/platform-engineering-labs/oox => /home/jeroen/dev/pel/oox/.worktrees/azure-provx

@@ -228,8 +228,6 @@ github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2-0.20260821224650-d
 github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2-0.20260821224650-dc5149d5a102/go.mod h1:VXdXrX5hBF3xXK0GIUowIhTBUaog0BmjU8TOXF2yUfA=
 github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6 h1:xslGa2DOFslxD0jxwI/XaUxdetpqSn++rfpqbW/uLbE=
 github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6/go.mod h1:gq591ZeRZ4jAHpdSvCyrOvi8qyALxcXQQhd0B6GRMAo=
-github.com/platform-engineering-labs/oox v0.1.1-0.20260825170105-3bd97cb18d15 h1:dJCCOF69Jxi87Wh8kn45lQYzCT800XGbQU3Zm5qd23o=
-github.com/platform-engineering-labs/oox v0.1.1-0.20260825170105-3bd97cb18d15/go.mod h1:Ta+5qDwTMiBDDUkykRWQx/vH+91Iwfk0pCTITHoSlBc=
 github.com/platform-engineering-labs/orbital v0.1.36 h1:nPMLxDbwDrjlhJoMQXAE86HtVhQHC2A6BJlWYmNM75c=
 github.com/platform-engineering-labs/orbital v0.1.36/go.mod h1:wwVPqOmW5RO78dDzL/G5CN1Ioao0P/aUsOZVrPVx64s=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=
