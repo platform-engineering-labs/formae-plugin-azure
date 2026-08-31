@@ -259,6 +259,106 @@ func TestVirtualHub_CRUD(t *testing.T) {
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 	})
 
+	// ARM reports provisioningState Succeeded on the create/update LRO minutes before
+	// the hub router is programmed, and refuses DeleteVirtualHub for the whole gap.
+	// The delete has to wait it out rather than fail.
+	t.Run("Delete_parks_while_the_router_is_provisioning", func(t *testing.T) {
+		provisioning := hubResult
+		props := *hubResult.Properties
+		props.RoutingState = to.Ptr(armnetwork.RoutingStateProvisioning)
+		provisioning.Properties = &props
+		settled := fake.getFn
+		defer func() { fake.getFn = settled }()
+		fake.getFn = func(_ context.Context, _, _ string, _ *armnetwork.VirtualHubsClientGetOptions) (armnetwork.VirtualHubsClientGetResponse, error) {
+			return armnetwork.VirtualHubsClientGetResponse{VirtualHub: provisioning}, nil
+		}
+		before := deleteCalls
+
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testVirtualHubNativeID})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusInProgress, got.ProgressResult.OperationStatus)
+		require.Equal(t, testVirtualHubNativeID, got.ProgressResult.NativeID)
+		require.Contains(t, got.ProgressResult.StatusMessage, "routingState Provisioning")
+		// Nothing may reach ARM while the hub would refuse it.
+		require.Equal(t, before, deleteCalls)
+
+		reqID, err := decodeLROStatus(got.ProgressResult.RequestID)
+		require.NoError(t, err)
+		require.Equal(t, lroOpVirtualHubAwaitRouting, reqID.OperationType)
+		require.Empty(t, reqID.ResumeToken)
+		require.Equal(t, testVirtualHubNativeID, reqID.NativeID)
+
+		// Status re-reads the hub and stays parked for as long as it keeps saying
+		// Provisioning.
+		status, err := prov.Status(context.Background(), &resource.StatusRequest{
+			RequestID: got.ProgressResult.RequestID,
+			NativeID:  testVirtualHubNativeID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusInProgress, status.ProgressResult.OperationStatus)
+		require.Equal(t, before, deleteCalls)
+
+		// Once the router settles the same Status call issues the DELETE and hands
+		// back a real delete request ID.
+		fake.getFn = settled
+		fake.beginDeleteFn = func(_ context.Context, _, _ string, _ *armnetwork.VirtualHubsClientBeginDeleteOptions) (*runtime.Poller[armnetwork.VirtualHubsClientDeleteResponse], error) {
+			deleteCalls++
+			return newPendingPoller[armnetwork.VirtualHubsClientDeleteResponse](), nil
+		}
+		status, err = prov.Status(context.Background(), &resource.StatusRequest{
+			RequestID: got.ProgressResult.RequestID,
+			NativeID:  testVirtualHubNativeID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusInProgress, status.ProgressResult.OperationStatus)
+		require.Equal(t, before+1, deleteCalls)
+
+		reqID, err = decodeLROStatus(status.ProgressResult.RequestID)
+		require.NoError(t, err)
+		require.Equal(t, lroOpDelete, reqID.OperationType)
+		require.NotEmpty(t, reqID.ResumeToken)
+	})
+
+	// A delete already in flight - this plugin's, or the resource group's - must be
+	// waited out, not re-issued.
+	t.Run("Delete_parks_while_a_delete_is_already_in_flight", func(t *testing.T) {
+		deleting := hubResult
+		props := *hubResult.Properties
+		props.ProvisioningState = to.Ptr(armnetwork.ProvisioningStateDeleting)
+		deleting.Properties = &props
+		settled := fake.getFn
+		defer func() { fake.getFn = settled }()
+		fake.getFn = func(_ context.Context, _, _ string, _ *armnetwork.VirtualHubsClientGetOptions) (armnetwork.VirtualHubsClientGetResponse, error) {
+			return armnetwork.VirtualHubsClientGetResponse{VirtualHub: deleting}, nil
+		}
+		before := deleteCalls
+
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testVirtualHubNativeID})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusInProgress, got.ProgressResult.OperationStatus)
+		require.Contains(t, got.ProgressResult.StatusMessage, "provisioningState Deleting")
+		require.Equal(t, before, deleteCalls)
+	})
+
+	// The hub disappearing under a parked delete is the goal, not an error.
+	t.Run("Delete_parked_then_gone_is_success", func(t *testing.T) {
+		settled := fake.getFn
+		defer func() { fake.getFn = settled }()
+		fake.getFn = func(_ context.Context, _, _ string, _ *armnetwork.VirtualHubsClientGetOptions) (armnetwork.VirtualHubsClientGetResponse, error) {
+			return armnetwork.VirtualHubsClientGetResponse{}, &azcore.ResponseError{StatusCode: 404}
+		}
+		reqIDJSON, err := encodeLROStart(lroOpVirtualHubAwaitRouting, "", testVirtualHubNativeID)
+		require.NoError(t, err)
+
+		status, err := prov.Status(context.Background(), &resource.StatusRequest{
+			RequestID: reqIDJSON,
+			NativeID:  testVirtualHubNativeID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, resource.OperationStatusSuccess, status.ProgressResult.OperationStatus)
+		require.Equal(t, resource.OperationDelete, status.ProgressResult.Operation)
+	})
+
 	t.Run("List_by_resource_group", func(t *testing.T) {
 		got, err := prov.List(context.Background(), &resource.ListRequest{
 			AdditionalProperties: map[string]string{"resourceGroupName": "rg-1"},

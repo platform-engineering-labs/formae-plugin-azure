@@ -21,6 +21,13 @@ import (
 
 const ResourceTypeVirtualHub = "AZURE::Network::VirtualHub"
 
+// lroOpVirtualHubAwaitRouting is a virtual-hub-only operation type for a delete
+// that has been accepted by formae but not yet issued to ARM, because the hub
+// router is still coming up. It travels in the same lroRequestID envelope as the
+// three shared operations but carries no resume token: there is no ARM operation to
+// poll until the DELETE is actually sent. See Delete.
+const lroOpVirtualHubAwaitRouting = "awaitVirtualHubRouting"
+
 // virtualHubsAPI is the armnetwork surface used here. UpdateTags is deliberately
 // absent: it cannot change the routing preference or the branch-to-branch flag, so
 // every update is a re-PUT.
@@ -76,6 +83,24 @@ func virtualHubIDParts(resourceID string) (rgName, name string, err error) {
 		return "", "", err
 	}
 	return rgName, names["virtualhubs"], nil
+}
+
+// virtualHubProvisioningState and virtualHubRoutingState read the two states the
+// delete path has to reason about. They are separate: provisioningState covers the
+// ARM resource, routingState covers the hub router behind it, and the router is
+// still being programmed for minutes after the create/update LRO reports Succeeded.
+func virtualHubProvisioningState(hub *armnetwork.VirtualHub) armnetwork.ProvisioningState {
+	if hub.Properties == nil || hub.Properties.ProvisioningState == nil {
+		return ""
+	}
+	return *hub.Properties.ProvisioningState
+}
+
+func virtualHubRoutingState(hub *armnetwork.VirtualHub) armnetwork.RoutingState {
+	if hub.Properties == nil || hub.Properties.RoutingState == nil {
+		return ""
+	}
+	return *hub.Properties.RoutingState
 }
 
 func (r *VirtualHub) buildPropertiesFromResult(hub *armnetwork.VirtualHub, rgName string) map[string]any {
@@ -326,69 +351,119 @@ func (r *VirtualHub) Update(ctx context.Context, request *resource.UpdateRequest
 	}, nil
 }
 
+// Delete removes the hub, but only once the hub router has finished coming up. ARM
+// reports provisioningState Succeeded on the create/update LRO minutes before the
+// router is programmed, and refuses the delete for the whole gap:
+//
+//	InvalidOperation: The specified operation 'DeleteVirtualHub' is not supported.
+//	Deletion is not supported when RoutingStatus on Hub is 'Provisioning'. Retry
+//	when state is not Provisioning.
+//
+// That is not a permanent condition, so the delete is parked under
+// lroOpVirtualHubAwaitRouting and issued from Status once routingState leaves
+// Provisioning, instead of failing the command.
 func (r *VirtualHub) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	rgName, name, err := virtualHubIDParts(request.NativeID)
 	if err != nil {
 		return nil, err
 	}
 
+	progress, err := r.deleteWhenRouted(ctx, rgName, name, request.NativeID)
+	if err != nil {
+		return nil, err
+	}
+	return &resource.DeleteResult{ProgressResult: progress}, nil
+}
+
+// deleteWhenRouted issues the DELETE when the hub will accept it and parks the
+// operation when it will not. Shared by Delete and by the awaitRouting branch of
+// Status, so a parked delete is re-evaluated on exactly the same rules that parked
+// it.
+func (r *VirtualHub) deleteWhenRouted(ctx context.Context, rgName, name, nativeID string) (*resource.ProgressResult, error) {
+	get, err := r.api.Get(ctx, rgName, name, nil)
+	if err != nil {
+		if isDeleteSuccessError(err) {
+			return virtualHubDeleteSucceeded(nativeID), nil
+		}
+		return virtualHubDeleteFailed(nativeID, err), nil
+	}
+
+	switch virtualHubProvisioningState(&get.VirtualHub) {
+	case armnetwork.ProvisioningStateDeleting:
+		// A delete is already in flight — this plugin's, or the resource group's.
+		// Waiting for the hub to disappear is enough; re-issuing it is not.
+		return virtualHubDeleteParked(nativeID, "the hub is already in provisioningState Deleting")
+	case armnetwork.ProvisioningStateUpdating:
+		// ARM rejects a delete that overlaps another write on the hub.
+		return virtualHubDeleteParked(nativeID, "another operation on the hub is still in provisioningState Updating")
+	}
+	if virtualHubRoutingState(&get.VirtualHub) == armnetwork.RoutingStateProvisioning {
+		return virtualHubDeleteParked(nativeID, "the hub router is still in routingState Provisioning, which ARM refuses to delete over")
+	}
+
 	poller, err := r.api.BeginDelete(ctx, rgName, name, nil)
 	if err != nil {
 		if isDeleteSuccessError(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusSuccess,
-					NativeID:        request.NativeID,
-				},
-			}, nil
+			return virtualHubDeleteSucceeded(nativeID), nil
 		}
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusFailure,
-				NativeID:        request.NativeID,
-				ErrorCode:       operationErrorCode(err),
-			},
-		}, nil
+		return virtualHubDeleteFailed(nativeID, err), nil
 	}
 
 	if poller.Done() {
 		if _, err := poller.Result(ctx); err != nil && !isDeleteSuccessError(err) {
-			return &resource.DeleteResult{
-				ProgressResult: &resource.ProgressResult{
-					Operation:       resource.OperationDelete,
-					OperationStatus: resource.OperationStatusFailure,
-					NativeID:        request.NativeID,
-					ErrorCode:       operationErrorCode(err),
-				},
-			}, nil
+			return virtualHubDeleteFailed(nativeID, err), nil
 		}
-		return &resource.DeleteResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationDelete,
-				OperationStatus: resource.OperationStatusSuccess,
-				NativeID:        request.NativeID,
-			},
-		}, nil
+		return virtualHubDeleteSucceeded(nativeID), nil
 	}
 
 	resumeToken, err := poller.ResumeToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resume token: %w", err)
 	}
-	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, request.NativeID)
+	reqIDJSON, err := encodeLROStart(lroOpDelete, resumeToken, nativeID)
 	if err != nil {
 		return nil, err
 	}
+	return &resource.ProgressResult{
+		Operation:       resource.OperationDelete,
+		OperationStatus: resource.OperationStatusInProgress,
+		RequestID:       reqIDJSON,
+		NativeID:        nativeID,
+	}, nil
+}
 
-	return &resource.DeleteResult{
-		ProgressResult: &resource.ProgressResult{
-			Operation:       resource.OperationDelete,
-			OperationStatus: resource.OperationStatusInProgress,
-			RequestID:       reqIDJSON,
-			NativeID:        request.NativeID,
-		},
+func virtualHubDeleteSucceeded(nativeID string) *resource.ProgressResult {
+	return &resource.ProgressResult{
+		Operation:       resource.OperationDelete,
+		OperationStatus: resource.OperationStatusSuccess,
+		NativeID:        nativeID,
+	}
+}
+
+func virtualHubDeleteFailed(nativeID string, err error) *resource.ProgressResult {
+	return &resource.ProgressResult{
+		Operation:       resource.OperationDelete,
+		OperationStatus: resource.OperationStatusFailure,
+		NativeID:        nativeID,
+		ErrorCode:       operationErrorCode(err),
+		StatusMessage:   err.Error(),
+	}
+}
+
+// virtualHubDeleteParked reports a delete that has not reached ARM yet. The request
+// ID carries no resume token because there is no operation to resume; the next
+// Status re-reads the hub and decides again.
+func virtualHubDeleteParked(nativeID, reason string) (*resource.ProgressResult, error) {
+	reqIDJSON, err := encodeLROStart(lroOpVirtualHubAwaitRouting, "", nativeID)
+	if err != nil {
+		return nil, err
+	}
+	return &resource.ProgressResult{
+		Operation:       resource.OperationDelete,
+		OperationStatus: resource.OperationStatusInProgress,
+		RequestID:       reqIDJSON,
+		NativeID:        nativeID,
+		StatusMessage:   fmt.Sprintf("waiting to delete virtual hub: %s", reason),
 	}, nil
 }
 
@@ -418,6 +493,20 @@ func (r *VirtualHub) Status(ctx context.Context, request *resource.StatusRequest
 			func(token string) (*runtime.Poller[armnetwork.VirtualHubsClientDeleteResponse], error) {
 				return resumePoller[armnetwork.VirtualHubsClientDeleteResponse](r.pipeline, token)
 			}, nil)
+	case lroOpVirtualHubAwaitRouting:
+		// The delete has not been issued yet: re-read the hub and either issue it now
+		// or stay parked. deleteWhenRouted hands back the real delete request ID once
+		// ARM accepts the DELETE, so the operation joins the normal lroOpDelete path
+		// from the next poll onwards.
+		rgName, name, err := virtualHubIDParts(reqID.NativeID)
+		if err != nil {
+			return nil, err
+		}
+		progress, err := r.deleteWhenRouted(ctx, rgName, name, reqID.NativeID)
+		if err != nil {
+			return nil, err
+		}
+		return &resource.StatusResult{ProgressResult: progress}, nil
 	default:
 		return nil, fmt.Errorf("unknown operation type: %s", reqID.OperationType)
 	}

@@ -37,6 +37,11 @@ open class VirtualHubResolvable extends formae.Resolvable {
 /// provision (and to delete), well before any gateway is attached. It must be
 /// created after its `AZURE::Network::VirtualWan` and deleted before it, which
 /// `virtualWanId` expresses for you when you point it at `wan.res.id`.
+///
+/// A destroy can sit for a long time before ARM will even accept it: the hub
+/// router keeps programming for tens of minutes after the create or update
+/// reports success, and Azure refuses `DeleteVirtualHub` for the whole of that
+/// window. The plugin waits the hub out rather than failing, so budget for it.
 @azure.ResourceHint {
     type = module.type
     identifier = "id"
