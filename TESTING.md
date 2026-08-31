@@ -101,7 +101,24 @@ If tests leave orphaned resources in Azure:
 make clean-environment
 ```
 
-This deletes any resource groups prefixed with `formae-plugin-sdk-test-`.
+This deletes any resource group prefixed with `formae-plugin-sdk-test-`, then
+**waits and verifies they are gone**, exiting non-zero if any survive. Two passes,
+because a group can appear while the first pass is still deleting.
+
+A scheduled **Reap Test Resources** workflow runs the same sweep every 6 hours as a
+safety net, and can be dispatched manually. It exists because an in-run cleanup
+cannot cover the cases that actually leak:
+
+- a cancelled run whose jobs are still mid-create when the sweep lists groups
+- a hard-cancelled run or dead runner, where `conformance-cleanup` never starts
+- a local `TEST=<fixture>` run, where the Makefile deliberately skips its own
+  cleanup — note the OOB-recreate phase builds a *second* resource group with a
+  fresh run ID, so check for a stray `-rg-<id>` afterwards
+
+The reaper shares the `azure-conformance-tests` concurrency group, so it queues
+behind a live conformance run instead of deleting its resources. **A conformance run
+on your own machine is invisible to that lock** — the reaper may delete its groups
+mid-run. Prefer the Debug Conformance workflow for anything long.
 
 ## TL;DR
 

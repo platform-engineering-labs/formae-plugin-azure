@@ -1,0 +1,83 @@
+name: Reap Test Resources
+
+# Safety net for conformance leftovers.
+#
+# Every conformance workflow already sweeps before and after its matrix, but that
+# only helps when the cleanup job actually runs. It does not when:
+#
+#   - a run is cancelled and its jobs are still mid-create, so groups appear after
+#     the sweep has listed them (a cancelled full-matrix run on 2026-08-28 left 28
+#     groups behind this way, including an Application Gateway and three Virtual
+#     WAN hubs, billing for three days)
+#   - the run is hard-cancelled or the runner dies, so conformance-cleanup never
+#     starts at all
+#   - someone runs a scoped fixture locally with TEST=<name>, which makes the
+#     Makefile deliberately skip its own cleanup, and the OOB-recreate phase then
+#     builds a second resource group nothing tears down
+#
+# None of those are fixable from inside the run that leaked. So this runs on a
+# schedule and sweeps unconditionally.
+#
+# It is SAFE to blanket-sweep here because it shares the azure-conformance-tests
+# concurrency group with ci.yml, nightly.yml and debug-conformance.yml: only one of
+# them holds the Azure test subscription at a time, so this queues behind a live
+# conformance run rather than deleting its resources mid-flight. That reuses the
+# serialization the conformance workflows already rely on instead of inventing an
+# age heuristic - resource groups do not expose a creation time, so "old enough to
+# reap" cannot be evaluated reliably.
+#
+# Caveat it cannot cover: a conformance run started on a developer's machine is
+# invisible to GitHub concurrency. Run local fixtures with TEST=<name> and expect
+# this to reap anything you leave behind.
+
+on:
+  schedule:
+    # Every 6 hours. A leak costs money per hour, and the sweep is free when there
+    # is nothing to delete.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      wait_minutes:
+        description: "How long to wait for deletions to finish"
+        required: false
+        default: "25"
+        type: string
+
+concurrency:
+  group: azure-conformance-tests
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    # Generous: an Application Gateway or Cosmos account takes ~10 min to delete,
+    # and the script makes two passes.
+    timeout-minutes: 90
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure Azure Credentials
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Strict: a survivor exits non-zero, so a leak the sweep cannot clear turns
+      # this workflow red instead of disappearing. That is the whole point - the
+      # old cleanup could not fail, so leaks were invisible.
+      - name: Reap test resource groups
+        env:
+          CLEAN_WAIT_MINUTES: ${{ inputs.wait_minutes || '25' }}
+        run: ./scripts/ci/clean-environment.sh
+
+      - name: Report leak on failure
+        if: failure()
+        run: |
+          echo "::error::Conformance test resource groups could not be deleted and are still billing."
+          echo "Check for delete locks, or resources whose parent blocks deletion."
+          echo "Groups are listed in the step above."
