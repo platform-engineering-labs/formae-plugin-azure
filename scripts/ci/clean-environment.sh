@@ -60,8 +60,20 @@ fi
 echo "Using subscription: $(az account show --query name -o tsv)"
 echo ""
 
+# list_groups - names of every resource group matching TEST_PREFIX, one per line.
+#
+# Parses JSON and re-checks the prefix LOCALLY rather than trusting the server-side
+# projection. That guard matters: anything that is not a real prefixed group name -
+# a truncation marker from an output-filtering wrapper, a CLI warning, a malformed
+# projection - is dropped instead of being passed to `az group delete`. Deleting is
+# destructive, so it only ever acts on a name it has re-verified itself.
 list_groups() {
-    az group list --query "[?starts_with(name, '${TEST_PREFIX}')].name" -o tsv 2>/dev/null || true
+    local raw
+    raw=$(az group list -o json 2>/dev/null) || return 0
+    [[ -z "${raw}" ]] && return 0
+    printf '%s' "${raw}" \
+        | jq -r --arg p "${TEST_PREFIX}" '.[]? | select(.name != null) | select(.name | startswith($p)) | .name' 2>/dev/null \
+        | grep -E "^${TEST_PREFIX}[A-Za-z0-9._-]*$" || true
 }
 
 # issue_deletes <groups...> - returns non-zero if ARM refused any delete outright.
