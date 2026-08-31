@@ -4,90 +4,168 @@
 #
 # Clean Environment Hook for Azure
 # =================================
-# This script is called before AND after conformance tests to clean up
-# test resources in your Azure environment.
+# Deletes every resource group matching the test prefix, then VERIFIES they are
+# gone. Called before and after conformance tests, and by the scheduled reaper.
 #
-# Purpose:
-# - Before tests: Remove orphaned resources from previous failed runs
-# - After tests: Clean up resources created during the test run
+# Deletes, waits, verifies, and FAILS if anything survives. There is no lenient
+# mode: a leftover group means the previous run leaked, and starting a conformance
+# run against a dirty subscription invites name collisions and phantom drift. The
+# scheduled reaper retries every 6 hours, so a transient slow delete resolves
+# itself; a group that survives repeatedly is a real problem and should block.
 #
-# The script should be idempotent - safe to run multiple times.
-# It deletes all resource groups matching the test resource prefix.
+# Environment:
+#   TEST_PREFIX        resource-group prefix to sweep (default formae-plugin-sdk-test-)
+#   CLEAN_WAIT_MINUTES how long to wait for deletions to finish (default 25)
 #
-# Test resources typically use a naming convention like:
-#   formae-plugin-sdk-test-{run-id}-*
+# Why this verifies instead of firing and forgetting
+# --------------------------------------------------
+# The previous version ran `az group delete --yes --no-wait || true` per group and
+# printed "Cleanup complete" unconditionally. Two ways that leaked silently:
 #
-# Exit with non-zero status only for unexpected errors.
-# Missing resources (already cleaned) should not cause failures.
+#   1. A REFUSED delete - a delete lock, a child resource that blocks its parent,
+#      an ARM conflict - was swallowed by `|| true`, and the script still exited 0.
+#      A leak could therefore never turn CI red.
+#   2. The group list was taken ONCE. When a run is cancelled, its matrix jobs are
+#      still mid-create; groups that appeared after the snapshot were never
+#      revisited. A cancelled full-matrix run on 2026-08-28 left 28 groups behind
+#      this way - including an Application Gateway and three Virtual WAN hubs,
+#      billing for three days - while its cleanup job reported success.
+#
+# So: delete, wait for ARM to actually finish, then re-list and sweep again to
+# catch anything created during the first pass. A survivor is a non-zero exit,
+# which is the only way a leak becomes visible.
+#
+# Deletion is asynchronous and slow for some types (an Application Gateway or a
+# Cosmos account is ~10 min), hence the wait budget rather than a fixed sleep.
 
 set -euo pipefail
 
-# Prefix used for test resources - should match what conformance tests create
 TEST_PREFIX="${TEST_PREFIX:-formae-plugin-sdk-test-}"
+CLEAN_WAIT_MINUTES="${CLEAN_WAIT_MINUTES:-25}"
 
-echo "clean-environment.sh: Cleaning Azure resources with prefix '${TEST_PREFIX}'"
-echo ""
+echo "clean-environment.sh: sweeping resource groups with prefix '${TEST_PREFIX}'"
 
-# Check if Azure CLI is available and logged in
 if ! command -v az &> /dev/null; then
     echo "Azure CLI (az) not found. Skipping cleanup."
     exit 0
 fi
-
 if ! az account show &> /dev/null; then
     echo "Not logged in to Azure CLI. Skipping cleanup."
     exit 0
 fi
 
-# Get current subscription for logging
-SUBSCRIPTION=$(az account show --query name -o tsv)
-echo "Using subscription: ${SUBSCRIPTION}"
+echo "Using subscription: $(az account show --query name -o tsv)"
 echo ""
 
-# List and delete resource groups with test prefix
-echo "Finding resource groups with prefix '${TEST_PREFIX}'..."
-RESOURCE_GROUPS=$(az group list --query "[?starts_with(name, '${TEST_PREFIX}')].name" -o tsv || true)
+# list_groups - names of every resource group matching TEST_PREFIX, one per line.
+#
+# Parses JSON and re-checks the prefix LOCALLY rather than trusting the server-side
+# projection. That guard matters: anything that is not a real prefixed group name -
+# a truncation marker from an output-filtering wrapper, a CLI warning, a malformed
+# projection - is dropped instead of being passed to `az group delete`. Deleting is
+# destructive, so it only ever acts on a name it has re-verified itself.
+list_groups() {
+    local raw
+    raw=$(az group list -o json 2>/dev/null) || return 0
+    [[ -z "${raw}" ]] && return 0
+    printf '%s' "${raw}" \
+        | jq -r --arg p "${TEST_PREFIX}" '.[]? | select(.name != null) | select(.name | startswith($p)) | .name' 2>/dev/null \
+        | grep -E "^${TEST_PREFIX}[A-Za-z0-9._-]*$" || true
+}
 
-if [[ -z "${RESOURCE_GROUPS}" ]]; then
+# issue_deletes <groups...> - returns non-zero if ARM refused any delete outright.
+# A refusal is reported rather than swallowed; "already gone" is not a refusal.
+issue_deletes() {
+    local failed=0
+    for RG in $@; do
+        echo "  deleting ${RG}"
+        if ! err=$(az group delete --name "${RG}" --yes --no-wait 2>&1); then
+            if echo "${err}" | grep -qi 'could not be found\|ResourceGroupNotFound'; then
+                echo "    already gone"
+            else
+                echo "    REFUSED: ${err}" | head -3
+                failed=1
+            fi
+        fi
+    done
+    return $failed
+}
+
+# wait_gone - poll until no matching group remains, or the budget expires.
+wait_gone() {
+    local deadline=$(( SECONDS + CLEAN_WAIT_MINUTES * 60 ))
+    while [[ ${SECONDS} -lt ${deadline} ]]; do
+        local remaining
+        remaining=$(list_groups)
+        [[ -z "${remaining}" ]] && return 0
+        local n
+        n=$(echo "${remaining}" | grep -c . || true)
+        echo "  ${n} group(s) still deleting, waiting..."
+        sleep 30
+    done
+    return 1
+}
+
+REFUSED=0
+
+# Pass 1 - whatever is there now.
+GROUPS=$(list_groups)
+if [[ -z "${GROUPS}" ]]; then
     echo "No resource groups found with prefix '${TEST_PREFIX}'"
 else
-    echo "Found resource groups to delete:"
-    echo "${RESOURCE_GROUPS}"
+    echo "Pass 1 - found:"
+    echo "${GROUPS}" | sed 's/^/  /'
+    issue_deletes ${GROUPS} || REFUSED=1
     echo ""
-
-    for RG in ${RESOURCE_GROUPS}; do
-        echo "Deleting resource group: ${RG}..."
-        # Use --yes to skip confirmation, --no-wait to not block
-        # We use --no-wait because deletion can take a while
-        az group delete --name "${RG}" --yes --no-wait || true
-    done
-
-    echo ""
-    echo "Deletion initiated for all matching resource groups."
-    echo "Note: Resource group deletion happens asynchronously in Azure."
+    echo "Waiting up to ${CLEAN_WAIT_MINUTES}m for deletion to complete..."
+    wait_gone || true
 fi
 
-# Purge soft-deleted Key Vaults with test prefix
-# Key Vaults are soft-deleted (not permanently removed) when their RG is deleted.
-# They must be purged separately to free the name for reuse.
-echo "Finding soft-deleted Key Vaults with prefix 'fpsdt-kv-'..."
-DELETED_VAULTS=$(az keyvault list-deleted --query "[?starts_with(name, 'fpsdt-kv-')].name" -o tsv 2>/dev/null || true)
-
-if [[ -z "${DELETED_VAULTS}" ]]; then
-    echo "No soft-deleted Key Vaults found."
-else
-    echo "Found soft-deleted Key Vaults to purge:"
-    echo "${DELETED_VAULTS}"
+# Pass 2 - catch anything created while pass 1 was running. This is the case a
+# cancelled run hits: jobs still finishing create groups after the first list.
+GROUPS=$(list_groups)
+if [[ -n "${GROUPS}" ]]; then
     echo ""
+    echo "Pass 2 - these appeared during or survived pass 1:"
+    echo "${GROUPS}" | sed 's/^/  /'
+    issue_deletes ${GROUPS} || REFUSED=1
+    echo ""
+    echo "Waiting up to ${CLEAN_WAIT_MINUTES}m for deletion to complete..."
+    wait_gone || true
+fi
 
+# Soft-deleted Key Vaults survive their resource group and hold the name, so they
+# need a separate purge.
+echo ""
+echo "Purging soft-deleted Key Vaults with prefix 'fpsdt-kv-'..."
+DELETED_VAULTS=$(az keyvault list-deleted --query "[?starts_with(name, 'fpsdt-kv-')].name" -o tsv 2>/dev/null || true)
+if [[ -z "${DELETED_VAULTS}" ]]; then
+    echo "  none"
+else
     for VAULT in ${DELETED_VAULTS}; do
-        echo "Purging Key Vault: ${VAULT}..."
+        echo "  purging ${VAULT}"
         az keyvault purge --name "${VAULT}" --no-wait || true
     done
+fi
 
-    echo ""
-    echo "Purge initiated for all matching Key Vaults."
+# Verdict.
+SURVIVORS=$(list_groups)
+echo ""
+if [[ -z "${SURVIVORS}" ]] && [[ ${REFUSED} -eq 0 ]]; then
+    echo "clean-environment.sh: clean - no test resource groups remain"
+    exit 0
+fi
+
+if [[ -n "${SURVIVORS}" ]]; then
+    echo "SURVIVING resource groups (still billing):"
+    echo "${SURVIVORS}" | sed 's/^/  /'
+fi
+# An if-block, not `[[ ... ]] && echo`: with `set -e` that construct exits the
+# script when the test is false, skipping the ::error:: annotation below.
+if [[ ${REFUSED} -ne 0 ]]; then
+    echo "One or more deletes were refused by ARM (see above)."
 fi
 
 echo ""
-echo "clean-environment.sh: Cleanup complete"
+echo "::error::test resource groups survived cleanup and are still billing"
+exit 1
