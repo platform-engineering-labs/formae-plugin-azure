@@ -67,8 +67,11 @@ forma {
     resourceGroupName = rg.res.name
     accountName = account.res.name
     databaseName = database.res.name
+    // Mongo field name, not a SQL-API partition key path: no leading slash. ARM
+    // reads the key as an index key and rejects "/sku" with
+    // "Invalid index key '/sku' specified."
     shardKey = new Listing {
-      new azure.Tag { key = "/sku"; value = "Hash" }
+      new azure.Tag { key = "sku"; value = "Hash" }
     }
     indexes = new Listing {
       new mongocl.MongoIndex {

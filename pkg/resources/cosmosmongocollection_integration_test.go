@@ -31,7 +31,7 @@ func cosmosMongoCollectionDesired(extra map[string]any) []byte {
 		"accountName":       "mongo-1",
 		"databaseName":      "catalog",
 		// Entity-set rendering of ARM's shardKey map.
-		"shardKey": []map[string]string{{"Key": "/sku", "Value": "Hash"}},
+		"shardKey": []map[string]string{{"Key": "sku", "Value": "Hash"}},
 		"indexes": []map[string]any{
 			{"keys": []string{"_id"}},
 			{"keys": []string{"sku"}, "unique": true},
@@ -51,7 +51,7 @@ func TestCosmosMongoCollection_CRUD(t *testing.T) {
 		Properties: &armcosmos.MongoDBCollectionGetProperties{
 			Resource: &armcosmos.MongoDBCollectionGetPropertiesResource{
 				ID:       to.Ptr("products"),
-				ShardKey: map[string]*string{"/sku": to.Ptr("Hash")},
+				ShardKey: map[string]*string{"sku": to.Ptr("Hash")},
 				Indexes: []*armcosmos.MongoIndex{
 					{Key: &armcosmos.MongoIndexKeys{Keys: []*string{to.Ptr("_id")}}},
 					{
@@ -102,7 +102,7 @@ func TestCosmosMongoCollection_CRUD(t *testing.T) {
 
 		res := sent.Properties.Resource
 		require.Equal(t, "products", *res.ID)
-		require.Equal(t, "Hash", *res.ShardKey["/sku"])
+		require.Equal(t, "Hash", *res.ShardKey["sku"])
 		require.Len(t, res.Indexes, 2)
 		require.Equal(t, []string{"_id"}, stringsFromPointers(res.Indexes[0].Key.Keys))
 		require.Nil(t, res.Indexes[0].Options)
@@ -111,14 +111,14 @@ func TestCosmosMongoCollection_CRUD(t *testing.T) {
 	})
 
 	// ARM only accepts "Hash" for a shard-key value, so a caller may write just the
-	// path and get it defaulted.
+	// field name and get it defaulted.
 	t.Run("Create_defaults_the_shard_key_value", func(t *testing.T) {
 		_, err := prov.Create(context.Background(), &resource.CreateRequest{
 			Label:      "products",
-			Properties: cosmosMongoCollectionDesired(map[string]any{"shardKey": []map[string]string{{"Key": "/sku"}}}),
+			Properties: cosmosMongoCollectionDesired(map[string]any{"shardKey": []map[string]string{{"Key": "sku"}}}),
 		})
 		require.NoError(t, err)
-		require.Equal(t, "Hash", *sent.Properties.Resource.ShardKey["/sku"])
+		require.Equal(t, "Hash", *sent.Properties.Resource.ShardKey["sku"])
 	})
 
 	t.Run("Create_requires_databaseName", func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestCosmosMongoCollection_CRUD(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "products", props["name"])
 		require.Equal(t, "catalog", props["databaseName"])
-		require.Equal(t, []any{map[string]any{"Key": "/sku", "Value": "Hash"}}, props["shardKey"])
+		require.Equal(t, []any{map[string]any{"Key": "sku", "Value": "Hash"}}, props["shardKey"])
 
 		indexes := props["indexes"].([]any)
 		require.Len(t, indexes, 2)
@@ -159,7 +159,7 @@ func TestCosmosMongoCollection_CRUD(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 		require.Nil(t, sent.Properties.Options)
-		require.Equal(t, "Hash", *sent.Properties.Resource.ShardKey["/sku"])
+		require.Equal(t, "Hash", *sent.Properties.Resource.ShardKey["sku"])
 		require.Len(t, sent.Properties.Resource.Indexes, 1)
 	})
 

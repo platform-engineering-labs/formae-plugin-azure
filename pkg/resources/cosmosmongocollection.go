@@ -64,8 +64,12 @@ type cosmosMongoCollectionProps struct {
 }
 
 // cosmosMongoShardKey is the entity-set rendering of ARM's `shardKey` map. ARM
-// takes `{"<path>": "Hash"}`; formae models maps as a Key/Value listing so the
+// takes `{"<field>": "Hash"}`; formae models maps as a Key/Value listing so the
 // entries are individually addressable.
+//
+// The key is a MongoDB field name, not a SQL-API partition key path: the Mongo RP
+// uses it verbatim as an index key, so a leading slash fails the create with
+// `BadRequest: Invalid index key '/<field>' specified.`
 type cosmosMongoShardKey struct {
 	Key   string `json:"Key"`
 	Value string `json:"Value"`
@@ -175,7 +179,7 @@ func cosmosMongoCollectionResource(props cosmosMongoCollectionProps, name string
 			value := entry.Value
 			if value == "" {
 				// ARM only accepts "Hash" here; default it so a caller can write
-				// just the path.
+				// just the field name.
 				value = "Hash"
 			}
 			res.ShardKey[entry.Key] = to.Ptr(value)

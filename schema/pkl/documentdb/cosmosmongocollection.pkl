@@ -61,8 +61,12 @@ open class MongoCollectionResolvable extends formae.Resolvable {
 /// `"Hash"` as the value, so `value` defaults to it and normally needs no thought:
 ///
 ///     shardKey = new Listing {
-///       new azure.Tag { key = "/customerId"; value = "Hash" }
+///       new azure.Tag { key = "customerId"; value = "Hash" }
 ///     }
+///
+/// The key is a MongoDB *field name*, not a SQL-API partition key path — no leading
+/// slash. ARM turns `"/customerId"` into the index key `/customerId` and rejects the
+/// create with `BadRequest: Invalid index key '/customerId' specified.`
 @azure.ResourceHint {
     type = module.type
     identifier = "id"
@@ -90,10 +94,12 @@ open class MongoCollection extends formae.Resource {
     @azure.FieldHint { required = true; createOnly = true }
     databaseName: String|formae.Resolvable
 
-    /// Shard key paths. createOnly — a collection cannot be resharded in place.
+    /// Shard key field names. createOnly — a collection cannot be resharded in place.
     /// Leave unset for an unsharded (single-partition) collection.
+    ///
+    /// Mongo field names, so no leading slash: `"customerId"`, never `"/customerId"`.
     @azure.FieldHint { createOnly = true; updateMethod = "EntitySet"; indexField = "Key" }
-    shardKey: Listing<azure.Tag>?
+    shardKey: Listing<azure.Tag(!Key.startsWith("/"))>?
 
     /// Secondary indexes. Include the implicit `_id` index; see MongoIndex.
     @azure.FieldHint { hasProviderDefault = true }
