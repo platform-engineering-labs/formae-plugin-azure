@@ -334,6 +334,42 @@
       "disposition": "pending"
     },
     {
+      "key": "documentdb/cosmoscassandratable.pkl#CassandraTable.defaultTtl",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmosgremlingraph.pkl#GremlinGraph.conflictResolutionPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmosgremlingraph.pkl#GremlinGraph.defaultTtl",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmosgremlingraph.pkl#GremlinGraph.indexingPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmosmongocollection.pkl#MongoCollection.indexes",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmossqlcontainer.pkl#SqlContainer.conflictResolutionPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmossqlcontainer.pkl#SqlContainer.defaultTtl",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/cosmossqlcontainer.pkl#SqlContainer.indexingPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "documentdb/databaseaccount.pkl#DatabaseAccount.capabilities",
+      "disposition": "pending"
+    },
+    {
       "key": "documentdb/databaseaccount.pkl#DatabaseAccount.consistencyPolicy",
       "disposition": "pending"
     },
@@ -618,6 +654,38 @@
       "disposition": "pending"
     },
     {
+      "key": "network/bastionhost.pkl#BastionHost.disableCopyPaste",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.enableFileCopy",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.enableIpConnect",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.enableKerberos",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.enableShareableLink",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.enableTunneling",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.scaleUnits",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/bastionhost.pkl#BastionHost.sku",
+      "disposition": "pending"
+    },
+    {
       "key": "network/dnsforwardingrule.pkl#DnsForwardingRule.forwardingRuleState",
       "disposition": "pending"
     },
@@ -722,6 +790,78 @@
       "disposition": "pending"
     },
     {
+      "key": "network/virtualhub.pkl#VirtualHub.allowBranchToBranchTraffic",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualhub.pkl#VirtualHub.hubRoutingPreference",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualhub.pkl#VirtualHub.sku",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.activeActive",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.allowRemoteVnetTraffic",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.allowVirtualWanTraffic",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.bgpSettings",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.enableBgp",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.enablePrivateIpAddress",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgateway.pkl#VirtualNetworkGateway.vpnGatewayGeneration",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.connectionMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.connectionProtocol",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.dpdTimeoutSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.enableBgp",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.expressRouteGatewayBypass",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.routingWeight",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.useLocalAzureIpAddress",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualnetworkgatewayconnection.pkl#VirtualNetworkGatewayConnection.usePolicyBasedTrafficSelectors",
+      "disposition": "pending"
+    },
+    {
       "key": "network/virtualnetworkpeering.pkl#VirtualNetworkPeering.allowForwardedTraffic",
       "disposition": "pending"
     },
@@ -739,6 +879,38 @@
     },
     {
       "key": "network/virtualnetworkpeering.pkl#VirtualNetworkPeering.useRemoteGateways",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualwan.pkl#VirtualWan.allowBranchToBranchTraffic",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualwan.pkl#VirtualWan.allowVnetToVnetTraffic",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualwan.pkl#VirtualWan.disableVpnEncryption",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/virtualwan.pkl#VirtualWan.virtualWanTier",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/vpngateway.pkl#VpnGateway.bgpSettings",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/vpngateway.pkl#VpnGateway.enableBgpRouteTranslationForNat",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/vpngateway.pkl#VpnGateway.isRoutingPreferenceInternet",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/vpngateway.pkl#VpnGateway.vpnGatewayScaleUnit",
       "disposition": "pending"
     },
     {
@@ -1179,6 +1351,162 @@
     },
     {
       "key": "trafficmanager/trafficmanagerprofile.pkl#TrafficManagerProfile.profileStatus",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/customhostnamebinding.pkl#CustomHostnameBinding.azureResourceType",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/customhostnamebinding.pkl#CustomHostnameBinding.customHostNameDnsRecordType",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/customhostnamebinding.pkl#CustomHostnameBinding.hostNameType",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/customhostnamebinding.pkl#CustomHostnameBinding.sslState",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/functionapp.pkl#FunctionApp.clientAffinityEnabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/functionapp.pkl#FunctionApp.defaultHostName",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/functionapp.pkl#FunctionApp.httpsOnly",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/functionapp.pkl#FunctionApp.kind",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/functionapp.pkl#FunctionApp.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/functionapp.pkl#FunctionApp.siteConfig",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlan.elasticScaleEnabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlan.kind",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlan.maximumElasticWorkerCount",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlan.perSiteScaling",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlan.reserved",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlan.zoneRedundant",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlanSKU.capacity",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/serviceplan.pkl#ServicePlanSKU.tier",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/staticsite.pkl#StaticSite.allowConfigFileUpdates",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/staticsite.pkl#StaticSite.defaultHostname",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/staticsite.pkl#StaticSite.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/staticsite.pkl#StaticSite.sku",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/staticsite.pkl#StaticSite.stagingEnvironmentPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/staticsite.pkl#StaticSiteSKU.tier",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webapp.pkl#WebApp.clientAffinityEnabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webapp.pkl#WebApp.defaultHostName",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webapp.pkl#WebApp.httpsOnly",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webapp.pkl#WebApp.kind",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webapp.pkl#WebApp.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webapp.pkl#WebApp.siteConfig",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webappslot.pkl#WebAppSlot.defaultHostName",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webappslot.pkl#WebAppSlot.httpsOnly",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webappslot.pkl#WebAppSlot.kind",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webappslot.pkl#WebAppSlot.serverFarmId",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webappslot.pkl#WebAppSlot.siteConfig",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webcertificate.pkl#WebCertificate.hostNames",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webcertificate.pkl#WebCertificate.issuer",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webcertificate.pkl#WebCertificate.subjectName",
+      "disposition": "pending"
+    },
+    {
+      "key": "web/webcertificate.pkl#WebCertificate.thumbprint",
       "disposition": "pending"
     }
   ]
