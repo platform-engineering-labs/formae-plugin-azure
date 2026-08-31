@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/virtualwan.pkl"
+import "@azure/network/vpnsite.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vpnsite-test-rg"
+  name = "formae-plugin-sdk-test-vpnsite-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A site is attached to a WAN and cannot outlive it. Referencing the WAN through
+// `wan.res.id` is what orders create and destroy — no hub or gateway is needed.
+local wan = new virtualwan.VirtualWan {
+  label = "vpnsite-test-wan"
+  name = "formae-plugin-sdk-test-vpnsite-wan-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  virtualWanTier = "Standard"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  wan
+
+  // Free and fast: the site is only a description of a branch office. Addresses
+  // come from the documentation / private ranges (RFC 5737, RFC 1918) so nothing
+  // real is described and no tunnel is ever established.
+  new vpnsite.VpnSite {
+    label = "plugin-sdk-test-vpn-site"
+    name = "formae-plugin-sdk-test-vpnsite-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    virtualWanId = wan.res.id
+    addressSpace {
+      "192.168.10.0/24"
+      "192.168.11.0/24"
+    }
+    deviceProperties = new vpnsite.VpnSiteDeviceProperties {
+      deviceVendor = "Contoso"
+      deviceModel = "CX-200"
+      linkSpeedInMbps = 200
+    }
+    vpnSiteLinks {
+      new vpnsite.VpnSiteLink {
+        name = "link0"
+        ipAddress = "203.0.113.30"
+        linkProperties = new vpnsite.VpnSiteLinkProperties {
+          linkProviderName = "Contoso Telecom"
+          linkSpeedInMbps = 200
+        }
+        bgpProperties = new vpnsite.VpnSiteLinkBgpProperties {
+          asn = 65020
+          bgpPeeringAddress = "192.168.10.1"
+        }
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

@@ -1,0 +1,114 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/virtualwan.pkl"
+import "@azure/network/virtualhub.pkl"
+import "@azure/network/vpnsite.pkl"
+import "@azure/network/vpngateway.pkl"
+import "vars.pkl"
+
+// VERY SLOW AND BILLED. This fixture stands up the whole Virtual WAN chain:
+//
+//   resource group -> virtual WAN -> virtual hub -> VPN gateway
+//                                \-> VPN site (free, referenced by the connection)
+//
+// The hub alone takes ~10 min to create and ~10 min to delete; the gateway adds
+// ~30 min each way. Budget an hour for one CRUD lifecycle and raise
+// FORMAE_TEST_TIMEOUT well past its 5-minute default before running it. The WAN
+// and the site are free; the hub and the gateway bill for every minute they
+// exist, the gateway per scale unit.
+//
+// The chain is declared in one forma and ordered entirely through resolvable
+// references (`wan.res.id`, `hub.res.id`, `site.res.id`), so formae creates it
+// bottom-up and destroys it top-down with no explicit dependency.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vpngw-test-rg"
+  name = "formae-plugin-sdk-test-vpngw-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local wan = new virtualwan.VirtualWan {
+  label = "vpngw-test-wan"
+  name = "formae-plugin-sdk-test-vpngw-wan-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  virtualWanTier = "Standard"
+}
+
+local hub = new virtualhub.VirtualHub {
+  label = "vpngw-test-hub"
+  name = "formae-plugin-sdk-test-vpngw-hub-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  virtualWanId = wan.res.id
+  addressPrefix = "10.101.0.0/23"
+  sku = "Standard"
+}
+
+local site = new vpnsite.VpnSite {
+  label = "vpngw-test-site"
+  name = "formae-plugin-sdk-test-vpngw-site-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  virtualWanId = wan.res.id
+  addressSpace {
+    "192.168.20.0/24"
+  }
+  vpnSiteLinks {
+    new vpnsite.VpnSiteLink {
+      name = "link0"
+      ipAddress = "203.0.113.40"
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  wan
+  hub
+  site
+
+  // `bgpSettings` is omitted on purpose: Azure assigns ASN 65515 and peer weight 0,
+  // and the ASN is immutable, so letting the provider default stand avoids pinning
+  // a value we would then have to keep in sync.
+  //
+  // `connections[].sharedKey` is omitted too: it is write-only and Azure generates
+  // one. The conformance harness cannot strip a write-only field nested inside an
+  // array, so declaring it would read back as permanent drift (same reason the
+  // application-gateway fixture uses an HTTP listener).
+  new vpngateway.VpnGateway {
+    label = "plugin-sdk-test-vpn-gateway"
+    name = "formae-plugin-sdk-test-vpngw-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    virtualHubId = hub.res.id
+    vpnGatewayScaleUnit = 1
+    connections {
+      new vpngateway.VpnGatewayConnection {
+        name = "conn0"
+        remoteVpnSiteId = site.res.id
+        connectionBandwidth = 20
+        enableBgp = false
+        routingWeight = 10
+        vpnConnectionProtocolType = "IKEv2"
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

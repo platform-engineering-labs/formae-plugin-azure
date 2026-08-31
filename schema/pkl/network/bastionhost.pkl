@@ -1,0 +1,140 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.bastionhost
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::BastionHost"
+const apiVersion = "2023-05-01"
+
+/// Bastion tier. `Basic` is RDP/SSH through the portal only; `Standard` is what
+/// the tunneling, IP-connect, file-copy and shareable-link features and
+/// `scaleUnits` require.
+typealias BastionHostSkuName = "Basic"|"Standard"
+
+/// Private IP allocation for the bastion's own interface.
+typealias BastionIPAllocationMethod = "Dynamic"|"Static"
+
+class BastionHostSku {
+    @azure.FieldHint { required = true }
+    name: BastionHostSkuName
+}
+
+/// The bastion's front end: the dedicated subnet it lives in plus the public IP
+/// it answers on.
+class BastionHostIPConfiguration {
+    /// Name of the IP configuration.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// ARM ID of the subnet the bastion lives in, e.g. `bastionSubnet.res.id`.
+    ///
+    /// The subnet MUST be named exactly `AzureBastionSubnet` and be /26 or larger
+    /// (/27 works only for Basic without scale-out). Azure rejects any other name
+    /// outright.
+    @azure.FieldHint { required = true }
+    subnetId: String|formae.Resolvable
+
+    /// ARM ID of the public IP the bastion answers on, e.g. `pip.res.id`. It must
+    /// be a Standard-SKU, statically allocated IP in the same region.
+    @azure.FieldHint { required = true }
+    publicIpAddressId: String|formae.Resolvable
+
+    /// Allocation method for the bastion's private address. Azure defaults to
+    /// Dynamic.
+    @azure.FieldHint { }
+    privateIpAllocationMethod: BastionIPAllocationMethod?
+}
+
+open class BastionHostResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BastionHostResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BastionHostResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Managed jump host for RDP/SSH into a virtual network without exposing the VMs.
+///
+/// SLOW AND BILLED: a Bastion host takes roughly 10 minutes to create and about
+/// the same to delete, and it bills hourly (plus per scale unit on Standard) for
+/// the whole time it exists.
+///
+/// It needs two things in place first: a subnet named exactly
+/// `AzureBastionSubnet` (/26 or larger) in the target virtual network, and a
+/// Standard-SKU static public IP in the same region. Both are expressed as
+/// resolvable references inside `ipConfigurations`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class BastionHost extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Bastion tier. A Basic host cannot be upgraded to Standard in place.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    sku: BastionHostSku?
+
+    /// Instance count, Standard only. Each unit is billed hourly; Azure defaults
+    /// to 2.
+    @azure.FieldHint { hasProviderDefault = true }
+    scaleUnits: Int(this >= 2 && this <= 50)?
+
+    /// The bastion's front end. Azure accepts exactly one entry and it cannot be
+    /// changed after creation.
+    @azure.FieldHint { requiredOnCreate = true; createOnly = true }
+    ipConfigurations: Listing<BastionHostIPConfiguration>
+
+    /// Allow native-client tunneling (`az network bastion tunnel`). Standard only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableTunneling: Boolean?
+
+    /// Allow connecting to a VM by IP address rather than by resource. Standard only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableIpConnect: Boolean?
+
+    /// Allow file upload/download over the session. Standard only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableFileCopy: Boolean?
+
+    /// Allow issuing shareable links to a VM. Standard only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableShareableLink: Boolean?
+
+    /// Allow Kerberos authentication. Standard only.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableKerberos: Boolean?
+
+    /// Block clipboard sharing with the session.
+    @azure.FieldHint { hasProviderDefault = true }
+    disableCopyPaste: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: BastionHostResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

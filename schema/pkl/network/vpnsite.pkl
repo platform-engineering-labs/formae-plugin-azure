@@ -1,0 +1,148 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.vpnsite
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VpnSite"
+const apiVersion = "2023-05-01"
+
+/// Descriptive metadata about the on-premises appliance. Azure stores it and uses
+/// the link speed for load distribution across links; nothing here changes the
+/// data path.
+class VpnSiteDeviceProperties {
+    /// Vendor of the on-premises device, e.g. "Cisco".
+    @azure.FieldHint { }
+    deviceVendor: String?
+
+    /// Model of the on-premises device.
+    @azure.FieldHint { }
+    deviceModel: String?
+
+    /// Aggregate speed of the site's links, in Mbps.
+    @azure.FieldHint { }
+    linkSpeedInMbps: Int(this >= 0)?
+}
+
+/// Provider-side description of one physical link into the site.
+class VpnSiteLinkProperties {
+    /// Name of the ISP / carrier providing the link.
+    @azure.FieldHint { }
+    linkProviderName: String?
+
+    /// Speed of this link, in Mbps.
+    @azure.FieldHint { }
+    linkSpeedInMbps: Int(this >= 0)?
+}
+
+/// BGP speaker settings for one link. Both values are required together: Azure
+/// rejects a link that declares only one of them.
+class VpnSiteLinkBgpProperties {
+    /// The on-premises device's autonomous system number for this link.
+    @azure.FieldHint { required = true }
+    asn: Int
+
+    /// Address the on-premises device peers from, inside the site's address space.
+    @azure.FieldHint { required = true }
+    bgpPeeringAddress: String
+}
+
+/// One physical link into the branch. A site needs at least one link before a
+/// VPN gateway connection can target it.
+class VpnSiteLink {
+    /// Name of the link, unique within the site.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Public IP of this link's VPN endpoint. Mutually exclusive with `fqdn`.
+    @azure.FieldHint { }
+    ipAddress: String?
+
+    /// DNS name of this link's VPN endpoint, for a branch on a dynamic address.
+    /// Mutually exclusive with `ipAddress`.
+    @azure.FieldHint { }
+    fqdn: String?
+
+    /// Carrier / speed metadata for the link.
+    @azure.FieldHint { }
+    linkProperties: VpnSiteLinkProperties?
+
+    /// BGP settings for the link. Omit for a policy-routed (static) branch.
+    @azure.FieldHint { }
+    bgpProperties: VpnSiteLinkBgpProperties?
+}
+
+open class VpnSiteResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VpnSiteResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VpnSiteResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The Virtual WAN description of a branch: the on-premises address space, the
+/// appliance's public endpoints, and optional BGP settings per link.
+///
+/// The site is free and provisions in seconds — it is metadata attached to a WAN,
+/// not a data path. It only becomes live once a VPN gateway connection in a hub
+/// references it, and it cannot be moved between WANs.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VpnSite extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM ID of the Virtual WAN this branch belongs to, e.g. `wan.res.id`. A site
+    /// cannot be moved between WANs.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualWanId: String|formae.Resolvable
+
+    /// CIDR ranges reachable behind the branch. Required for a static (non-BGP)
+    /// site; still recommended when BGP is used.
+    @azure.FieldHint { }
+    addressSpace: Listing<String>?
+
+    /// Descriptive metadata about the on-premises appliance.
+    @azure.FieldHint { }
+    deviceProperties: VpnSiteDeviceProperties?
+
+    /// Public IP of the appliance, for a single-link site declared without
+    /// `vpnSiteLinks`. Prefer `vpnSiteLinks` — it is the only form that supports
+    /// per-link BGP and multiple links.
+    @azure.FieldHint { }
+    ipAddress: String?
+
+    /// Physical links into the branch.
+    @azure.FieldHint { }
+    vpnSiteLinks: Listing<VpnSiteLink>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VpnSiteResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,116 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "@azure/network/virtualnetworkgateway.pkl"
+import "vars.pkl"
+
+// EXTREMELY SLOW AND BILLED - the slowest fixture in the plugin. Azure takes
+// 30-45 minutes to create a virtual network gateway and the same again to delete
+// it, so budget 60-90 minutes for one CRUD lifecycle and raise
+// FORMAE_TEST_TIMEOUT far past its 5-minute default before running it. The
+// gateway bills hourly by SKU (VpnGw1 here, the cheapest generation-1 VPN SKU)
+// for the whole time it exists.
+//
+// The two hard prerequisites are both expressed as resolvable references, so the
+// chain rg -> vnet -> GatewaySubnet + public IP -> gateway is ordered by formae
+// with no explicit dependency:
+//
+//   * a subnet named EXACTLY "GatewaySubnet" (/27 minimum, /26 recommended)
+//   * a public IP in the same region
+//
+// `vpnClientConfiguration` is deliberately omitted: point-to-site needs real
+// root-certificate data or a RADIUS secret (write-only), neither of which the
+// conformance harness can round-trip. It is covered by the marshaller assertions
+// in TestVirtualNetworkGateway_CRUD instead.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vngw-test-rg"
+  name = "formae-plugin-sdk-test-vngw-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vngw-test-vnet"
+  name = "formae-plugin-sdk-test-vngw-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing {
+      "10.20.0.0/16"
+    }
+  }
+}
+
+// The name is load-bearing: Azure rejects a virtual network gateway whose subnet
+// is called anything other than "GatewaySubnet".
+local gatewaySubnet = new subnet.Subnet {
+  label = "vngw-test-subnet"
+  name = "GatewaySubnet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.20.255.0/27"
+}
+
+local pip = new publicipaddress.PublicIPAddress {
+  label = "vngw-test-pip"
+  name = "formae-plugin-sdk-test-vngw-pip-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new publicipaddress.PublicIPAddressSKU {
+    name = "Standard"
+    tier = "Regional"
+  }
+  publicIPAllocationMethod = "Static"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  gatewaySubnet
+  pip
+
+  // `bgpSettings` is omitted on purpose: Azure assigns ASN 65515 and peer weight 0,
+  // so letting the provider default stand avoids pinning values we would then have
+  // to keep in sync.
+  new virtualnetworkgateway.VirtualNetworkGateway {
+    label = "plugin-sdk-test-virtual-network-gateway"
+    name = "formae-plugin-sdk-test-vngw-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    gatewayType = "Vpn"
+    vpnType = "RouteBased"
+    sku = new virtualnetworkgateway.VirtualNetworkGatewaySku {
+      name = "VpnGw1"
+      tier = "VpnGw1"
+    }
+    ipConfigurations {
+      new virtualnetworkgateway.VirtualNetworkGatewayIPConfiguration {
+        name = "default"
+        subnetId = gatewaySubnet.res.id
+        publicIpAddressId = pip.res.id
+      }
+    }
+    activeActive = false
+    enableBgp = true
+    vpnGatewayGeneration = "Generation1"
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

@@ -1,0 +1,195 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.virtualnetworkgatewayconnection
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VirtualNetworkGatewayConnection"
+const apiVersion = "2023-05-01"
+
+/// What the connection joins. `IPsec` is site-to-site (gateway to
+/// LocalNetworkGateway), `Vnet2Vnet` joins two virtual network gateways,
+/// `ExpressRoute` binds a gateway to a circuit, and `VPNClient` is the
+/// point-to-site pseudo-connection.
+typealias ConnectionType = "IPsec"|"Vnet2Vnet"|"ExpressRoute"|"VPNClient"
+
+/// IKE version negotiated for the tunnel.
+typealias ConnectionProtocol = "IKEv1"|"IKEv2"
+
+/// Which side may initiate the tunnel.
+typealias ConnectionMode = "Default"|"InitiatorOnly"|"ResponderOnly"
+
+/// Diffie-Hellman group for IKE phase 1.
+typealias DhGroup = "None"|"DHGroup1"|"DHGroup2"|"DHGroup14"|"DHGroup24"|"DHGroup2048"|"ECP256"|"ECP384"
+
+/// Perfect-forward-secrecy group for IKE phase 2.
+typealias PfsGroup = "None"|"PFS1"|"PFS2"|"PFS14"|"PFS24"|"PFS2048"|"PFSMM"|"ECP256"|"ECP384"
+
+/// IPsec (phase 1) encryption algorithm.
+typealias IpsecEncryption = "None"|"DES"|"DES3"|"AES128"|"AES192"|"AES256"|"GCMAES128"|"GCMAES192"|"GCMAES256"
+
+/// IPsec (phase 1) integrity algorithm.
+typealias IpsecIntegrity = "MD5"|"SHA1"|"SHA256"|"GCMAES128"|"GCMAES192"|"GCMAES256"
+
+/// IKE (phase 2) encryption algorithm.
+typealias IkeEncryption = "DES"|"DES3"|"AES128"|"AES192"|"AES256"|"GCMAES128"|"GCMAES256"
+
+/// IKE (phase 2) integrity algorithm.
+typealias IkeIntegrity = "MD5"|"SHA1"|"SHA256"|"SHA384"|"GCMAES128"|"GCMAES256"
+
+/// A custom IPsec/IKE policy. Azure requires the whole set — every field below is
+/// mandatory — and accepts at most one policy per connection. Omit
+/// `ipsecPolicies` entirely to use Azure's default proposals.
+class IpsecPolicy {
+    @azure.FieldHint { required = true }
+    saLifeTimeSeconds: Int(this >= 300 && this <= 172799)
+
+    @azure.FieldHint { required = true }
+    saDataSizeKilobytes: Int(this >= 1024)
+
+    @azure.FieldHint { required = true }
+    ipsecEncryption: IpsecEncryption
+
+    @azure.FieldHint { required = true }
+    ipsecIntegrity: IpsecIntegrity
+
+    @azure.FieldHint { required = true }
+    ikeEncryption: IkeEncryption
+
+    @azure.FieldHint { required = true }
+    ikeIntegrity: IkeIntegrity
+
+    @azure.FieldHint { required = true }
+    dhGroup: DhGroup
+
+    @azure.FieldHint { required = true }
+    pfsGroup: PfsGroup
+}
+
+open class VirtualNetworkGatewayConnectionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkGatewayConnectionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkGatewayConnectionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The tunnel itself: what joins an `AZURE::Network::VirtualNetworkGateway` to a
+/// peer.
+///
+/// The peer depends on `connectionType`:
+///
+///   * `IPsec`       -> `localNetworkGateway2Id` (an `AZURE::Network::LocalNetworkGateway`)
+///   * `Vnet2Vnet`   -> `virtualNetworkGateway2Id` (a second gateway)
+///   * `ExpressRoute`-> `peerId` (the circuit)
+///
+/// The connection object itself provisions in a minute or two, but it is useless
+/// without its gateway — and that gateway takes 30-45 minutes to appear. Nothing
+/// bills against the connection directly; the gateway does.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualNetworkGatewayConnection extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// What the connection joins. Immutable.
+    @azure.FieldHint { required = true; createOnly = true }
+    connectionType: ConnectionType
+
+    /// ARM ID of the Azure-side gateway, e.g. `gw.res.id`. Immutable.
+    @azure.FieldHint { required = true; createOnly = true }
+    virtualNetworkGateway1Id: String|formae.Resolvable
+
+    /// ARM ID of the on-premises end, e.g. `lng.res.id`. Required for an `IPsec`
+    /// connection and immutable.
+    @azure.FieldHint { createOnly = true }
+    localNetworkGateway2Id: (String|formae.Resolvable)?
+
+    /// ARM ID of the second Azure gateway, e.g. `gw2.res.id`. Required for a
+    /// `Vnet2Vnet` connection and immutable.
+    @azure.FieldHint { createOnly = true }
+    virtualNetworkGateway2Id: (String|formae.Resolvable)?
+
+    /// ARM ID of the ExpressRoute circuit peering. Required for an `ExpressRoute`
+    /// connection and immutable.
+    @azure.FieldHint { createOnly = true }
+    peerId: (String|formae.Resolvable)?
+
+    /// Pre-shared key for the tunnel. Write-only: Azure does return it on read,
+    /// but it must never be stored in cleartext, so wrap it with
+    /// `formae.value(...).opaque` and the plugin will not surface it.
+    @azure.FieldHint { writeOnly = true }
+    sharedKey: (formae.Value|String)?
+
+    /// Authorization key for an ExpressRoute circuit in another subscription.
+    /// Write-only.
+    @azure.FieldHint { writeOnly = true }
+    authorizationKey: (formae.Value|String)?
+
+    /// Run BGP across the tunnel. Both ends must have BGP configured.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableBgp: Boolean?
+
+    /// IKE version. Azure defaults to IKEv2; IKEv1 requires a policy-based peer.
+    @azure.FieldHint { hasProviderDefault = true }
+    connectionProtocol: ConnectionProtocol?
+
+    /// Which side may initiate. Azure defaults to Default.
+    @azure.FieldHint { hasProviderDefault = true }
+    connectionMode: ConnectionMode?
+
+    /// Route weight applied to prefixes learned over this connection.
+    @azure.FieldHint { hasProviderDefault = true }
+    routingWeight: Int(this >= 0)?
+
+    /// Dead-peer-detection timeout, in seconds. Azure defaults to 45.
+    @azure.FieldHint { hasProviderDefault = true }
+    dpdTimeoutSeconds: Int(this >= 9 && this <= 3600)?
+
+    /// Negotiate one SA per traffic-selector pair, for a policy-based peer.
+    @azure.FieldHint { hasProviderDefault = true }
+    usePolicyBasedTrafficSelectors: Boolean?
+
+    /// Disable IPsec anti-replay. Rarely wanted.
+    @azure.FieldHint { hasProviderDefault = true }
+    useLocalAzureIpAddress: Boolean?
+
+    /// Bypass the ExpressRoute gateway for data forwarding (FastPath).
+    @azure.FieldHint { hasProviderDefault = true }
+    expressRouteGatewayBypass: Boolean?
+
+    /// Custom IPsec/IKE proposals. Azure accepts at most one entry; omit the field
+    /// to use Azure's defaults.
+    @azure.FieldHint { }
+    ipsecPolicies: Listing<IpsecPolicy>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkGatewayConnectionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -77,9 +77,16 @@ case "$RESOURCE" in
     # Virtual WAN control plane only - nothing is provisioned behind it.
     set_timeouts 10 30
     ;;
-  virtual-hub|bastion-host)
-    # A hub programs routing and a Bastion deploys real instances: ~20-25 min
-    # per lifecycle, measured.
+  virtual-hub)
+    # A hub's Destroy is the long pole, measured at 27m10s: ARM refuses
+    # DeleteVirtualHub while routingState is still Provisioning, which runs ~11
+    # min past the create LRO reporting Succeeded, and the delete itself is ~15
+    # min. 30 left only 3 minutes of headroom and would flake; 45 is comfortable.
+    # The whole lifecycle measured 69 min, so the 90 min go-test cap is fine.
+    set_timeouts 45 90
+    ;;
+  bastion-host)
+    # A Bastion deploys real instances; a full lifecycle measured ~57 min.
     set_timeouts 30 90
     ;;
   vpn-gateway|virtual-network-gateway|virtual-network-gateway-connection)

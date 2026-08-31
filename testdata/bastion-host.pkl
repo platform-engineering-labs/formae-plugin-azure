@@ -1,0 +1,111 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/publicipaddress.pkl"
+import "@azure/network/bastionhost.pkl"
+import "vars.pkl"
+
+// SLOW AND BILLED: a Bastion host takes roughly 10 minutes to create and about the
+// same to delete, and it bills hourly plus per scale unit for the whole time it
+// exists. Raise FORMAE_TEST_TIMEOUT well past its 5-minute default before running
+// this fixture.
+//
+// The two hard prerequisites are both expressed as resolvable references, so the
+// chain rg -> vnet -> AzureBastionSubnet + public IP -> bastion is ordered by
+// formae with no explicit dependency:
+//
+//   * a subnet named EXACTLY "AzureBastionSubnet", /26 or larger
+//   * a Standard-SKU, statically allocated public IP in the same region
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "bastion-test-rg"
+  name = "formae-plugin-sdk-test-bastion-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "bastion-test-vnet"
+  name = "formae-plugin-sdk-test-bastion-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing {
+      "10.10.0.0/16"
+    }
+  }
+}
+
+// The name is load-bearing: Azure rejects a Bastion host whose subnet is called
+// anything other than "AzureBastionSubnet", and it must be /26 or larger.
+local bastionSubnet = new subnet.Subnet {
+  label = "bastion-test-subnet"
+  name = "AzureBastionSubnet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.10.1.0/26"
+}
+
+local pip = new publicipaddress.PublicIPAddress {
+  label = "bastion-test-pip"
+  name = "formae-plugin-sdk-test-bastion-pip-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new publicipaddress.PublicIPAddressSKU {
+    name = "Standard"
+    tier = "Regional"
+  }
+  publicIPAllocationMethod = "Static"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  bastionSubnet
+  pip
+
+  new bastionhost.BastionHost {
+    label = "plugin-sdk-test-bastion-host"
+    name = "formae-plugin-sdk-test-bastion-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    // Standard is required for every toggle below and for scaleUnits.
+    sku = new bastionhost.BastionHostSku { name = "Standard" }
+    scaleUnits = 2
+    ipConfigurations {
+      new bastionhost.BastionHostIPConfiguration {
+        name = "IpConf"
+        subnetId = bastionSubnet.res.id
+        publicIpAddressId = pip.res.id
+        // Spelled out because Azure always populates it. `hasProviderDefault` is
+        // only honoured on top-level fields, so an omitted nested value comes back
+        // from ARM and reads as drift in every phase. Same reason
+        // dns-resolver-inbound-endpoint's fixture declares it.
+        privateIpAllocationMethod = "Dynamic"
+      }
+    }
+    enableTunneling = true
+    enableIpConnect = true
+    enableFileCopy = false
+    enableShareableLink = false
+    enableKerberos = false
+    disableCopyPaste = false
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

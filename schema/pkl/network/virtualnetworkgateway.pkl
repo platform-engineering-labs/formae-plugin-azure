@@ -1,0 +1,267 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.virtualnetworkgateway
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::VirtualNetworkGateway"
+const apiVersion = "2023-05-01"
+
+/// What the gateway is for. `Vpn` terminates IPsec tunnels; `ExpressRoute` is the
+/// ExpressRoute virtual gateway. Immutable.
+typealias VirtualNetworkGatewayType = "Vpn"|"ExpressRoute"|"LocalGateway"
+
+/// Routing model for a VPN gateway. `RouteBased` is what everything modern needs;
+/// `PolicyBased` exists only for the Basic SKU and single-tunnel legacy peers.
+typealias VpnType = "RouteBased"|"PolicyBased"
+
+/// Gateway SKU. VpnGw1-5 (and their zone-redundant AZ variants) are the VPN SKUs;
+/// ErGw1-3AZ are ExpressRoute; Basic is legacy and cannot be resized to any of
+/// the others.
+typealias VirtualNetworkGatewaySkuName =
+    "Basic"|"Standard"|"HighPerformance"|"UltraPerformance"
+    |"VpnGw1"|"VpnGw2"|"VpnGw3"|"VpnGw4"|"VpnGw5"
+    |"VpnGw1AZ"|"VpnGw2AZ"|"VpnGw3AZ"|"VpnGw4AZ"|"VpnGw5AZ"
+    |"ErGw1AZ"|"ErGw2AZ"|"ErGw3AZ"
+
+/// SKU tier. Azure keeps name and tier identical in practice.
+typealias VirtualNetworkGatewaySkuTier = VirtualNetworkGatewaySkuName
+
+/// Hardware generation. Generation2 is required for VpnGw4/5 and unavailable on
+/// Basic; must be `None` when `gatewayType` is not `Vpn`.
+typealias VpnGatewayGeneration = "None"|"Generation1"|"Generation2"
+
+/// Private IP allocation for a gateway IP configuration. Azure only supports
+/// Dynamic here.
+typealias GatewayIPAllocationMethod = "Dynamic"|"Static"
+
+/// Tunneling protocol offered to point-to-site clients.
+typealias VpnClientProtocol = "IkeV2"|"OpenVPN"|"SSTP"
+
+/// Authentication method offered to point-to-site clients.
+typealias VpnAuthenticationType = "Certificate"|"Radius"|"AAD"
+
+class VirtualNetworkGatewaySku {
+    @azure.FieldHint { required = true }
+    name: VirtualNetworkGatewaySkuName
+
+    @azure.FieldHint { required = true }
+    tier: VirtualNetworkGatewaySkuTier
+}
+
+/// BGP speaker settings for the gateway.
+///
+/// Only the two values a caller owns are modelled: Azure allocates the gateway's
+/// BGP peering addresses out of the GatewaySubnet, so they are read back and
+/// discarded rather than compared.
+class VirtualNetworkGatewayBgpSettings {
+    /// The gateway's autonomous system number. Azure assigns 65515 when the
+    /// gateway is created without one.
+    @azure.FieldHint { required = true }
+    asn: Int
+
+    /// Weight added to routes learned over BGP by this gateway.
+    @azure.FieldHint { required = true }
+    peerWeight: Int
+}
+
+/// One front end of the gateway: the GatewaySubnet it lives in plus the public IP
+/// it answers on. An active-active gateway needs two of these.
+class VirtualNetworkGatewayIPConfiguration {
+    /// Name of the IP configuration.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// ARM ID of the subnet the gateway lives in, e.g. `gatewaySubnet.res.id`.
+    ///
+    /// The subnet MUST be named exactly `GatewaySubnet` — Azure rejects any other
+    /// name outright. /27 is the practical minimum and /26 or larger is
+    /// recommended.
+    @azure.FieldHint { required = true }
+    subnetId: String|formae.Resolvable
+
+    /// ARM ID of the public IP for this front end, e.g. `pip.res.id`. VpnGw*AZ and
+    /// ErGw*AZ SKUs require a Standard-SKU static IP.
+    @azure.FieldHint { required = true }
+    publicIpAddressId: String|formae.Resolvable
+
+    /// Allocation method for the gateway's private address. Azure only supports
+    /// Dynamic.
+    @azure.FieldHint { }
+    privateIpAllocationMethod: GatewayIPAllocationMethod?
+}
+
+/// A trusted root certificate for point-to-site certificate authentication.
+class VpnClientRootCertificate {
+    /// Name of the certificate entry.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 80)
+
+    /// Base-64 encoded public certificate data (the DER body of the .cer, without
+    /// the PEM header and footer lines).
+    @azure.FieldHint { required = true }
+    publicCertData: String
+}
+
+/// Point-to-site (VPN client) configuration. Omit it entirely for a
+/// site-to-site-only gateway.
+class VpnClientConfiguration {
+    /// CIDR pool the gateway hands out to VPN clients. It must not overlap the
+    /// virtual network or any on-premises range.
+    @azure.FieldHint { required = true }
+    vpnClientAddressPool: Listing<String>
+
+    /// Tunneling protocols offered to clients.
+    @azure.FieldHint { }
+    vpnClientProtocols: Listing<VpnClientProtocol>?
+
+    /// Authentication methods offered to clients.
+    @azure.FieldHint { }
+    vpnAuthenticationTypes: Listing<VpnAuthenticationType>?
+
+    /// Trusted roots for certificate authentication.
+    @azure.FieldHint { }
+    vpnClientRootCertificates: Listing<VpnClientRootCertificate>?
+
+    /// RADIUS server address, for `Radius` authentication.
+    @azure.FieldHint { }
+    radiusServerAddress: String?
+
+    /// RADIUS shared secret. Write-only — Azure never returns it, so wrap with
+    /// `formae.value(...).opaque` to keep it out of stored state.
+    @azure.FieldHint { writeOnly = true }
+    radiusServerSecret: (formae.Value|String)?
+
+    /// Entra tenant URL, for `AAD` authentication.
+    @azure.FieldHint { }
+    aadTenant: String?
+
+    /// Entra application audience, for `AAD` authentication.
+    @azure.FieldHint { }
+    aadAudience: String?
+
+    /// Entra token issuer URL, for `AAD` authentication.
+    @azure.FieldHint { }
+    aadIssuer: String?
+}
+
+open class VirtualNetworkGatewayResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VirtualNetworkGatewayResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VirtualNetworkGatewayResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The classic vnet-scoped gateway: the Azure end of a site-to-site VPN, the
+/// point-to-site concentrator, or the ExpressRoute virtual gateway. For the
+/// Virtual WAN equivalent see `AZURE::Network::VpnGateway`.
+///
+/// EXTREMELY SLOW AND BILLED: this is the slowest resource in the plugin. Azure
+/// takes 30-45 minutes to create it and the same again to delete it, and it bills
+/// hourly by SKU for the whole time it exists.
+///
+/// It needs two things in place first: a subnet named exactly `GatewaySubnet` in
+/// the target virtual network, and a public IP in the same region. Both are
+/// expressed as resolvable references inside `ipConfigurations`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class VirtualNetworkGateway extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// What the gateway is for. Immutable: switching between Vpn and ExpressRoute
+    /// means a new gateway.
+    @azure.FieldHint { required = true; createOnly = true }
+    gatewayType: VirtualNetworkGatewayType
+
+    /// Routing model. Immutable, and meaningful only when `gatewayType` is `Vpn`;
+    /// pass `RouteBased` for an ExpressRoute gateway.
+    @azure.FieldHint { required = true; createOnly = true }
+    vpnType: VpnType
+
+    /// Gateway SKU. Resizable within a family (VpnGw1 -> VpnGw2), but Basic can
+    /// never be resized and moving between the AZ and non-AZ families is a
+    /// replace.
+    @azure.FieldHint { requiredOnCreate = true }
+    sku: VirtualNetworkGatewaySku
+
+    /// The gateway's front ends. One entry for a normal gateway, two for
+    /// active-active. Azure cannot swap a front end in place.
+    @azure.FieldHint { requiredOnCreate = true; createOnly = true }
+    ipConfigurations: Listing<VirtualNetworkGatewayIPConfiguration>
+
+    /// Run two instances with two public IPs and two tunnels. Requires two
+    /// `ipConfigurations` and a VpnGw1 or higher SKU.
+    @azure.FieldHint { hasProviderDefault = true }
+    activeActive: Boolean?
+
+    /// Run BGP on the gateway. Not available on the Basic SKU.
+    @azure.FieldHint { hasProviderDefault = true }
+    enableBgp: Boolean?
+
+    /// BGP speaker settings. Azure assigns ASN 65515 and peer weight 0 when this
+    /// is omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    bgpSettings: VirtualNetworkGatewayBgpSettings?
+
+    /// Hardware generation. Must be `None` unless `gatewayType` is `Vpn`.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    vpnGatewayGeneration: VpnGatewayGeneration?
+
+    /// Point-to-site configuration. Omit for a site-to-site-only gateway.
+    @azure.FieldHint { }
+    vpnClientConfiguration: VpnClientConfiguration?
+
+    /// Offer the gateway's private IP as a connection endpoint (private peering
+    /// over ExpressRoute). Requires an AZ SKU.
+    @azure.FieldHint { hasProviderDefault = true }
+    enablePrivateIpAddress: Boolean?
+
+    /// Accept traffic from Azure Virtual WAN networks.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowVirtualWanTraffic: Boolean?
+
+    /// Accept transit traffic from peered virtual networks.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowRemoteVnetTraffic: Boolean?
+
+    /// ARM ID of the LocalNetworkGateway that carries the default route, for
+    /// forced tunneling, e.g. `lng.res.id`.
+    @azure.FieldHint { }
+    gatewayDefaultSiteId: (String|formae.Resolvable)?
+
+    /// CIDR ranges advertised to VPN clients on top of the vnet's own space.
+    @azure.FieldHint { }
+    customRoutes: Listing<String>?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VirtualNetworkGatewayResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
