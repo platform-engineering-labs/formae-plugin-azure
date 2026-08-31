@@ -48,6 +48,20 @@ web-app
 function-app
 web-app-slot
 
+# virtual-hub passes locally end to end (68m50s) but cannot pass in CI. ARM
+# refuses DeleteVirtualHub while routingState is still Provisioning, which runs
+# ~11 min past the create LRO reporting Succeeded, so the CRUD phase measures
+# ~59 min - longer than the OIDC client assertion stays valid. The run dies in the
+# final phase with:
+#
+#   AADSTS700024: Client assertion is not within its valid time range
+#
+# The plugin waits for the router correctly (see VirtualHub.Delete); this is a
+# credential-lifetime limit, not a plugin bug. Remove this line once CI can
+# refresh auth mid-phase. Run locally with:
+#   make conformance-test-crud TEST=virtual-hub TIMEOUT=90
+virtual-hub
+
 # --- Exceed the conformance-tests job's timeout-minutes: 120 ----------------
 # Measured lifecycles: vpn-gateway ~60 min, the two virtual-network-gateway
 # fixtures ~60-90 min, and a lifecycle runs create + update + destroy +

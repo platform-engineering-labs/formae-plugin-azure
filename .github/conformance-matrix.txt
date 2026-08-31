@@ -392,3 +392,76 @@ grafana-managed-private-endpoint
 # billed. CRUD validated via test-integration (mocked); run live locally with:
 #   make conformance-test-crud TEST=managed-environment TIMEOUT=15
 #   make conformance-test-crud TEST=container-app TIMEOUT=15
+# --- Wave 1: Microsoft.Web, Cosmos DB children, Virtual WAN / Bastion --------
+# Added after each fixture passed CRUD *and* discovery on its own pull request,
+# which is the bar this file asks for. PR #126 (Web), #128 (Cosmos), #127 (network).
+
+# Static Web Apps are serverless, so unlike the rest of Microsoft.Web this one is
+# not blocked by the subscription's dedicated-VM quota.
+static-site
+
+# Virtual WAN control plane only - nothing is provisioned behind either, both
+# under 2 min and free.
+virtual-wan
+vpn-site
+
+# A Bastion host deploys real instances: ~57 min for a full lifecycle, billed.
+# Its per-command budget lives in scripts/ci/run-conformance-phase.sh.
+bastion-host
+
+# Cosmos DB child resources. Each fixture stands up its own account first
+# (10-20 min before the child can be created), so all eleven carry the cosmos-*
+# timeout arm in scripts/ci/run-conformance-phase.sh. All billed.
+cosmos-sql-database
+cosmos-sql-container
+cosmos-sql-role-definition
+cosmos-sql-role-assignment
+cosmos-mongo-database
+cosmos-mongo-collection
+cosmos-cassandra-keyspace
+cosmos-cassandra-table
+cosmos-gremlin-database
+cosmos-gremlin-graph
+cosmos-table
+
+# app-service-plan, web-app, function-app and web-app-slot excluded: the
+# conformance subscription has a dedicated-VM quota of 0 and an App Service plan
+# of ANY sku runs on dedicated VMs - verified against both B1 (Basic) and F1
+# (Free), which are refused identically with
+#   Unauthorized: Operation cannot be completed without additional quota.
+#   Current Limit (Total VMs): 0 / Amount required for this deployment: 1
+# So no plan can exist there and everything needing one fails on the quota rather
+# than on the plugin. They are also listed in conformance-pr-skip.txt. Remove both
+# sets of entries once the quota is raised. Run locally against a quota-bearing
+# subscription with:
+#   make conformance-test-crud TEST=app-service-plan
+# - app-service-plan
+# - web-app
+# - function-app
+# - web-app-slot
+#
+# app-service-certificate and custom-hostname-binding excluded: both need a real
+# verified custom domain (Azure serves an ownership challenge the CI subscription
+# cannot answer). Same class as cdn-afd-custom-domain.
+# - app-service-certificate
+# - custom-hostname-binding
+#
+# virtual-hub excluded: it passes locally end to end (68m50s) but cannot pass in
+# CI. ARM refuses DeleteVirtualHub while routingState is still Provisioning, which
+# runs ~11 min past the create LRO reporting Succeeded, so the CRUD phase measures
+# ~59 min - longer than the OIDC client assertion stays valid, and the run dies in
+# the final phase with
+#   AADSTS700024: Client assertion is not within its valid time range
+# The plugin waits for the router correctly; this is a credential-lifetime limit,
+# not a plugin bug. Re-add once CI can refresh auth mid-phase. Run locally:
+#   make conformance-test-crud TEST=virtual-hub TIMEOUT=90
+# - virtual-hub
+#
+# vpn-gateway, virtual-network-gateway and virtual-network-gateway-connection
+# excluded: 60-90 min lifecycles, past the conformance-tests job's
+# timeout-minutes: 120. Their per-command budgets are already in
+# scripts/ci/run-conformance-phase.sh, so raising the job cap is the only change
+# needed to enable them.
+# - vpn-gateway
+# - virtual-network-gateway
+# - virtual-network-gateway-connection
