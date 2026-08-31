@@ -84,7 +84,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Clean up test resources
-        run: ./scripts/ci/clean-environment.sh --best-effort
+        run: ./scripts/ci/clean-environment.sh
 
   conformance-tests:
     needs: [parse-input, pre-cleanup]

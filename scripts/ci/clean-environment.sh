@@ -7,9 +7,11 @@
 # Deletes every resource group matching the test prefix, then VERIFIES they are
 # gone. Called before and after conformance tests, and by the scheduled reaper.
 #
-# Usage:
-#   clean-environment.sh                 # strict: wait for deletion, fail on survivors
-#   clean-environment.sh --best-effort   # issue deletes, warn on survivors, exit 0
+# Deletes, waits, verifies, and FAILS if anything survives. There is no lenient
+# mode: a leftover group means the previous run leaked, and starting a conformance
+# run against a dirty subscription invites name collisions and phantom drift. The
+# scheduled reaper retries every 6 hours, so a transient slow delete resolves
+# itself; a group that survives repeatedly is a real problem and should block.
 #
 # Environment:
 #   TEST_PREFIX        resource-group prefix to sweep (default formae-plugin-sdk-test-)
@@ -30,23 +32,18 @@
 #      billing for three days - while its cleanup job reported success.
 #
 # So: delete, wait for ARM to actually finish, then re-list and sweep again to
-# catch anything created during the first pass. In strict mode a survivor is a
-# non-zero exit, which is the only way a leak becomes visible.
+# catch anything created during the first pass. A survivor is a non-zero exit,
+# which is the only way a leak becomes visible.
 #
 # Deletion is asynchronous and slow for some types (an Application Gateway or a
 # Cosmos account is ~10 min), hence the wait budget rather than a fixed sleep.
 
 set -euo pipefail
 
-MODE="strict"
-if [[ "${1:-}" == "--best-effort" ]]; then
-    MODE="best-effort"
-fi
-
 TEST_PREFIX="${TEST_PREFIX:-formae-plugin-sdk-test-}"
 CLEAN_WAIT_MINUTES="${CLEAN_WAIT_MINUTES:-25}"
 
-echo "clean-environment.sh: sweeping resource groups with prefix '${TEST_PREFIX}' (mode: ${MODE})"
+echo "clean-environment.sh: sweeping resource groups with prefix '${TEST_PREFIX}'"
 
 if ! command -v az &> /dev/null; then
     echo "Azure CLI (az) not found. Skipping cleanup."
@@ -160,16 +157,13 @@ if [[ -z "${SURVIVORS}" ]] && [[ ${REFUSED} -eq 0 ]]; then
 fi
 
 if [[ -n "${SURVIVORS}" ]]; then
-    echo "clean-environment.sh: ${SURVIVORS}" | head -1 >/dev/null
     echo "SURVIVING resource groups (still billing):"
     echo "${SURVIVORS}" | sed 's/^/  /'
 fi
-[[ ${REFUSED} -ne 0 ]] && echo "One or more deletes were refused by ARM (see above)."
-
-if [[ "${MODE}" == "best-effort" ]]; then
-    echo ""
-    echo "::warning::test resource groups survived cleanup - the scheduled reaper will retry"
-    exit 0
+# An if-block, not `[[ ... ]] && echo`: with `set -e` that construct exits the
+# script when the test is false, skipping the ::error:: annotation below.
+if [[ ${REFUSED} -ne 0 ]]; then
+    echo "One or more deletes were refused by ARM (see above)."
 fi
 
 echo ""
