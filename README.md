@@ -57,7 +57,18 @@ Formae plugin for managing Azure resources.
 | `AZURE::Dashboard::GrafanaManagedPrivateEndpoint` | Managed private endpoints from a Grafana workspace to a data source |
 | `AZURE::DataProtection::BackupVault` | Backup vaults (Azure Backup data-protection stack) |
 | `AZURE::Devices::IotHub` | An Azure IoT Hub |
+| `AZURE::DocumentDB::CassandraKeyspace` | Cosmos DB Cassandra keyspaces |
+| `AZURE::DocumentDB::CassandraTable` | Cosmos DB Cassandra tables (column schema, partition and cluster keys) |
 | `AZURE::DocumentDB::DatabaseAccount` | An Azure Cosmos DB database account |
+| `AZURE::DocumentDB::GremlinDatabase` | Cosmos DB Gremlin databases |
+| `AZURE::DocumentDB::GremlinGraph` | Cosmos DB Gremlin graphs (partition key, indexing policy) |
+| `AZURE::DocumentDB::MongoCollection` | Cosmos DB MongoDB collections (shard key, indexes) |
+| `AZURE::DocumentDB::MongoDatabase` | Cosmos DB MongoDB databases |
+| `AZURE::DocumentDB::SqlContainer` | Cosmos DB SQL containers (partition key, indexing and TTL policies) |
+| `AZURE::DocumentDB::SqlDatabase` | Cosmos DB SQL (core API) databases |
+| `AZURE::DocumentDB::SqlRoleAssignment` | Cosmos DB SQL data-plane role assignments |
+| `AZURE::DocumentDB::SqlRoleDefinition` | Cosmos DB SQL data-plane role definitions |
+| `AZURE::DocumentDB::Table` | Cosmos DB Table API tables |
 | `AZURE::EventGrid::Domain` | Event Grid domains (one ingress endpoint fanning out to many topics) |
 | `AZURE::EventGrid::DomainTopic` | Topics inside an Event Grid domain (typically one per tenant) |
 | `AZURE::EventGrid::EventSubscription` | Event subscriptions (delivery from any scope to a handler) |
@@ -88,6 +99,7 @@ Formae plugin for managing Azure resources.
 | `AZURE::Network::ApplicationGateway` | Application Gateway v2 (L7 load balancer / HTTPS ingress) |
 | `AZURE::Network::ApplicationGatewayWebApplicationFirewallPolicy` | WAF policy for Application Gateway |
 | `AZURE::Network::ApplicationSecurityGroup` | Application security groups (named handle for NSG rules) |
+| `AZURE::Network::BastionHost` | Azure Bastion hosts (needs a subnet named `AzureBastionSubnet`) |
 | `AZURE::Network::DnsForwardingRule` | Forwarding rules (resolve a domain through named DNS servers) |
 | `AZURE::Network::DnsForwardingRuleset` | DNS forwarding rulesets |
 | `AZURE::Network::DnsForwardingRulesetVirtualNetworkLink` | Links a forwarding ruleset to a virtual network |
@@ -120,8 +132,14 @@ Formae plugin for managing Azure resources.
 | `AZURE::Network::RouteTable` | Route tables with inline user-defined routes |
 | `AZURE::Network::Subnet` | Subnets |
 | `AZURE::Network::TrafficManagerProfile` | Traffic Manager profiles (DNS-based global load balancing) |
+| `AZURE::Network::VirtualHub` | Virtual WAN hubs |
 | `AZURE::Network::VirtualNetwork` | Virtual networks |
+| `AZURE::Network::VirtualNetworkGateway` | VPN and ExpressRoute virtual network gateways (needs a subnet named `GatewaySubnet`) |
+| `AZURE::Network::VirtualNetworkGatewayConnection` | Site-to-site, VNet-to-VNet and ExpressRoute connections |
 | `AZURE::Network::VirtualNetworkPeering` | Virtual network peerings |
+| `AZURE::Network::VirtualWan` | Virtual WANs |
+| `AZURE::Network::VpnGateway` | Virtual WAN scoped VPN gateways |
+| `AZURE::Network::VpnSite` | Virtual WAN VPN sites (on-premises branch definitions) |
 | `AZURE::NotificationHubs::Namespace` | Notification Hubs namespaces |
 | `AZURE::NotificationHubs::NotificationHub` | Notification hubs (PNS credentials never read into state) |
 | `AZURE::NotificationHubs::NotificationHubAuthorizationRule` | Notification hub SAS rules |
@@ -157,6 +175,13 @@ Formae plugin for managing Azure resources.
 | `AZURE::Storage::Queue` | A queue in a storage account's Queue service |
 | `AZURE::Storage::StorageAccount` | Storage accounts |
 | `AZURE::Storage::Table` | A table in a storage account's Table service |
+| `AZURE::Web::Certificate` | App Service certificates |
+| `AZURE::Web::CustomHostnameBinding` | Custom hostname bindings on a web app |
+| `AZURE::Web::FunctionApp` | Function apps |
+| `AZURE::Web::ServicePlan` | App Service plans (the compute a web or function app runs on) |
+| `AZURE::Web::StaticSite` | Azure Static Web Apps |
+| `AZURE::Web::WebApp` | Web apps (Linux and Windows, via `siteConfig`) |
+| `AZURE::Web::WebAppSlot` | Deployment slots on a web app |
 
 ## Configuration
 

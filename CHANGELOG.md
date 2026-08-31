@@ -10,6 +10,39 @@ formae agent.
 
 ## [Unreleased]
 
+### Added
+
+- **25 new resource types**, taking the plugin from 148 to 173.
+  - **Microsoft.Web (7)** — `Web::ServicePlan`, `Web::WebApp`, `Web::FunctionApp`,
+    `Web::WebAppSlot`, `Web::Certificate`, `Web::CustomHostnameBinding`,
+    `Web::StaticSite`. The plugin had no PaaS compute coverage at all before this.
+  - **Cosmos DB children (11)** — `DocumentDB::Sql{Database,Container,RoleDefinition,RoleAssignment}`,
+    `DocumentDB::Mongo{Database,Collection}`, `DocumentDB::Cassandra{Keyspace,Table}`,
+    `DocumentDB::Gremlin{Database,Graph}`, `DocumentDB::Table`. The account type
+    already existed but none of its per-API child resources did, so it could not
+    express a usable database.
+  - **Virtual WAN, gateways and Bastion (7)** — `Network::VirtualWan`,
+    `Network::VirtualHub`, `Network::VpnGateway`, `Network::VpnSite`,
+    `Network::VirtualNetworkGateway`, `Network::VirtualNetworkGatewayConnection`,
+    `Network::BastionHost`. First hybrid-connectivity coverage in the plugin.
+- `DocumentDB::DatabaseAccount` gained `capabilities`. Cassandra, Gremlin and Table
+  children cannot be declared without it — `kind` only separates NoSQL from MongoDB,
+  and the API family comes from a capability.
+- Conformance now runs on pull requests, scoped to the fixtures the PR changed, so a
+  new fixture is verified before it reaches main instead of after.
+- A scheduled reaper sweeps leaked conformance resource groups every 6 hours.
+
+### Fixed
+
+- `Network::VirtualHub` delete no longer fails while the hub router is still
+  programming. ARM refuses `DeleteVirtualHub` while `routingState` is
+  `Provisioning`, which runs ~11 minutes past the point the create LRO reports
+  `Succeeded`; the delete now waits for the router instead of erroring.
+- Conformance cleanup verifies its deletions instead of firing and forgetting. It
+  previously ran `az group delete --no-wait || true` and reported success
+  unconditionally, so a refused delete or a group created mid-sweep leaked silently.
+
+
 ### Changed
 
 - `KeyVault::Secret` Read now includes the secret value in the returned properties,
