@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmosgremlindatabase.pkl" as gremdb
+import "@azure/documentdb/cosmosgremlingraph.pkl" as gremgr
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-gremgr-test-rg"
+  name = "formae-plugin-sdk-test-cgremgr-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Gremlin (graph) API: selected by the EnableGremlin capability.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-gremgr-test-account"
+  name = "fpsdt-cgremgr-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  capabilities = new Listing {
+    "EnableGremlin"
+  }
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+// No throughput on the database: the graph carries its own dedicated RU/s.
+local database = new gremdb.GremlinDatabase {
+  label = "cosmos-gremgr-test-database"
+  name = "fpsdt-social-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  accountName = account.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  database
+
+  // A graph is a SQL container underneath, so the indexing and conflict-resolution
+  // policies are declared in FULL — including the `/"_etag"/?` exclusion and the
+  // `/_ts` tiebreaker the service always adds.
+  new gremgr.GremlinGraph {
+    label = "plugin-sdk-test-cosmos-gremgr"
+    name = "fpsdt-people-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    databaseName = database.res.name
+    partitionKey = new gremgr.GraphPartitionKeyDefinition {
+      paths = new Listing { "/region" }
+      kind = "Hash"
+      version = 2
+    }
+    indexingPolicy = new gremgr.GraphIndexingPolicy {
+      automatic = true
+      indexingMode = "consistent"
+      includedPaths = new Listing {
+        new gremgr.GraphIncludedPath { path = "/*" }
+      }
+      excludedPaths = new Listing {
+        new gremgr.GraphExcludedPath { path = #"/"_etag"/?"# }
+      }
+    }
+    conflictResolutionPolicy = new gremgr.GraphConflictResolutionPolicy {
+      mode = "LastWriterWins"
+      conflictResolutionPath = "/_ts"
+    }
+    defaultTtl = 86400
+    throughput = 400
+  }
+}

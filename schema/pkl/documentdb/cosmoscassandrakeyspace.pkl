@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmoscassandrakeyspace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::CassandraKeyspace"
+const apiVersion = "2025-10-15"
+
+open class CassandraKeyspaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: CassandraKeyspaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: CassandraKeyspaceResolvable = (this) {
+        property = "name"
+    }
+    hidden accountName: CassandraKeyspaceResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: CassandraKeyspaceResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A keyspace in a Cosmos DB account running the Cassandra API.
+///
+/// The parent account must carry the `EnableCassandra` capability. Capabilities are
+/// createOnly on the account, so an account without it cannot be converted — declare
+/// a dedicated account for Cassandra work.
+///
+/// `throughput` and `autoscaleMaxThroughput` are createOnly: throughput lives in a
+/// separate ARM sub-resource that only accepts values at create time through
+/// request headers. Leave both unset on a serverless account.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::DatabaseAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class CassandraKeyspace extends formae.Resource {
+
+    /// Cassandra identifier: letters, digits and underscores, starting with a letter.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 48 && matches(Regex("^[a-zA-Z][a-zA-Z0-9_]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Cosmos DB account.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Manual keyspace-level throughput in RU/s, shared by every table in the
+    /// keyspace. Mutually exclusive with `autoscaleMaxThroughput`.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: CassandraKeyspaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

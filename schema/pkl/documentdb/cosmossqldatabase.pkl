@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmossqldatabase
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::SqlDatabase"
+const apiVersion = "2025-10-15"
+
+open class SqlDatabaseResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SqlDatabaseResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SqlDatabaseResolvable = (this) {
+        property = "name"
+    }
+    hidden accountName: SqlDatabaseResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: SqlDatabaseResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A database in a Cosmos DB account running the NoSQL (core) API.
+///
+/// The parent account's API family gates this type: an account carrying the
+/// EnableCassandra, EnableGremlin or EnableTable capability, or `kind = "MongoDB"`,
+/// rejects SQL databases outright. Declare a `GlobalDocumentDB` account with no
+/// API capability to hold these.
+///
+/// Throughput belongs to a separate ARM sub-resource
+/// (`.../throughputSettings/default`) that only accepts values at create time
+/// through request headers, so `throughput` and `autoscaleMaxThroughput` are both
+/// createOnly. Changing either replaces the database — which drops its data. Leave
+/// both unset on a serverless account; ARM rejects throughput there.
+///
+/// Stored procedures, triggers, user-defined functions and client encryption keys
+/// are separate ARM sub-resources and are not modelled here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::DatabaseAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class SqlDatabase extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255 && !contains("/") && !contains("\\") && !contains("#") && !contains("?"))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Cosmos DB account.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Manual database-level throughput in RU/s, shared by every container in the
+    /// database. Mutually exclusive with `autoscaleMaxThroughput`. Minimum 400.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s for database-level shared throughput. Mutually
+    /// exclusive with `throughput`. Minimum 1000, and must be a multiple of 1000.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: SqlDatabaseResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

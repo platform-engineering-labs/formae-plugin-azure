@@ -1,0 +1,87 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmoscassandrakeyspace.pkl" as casks
+import "@azure/documentdb/cosmoscassandratable.pkl" as castb
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-castb-test-rg"
+  name = "formae-plugin-sdk-test-ccastb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Cassandra API: selected by the EnableCassandra capability.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-castb-test-account"
+  name = "fpsdt-ccastb-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  capabilities = new Listing {
+    "EnableCassandra"
+  }
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+// No throughput on the keyspace: the table carries its own dedicated RU/s.
+local keyspace = new casks.CassandraKeyspace {
+  label = "cosmos-castb-test-keyspace"
+  name = "telemetry"
+  resourceGroupName = rg.res.name
+  accountName = account.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  keyspace
+
+  new castb.CassandraTable {
+    label = "plugin-sdk-test-cosmos-castb"
+    name = "readings"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    keyspaceName = keyspace.res.name
+    schema = new castb.CassandraSchema {
+      columns = new Listing {
+        new castb.CassandraColumn { name = "device_id"; type = "uuid" }
+        new castb.CassandraColumn { name = "recorded_at"; type = "timestamp" }
+        new castb.CassandraColumn { name = "reading"; type = "double" }
+      }
+      partitionKeys = new Listing {
+        new castb.CassandraPartitionKey { name = "device_id" }
+      }
+      clusterKeys = new Listing {
+        new castb.CassandraClusterKey { name = "recorded_at"; orderBy = "Desc" }
+      }
+    }
+    defaultTtl = 86400
+    throughput = 400
+  }
+}

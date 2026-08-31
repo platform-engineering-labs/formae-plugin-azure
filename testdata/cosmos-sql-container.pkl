@@ -1,0 +1,108 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmossqldatabase.pkl" as sqldb
+import "@azure/documentdb/cosmossqlcontainer.pkl" as sqlct
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-sqlct-test-rg"
+  name = "formae-plugin-sdk-test-csqlct-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// NoSQL (core) API: kind = GlobalDocumentDB and no API capability.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-sqlct-test-account"
+  name = "fpsdt-csqlct-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+// No throughput on the database: the container carries its own dedicated RU/s
+// below. A provisioned account rejects a container with neither.
+local database = new sqldb.SqlDatabase {
+  label = "cosmos-sqlct-test-database"
+  name = "fpsdt-inventory-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  accountName = account.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  database
+
+  // Container creates are the slowest operation in this namespace — minutes for a
+  // partitioned container — so this fixture wants a raised FORMAE_TEST_TIMEOUT.
+  //
+  // The indexing and conflict-resolution policies are declared in FULL, including
+  // the `/"_etag"/?` exclusion and the `/_ts` tiebreaker the service always adds.
+  // ARM echoes its own defaults back, so a partial policy reads as drift.
+  new sqlct.SqlContainer {
+    label = "plugin-sdk-test-cosmos-sqlct"
+    name = "fpsdt-items-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    databaseName = database.res.name
+    partitionKey = new sqlct.PartitionKeyDefinition {
+      paths = new Listing { "/customerId" }
+      kind = "Hash"
+      version = 2
+    }
+    indexingPolicy = new sqlct.IndexingPolicy {
+      automatic = true
+      indexingMode = "consistent"
+      includedPaths = new Listing {
+        new sqlct.IncludedPath { path = "/*" }
+      }
+      excludedPaths = new Listing {
+        new sqlct.ExcludedPath { path = #"/"_etag"/?"# }
+      }
+      compositeIndexes = new Listing {
+        new Listing {
+          new sqlct.CompositePath { path = "/customerId"; order = "ascending" }
+          new sqlct.CompositePath { path = "/orderedAt"; order = "descending" }
+        }
+      }
+    }
+    uniqueKeyPolicy = new sqlct.UniqueKeyPolicy {
+      uniqueKeys = new Listing {
+        new sqlct.UniqueKey { paths = new Listing { "/sku" } }
+      }
+    }
+    conflictResolutionPolicy = new sqlct.ConflictResolutionPolicy {
+      mode = "LastWriterWins"
+      conflictResolutionPath = "/_ts"
+    }
+    defaultTtl = 86400
+    throughput = 400
+  }
+}

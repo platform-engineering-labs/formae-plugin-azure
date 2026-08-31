@@ -1,0 +1,132 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmoscassandratable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::CassandraTable"
+const apiVersion = "2025-10-15"
+
+class CassandraColumn {
+    /// Cassandra identifier: letters, digits and underscores, starting with a letter.
+    name: String(matches(Regex("^[a-zA-Z][a-zA-Z0-9_]*$")))
+
+    /// CQL type, e.g. `uuid`, `text`, `int`, `timestamp`, `list<text>`.
+    type: String(length >= 1)
+}
+
+class CassandraPartitionKey {
+    /// Name of a column declared in `columns`.
+    name: String(matches(Regex("^[a-zA-Z][a-zA-Z0-9_]*$")))
+}
+
+class CassandraClusterKey {
+    /// Name of a column declared in `columns`.
+    name: String(matches(Regex("^[a-zA-Z][a-zA-Z0-9_]*$")))
+
+    /// Sort order within a partition. ARM accepts only these two spellings.
+    orderBy: ("Asc"|"Desc")?
+}
+
+/// The table's CQL schema. Every name in `partitionKeys` and `clusterKeys` must also
+/// appear in `columns`.
+///
+/// Cassandra allows adding columns to a live table but not changing the partition or
+/// cluster keys, so this field is updatable while everything key-shaped about it is
+/// effectively frozen — an ARM update that moves a key fails rather than replacing
+/// the table.
+class CassandraSchema {
+    columns: Listing<CassandraColumn>(length >= 1)
+
+    partitionKeys: Listing<CassandraPartitionKey>(length >= 1)
+
+    clusterKeys: Listing<CassandraClusterKey>?
+}
+
+open class CassandraTableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: CassandraTableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: CassandraTableResolvable = (this) {
+        property = "name"
+    }
+    hidden keyspaceName: CassandraTableResolvable = (this) {
+        property = "keyspaceName"
+    }
+    hidden accountName: CassandraTableResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: CassandraTableResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A table in a Cosmos DB Cassandra-API keyspace.
+///
+/// The parent account must carry the `EnableCassandra` capability.
+///
+/// A table needs throughput from somewhere: either the parent keyspace carries
+/// shared throughput, or the table carries its own, or the account is serverless.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::CassandraKeyspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "keyspaceName" },
+        new formae.ListProperty { parentProperty = "accountName" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class CassandraTable extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 48 && matches(Regex("^[a-zA-Z][a-zA-Z0-9_]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Cosmos DB account holding the keyspace.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Name of the parent Cassandra keyspace.
+    @azure.FieldHint { required = true; createOnly = true }
+    keyspaceName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    schema: CassandraSchema
+
+    /// Row lifetime in seconds. 0 disables TTL.
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultTtl: Int(this >= 0)?
+
+    /// Analytical-store retention in seconds; -1 is infinite. Requires the account
+    /// to have analytical storage enabled, and it cannot be turned on for a table
+    /// after it exists.
+    @azure.FieldHint { createOnly = true }
+    analyticalStorageTtl: Int(this == -1 || this >= 0)?
+
+    /// Manual dedicated throughput in RU/s. Mutually exclusive with
+    /// `autoscaleMaxThroughput`.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: CassandraTableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

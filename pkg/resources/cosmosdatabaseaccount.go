@@ -60,6 +60,7 @@ type cosmosDatabaseAccountProps struct {
 	Location                     string                   `json:"location"`
 	ResourceGroupName            string                   `json:"resourceGroupName"`
 	Kind                         string                   `json:"kind"`
+	Capabilities                 []string                 `json:"capabilities"`
 	GeoLocations                 []cosmosGeoLocation      `json:"geoLocations"`
 	ConsistencyPolicy            *cosmosConsistencyPolicy `json:"consistencyPolicy"`
 	EnableAutomaticFailover      *bool                    `json:"enableAutomaticFailover"`
@@ -130,6 +131,18 @@ func (c *CosmosDatabaseAccount) buildPropertiesFromResult(acct *armcosmos.Databa
 		if p.MinimalTLSVersion != nil {
 			props["minimalTlsVersion"] = string(*p.MinimalTLSVersion)
 		}
+		// Capabilities select the account's API family (Cassandra, Gremlin, Table)
+		// and gate which child resources it accepts.
+		capabilities := make([]string, 0, len(p.Capabilities))
+		for _, capability := range p.Capabilities {
+			if capability == nil || capability.Name == nil {
+				continue
+			}
+			capabilities = append(capabilities, *capability.Name)
+		}
+		if len(capabilities) > 0 {
+			props["capabilities"] = capabilities
+		}
 		if cp := p.ConsistencyPolicy; cp != nil {
 			entry := map[string]any{}
 			if cp.DefaultConsistencyLevel != nil {
@@ -187,6 +200,20 @@ func cosmosLocationsFromProps(props cosmosDatabaseAccountProps) []*armcosmos.Loc
 		locations = append(locations, loc)
 	}
 	return locations
+}
+
+func cosmosCapabilitiesFromProps(props cosmosDatabaseAccountProps) []*armcosmos.Capability {
+	if len(props.Capabilities) == 0 {
+		return nil
+	}
+	capabilities := make([]*armcosmos.Capability, 0, len(props.Capabilities))
+	for _, name := range props.Capabilities {
+		if name == "" {
+			continue
+		}
+		capabilities = append(capabilities, &armcosmos.Capability{Name: to.Ptr(name)})
+	}
+	return capabilities
 }
 
 func cosmosConsistencyFromProps(props cosmosDatabaseAccountProps) *armcosmos.ConsistencyPolicy {
@@ -250,6 +277,7 @@ func (c *CosmosDatabaseAccount) Create(ctx context.Context, request *resource.Cr
 		// ARM requires this and rejects anything other than "Standard".
 		DatabaseAccountOfferType: to.Ptr("Standard"),
 		Locations:                cosmosLocationsFromProps(props),
+		Capabilities:             cosmosCapabilitiesFromProps(props),
 		ConsistencyPolicy:        cosmosConsistencyFromProps(props),
 		EnableAutomaticFailover:  props.EnableAutomaticFailover,
 		EnableFreeTier:           props.EnableFreeTier,
@@ -373,9 +401,13 @@ func (c *CosmosDatabaseAccount) Update(ctx context.Context, request *resource.Up
 		DisableLocalAuth:        props.DisableLocalAuth,
 	}
 	// Locations must be echoed back on update: omitting them asks ARM to drop
-	// every replica region.
+	// every replica region. Capabilities are createOnly in the schema, but they are
+	// echoed for the same reason — the API family must not be dropped mid-update.
 	if len(props.GeoLocations) > 0 {
 		updateProps.Locations = cosmosLocationsFromProps(props)
+	}
+	if capabilities := cosmosCapabilitiesFromProps(props); capabilities != nil {
+		updateProps.Capabilities = capabilities
 	}
 	if props.EnableMultipleWriteLocations != nil {
 		updateProps.EnableMultipleWriteLocations = props.EnableMultipleWriteLocations

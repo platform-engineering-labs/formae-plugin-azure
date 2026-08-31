@@ -20,6 +20,15 @@ typealias ConsistencyLevel = "Eventual"|"ConsistentPrefix"|"Session"|"BoundedSta
 
 /// Default consistency for reads. `maxStalenessPrefix` and `maxIntervalInSeconds`
 /// apply to BoundedStaleness only and ARM rejects them for other levels.
+/// A Cosmos DB account capability. Only the values Azure documents are accepted;
+/// ARM rejects anything else outright.
+typealias Capability = "EnableCassandra"|"EnableGremlin"|"EnableTable"|"EnableServerless"
+    |"EnableMongo"|"EnableMongo16MBDocumentSupport"|"EnableMongoRoleBasedAccessControl"
+    |"EnableMongoRetryableWrites"|"EnableNoSQLVectorSearch"|"EnableNoSQLFullTextSearch"
+    |"EnableTtlOnCustomPath"|"EnableAggregationPipeline"|"EnableUniqueCompoundNestedDocs"
+    |"EnablePartialUniqueIndex"|"mongoEnableDocLevelTTL"|"DisableRateLimitingResponses"
+    |"AllowSelfServeUpgradeToMongo36"|"DeleteAllItemsByPartitionKey"
+
 class ConsistencyPolicy {
     defaultConsistencyLevel: ConsistencyLevel = "Session"
 
@@ -85,6 +94,26 @@ open class DatabaseAccount extends formae.Resource {
 
     @azure.FieldHint { createOnly = true }
     kind: AccountKind = "GlobalDocumentDB"
+
+    /// API capabilities the account is enabled for. This is what selects the
+    /// Cassandra, Gremlin and Table APIs — `kind` only distinguishes NoSQL from
+    /// MongoDB — and it gates which child resources the account will accept:
+    ///
+    ///   - no API capability: SqlDatabase / SqlContainer
+    ///   - `kind = "MongoDB"`: MongoDatabase / MongoCollection
+    ///   - EnableCassandra: CassandraKeyspace / CassandraTable
+    ///   - EnableGremlin: GremlinDatabase / GremlinGraph
+    ///   - EnableTable: Table
+    ///
+    /// The API capabilities are mutually exclusive, and createOnly — an existing
+    /// account cannot be switched to another API, so each API family needs its own
+    /// account. `EnableServerless` is orthogonal but equally createOnly, and a
+    /// serverless account rejects every throughput setting on its children.
+    /// hasProviderDefault as well as createOnly: Azure populates the list itself for
+    /// some account shapes, and a service-assigned value that desired state never
+    /// declared would otherwise read as drift on every sync.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    capabilities: Listing<Capability>?
 
     /// Replica regions. At least one is required, and exactly one must carry
     /// failoverPriority 0.

@@ -1,0 +1,223 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmossqlcontainer
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::SqlContainer"
+const apiVersion = "2025-10-15"
+
+/// Hash is the only kind for a single-path key. MultiHash takes up to three paths
+/// (hierarchical partition keys). Range is legacy and effectively unused.
+typealias PartitionKind = "Hash"|"MultiHash"|"Range"
+
+typealias IndexingMode = "consistent"|"lazy"|"none"
+
+typealias IndexKind = "Hash"|"Range"|"Spatial"
+
+typealias IndexDataType = "String"|"Number"|"Point"|"Polygon"|"LineString"|"MultiPolygon"
+
+typealias SpatialType = "Point"|"Polygon"|"LineString"|"MultiPolygon"
+
+typealias ConflictResolutionMode = "LastWriterWins"|"Custom"
+
+/// How documents are spread over physical partitions. Cannot be changed after the
+/// container exists — a different partition key means a different container.
+class PartitionKeyDefinition {
+    /// Document paths, e.g. `/customerId`. MultiHash takes up to three, in order.
+    paths: Listing<String>(length >= 1 && length <= 3)
+
+    kind: PartitionKind = "Hash"
+
+    /// 1 is the legacy 100-byte key; 2 is the large (2 KB) key. Use 2 for anything
+    /// new, and 2 is required for MultiHash.
+    version: Int(this == 1 || this == 2)?
+}
+
+class IndexSpec {
+    kind: IndexKind = "Range"
+
+    dataType: IndexDataType = "String"
+
+    /// -1 means maximum precision. Ignored for Range indexes on modern accounts.
+    precision: Int?
+}
+
+class IncludedPath {
+    /// Index path, typically ending in a wildcard, e.g. `/*` or `/name/?`.
+    path: String
+
+    indexes: Listing<IndexSpec>?
+}
+
+class ExcludedPath {
+    path: String
+}
+
+class CompositePath {
+    path: String
+
+    order: ("ascending"|"descending")?
+}
+
+class SpatialSpec {
+    path: String
+
+    types: Listing<SpatialType>?
+}
+
+/// Indexing configuration.
+///
+/// ARM does not accept a partial policy: whatever you declare here is the complete
+/// policy, and it echoes back the service defaults it fills in. Declare the policy
+/// in full — including `excludedPaths` for `/"_etag"/?`, which the service always
+/// adds — or the next read reports drift.
+class IndexingPolicy {
+    automatic: Boolean = true
+
+    indexingMode: IndexingMode = "consistent"
+
+    includedPaths: Listing<IncludedPath>?
+
+    excludedPaths: Listing<ExcludedPath>?
+
+    /// Each inner listing is one composite index; order matters within it.
+    compositeIndexes: Listing<Listing<CompositePath>>?
+
+    spatialIndexes: Listing<SpatialSpec>?
+}
+
+/// Uniqueness constraints, scoped per logical partition. Cannot be changed after
+/// the container exists.
+class UniqueKey {
+    paths: Listing<String>(length >= 1)
+}
+
+class UniqueKeyPolicy {
+    uniqueKeys: Listing<UniqueKey>
+}
+
+/// Conflict resolution for a multi-region-write account. `conflictResolutionPath`
+/// applies to LastWriterWins; `conflictResolutionProcedure` applies to Custom.
+class ConflictResolutionPolicy {
+    mode: ConflictResolutionMode = "LastWriterWins"
+
+    /// Integer or timestamp path used as the "last writer" tiebreaker, e.g. `/_ts`.
+    conflictResolutionPath: String?
+
+    /// Fully qualified stored-procedure resource path, for Custom mode.
+    conflictResolutionProcedure: String?
+}
+
+open class SqlContainerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SqlContainerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SqlContainerResolvable = (this) {
+        property = "name"
+    }
+    hidden databaseName: SqlContainerResolvable = (this) {
+        property = "databaseName"
+    }
+    hidden accountName: SqlContainerResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: SqlContainerResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A container (collection) in a Cosmos DB SQL-API database.
+///
+/// The parent account must be running the NoSQL (core) API: an account carrying the
+/// EnableCassandra, EnableGremlin or EnableTable capability, or `kind = "MongoDB"`,
+/// rejects SQL containers outright.
+///
+/// A container needs throughput from somewhere. Either the parent database carries
+/// shared throughput (declare `throughput` on the SqlDatabase and leave both
+/// throughput fields unset here), or the container carries its own (declare one of
+/// them here), or the account is serverless (declare neither anywhere). An account
+/// with provisioned throughput rejects a container that has neither.
+///
+/// Container creates are slow — minutes for a partitioned container — so allow for
+/// that when applying.
+///
+/// Stored procedures, triggers and user-defined functions are separate ARM
+/// sub-resources and are not modelled here. Neither are the client-encryption,
+/// vector-embedding, full-text and computed-property policies.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::SqlDatabase"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "databaseName" },
+        new formae.ListProperty { parentProperty = "accountName" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class SqlContainer extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 255 && !contains("/") && !contains("\\") && !contains("#") && !contains("?"))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the Cosmos DB account holding the database.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Name of the parent SQL database.
+    @azure.FieldHint { required = true; createOnly = true }
+    databaseName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    partitionKey: PartitionKeyDefinition
+
+    /// Declare the policy in full if you declare it at all; see IndexingPolicy.
+    @azure.FieldHint { hasProviderDefault = true }
+    indexingPolicy: IndexingPolicy?
+
+    @azure.FieldHint { createOnly = true }
+    uniqueKeyPolicy: UniqueKeyPolicy?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    conflictResolutionPolicy: ConflictResolutionPolicy?
+
+    /// Document lifetime in seconds. -1 keeps documents forever but lets a
+    /// per-document TTL apply; omit the field to disable TTL entirely.
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultTtl: Int(this == -1 || this >= 0)?
+
+    /// Analytical-store retention in seconds; -1 is infinite. Requires the account
+    /// to have analytical storage enabled, and analytical storage cannot be turned
+    /// on for a container after it exists.
+    @azure.FieldHint { createOnly = true }
+    analyticalStorageTtl: Int(this == -1 || this >= 0)?
+
+    /// Manual dedicated throughput in RU/s. Mutually exclusive with
+    /// `autoscaleMaxThroughput`. createOnly: switching mode needs the ARM migrate
+    /// operations and changing the value needs the throughputSettings sub-resource,
+    /// neither of which this plugin models.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: SqlContainerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

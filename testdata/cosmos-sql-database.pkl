@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/documentdb/cosmossqldatabase.pkl" as sqldb
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-sqldb-test-rg"
+  name = "formae-plugin-sdk-test-csqldb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// NoSQL (core) API: kind = GlobalDocumentDB and no API capability. An account
+// carrying EnableCassandra, EnableGremlin or EnableTable would reject SQL databases.
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-sqldb-test-account"
+  name = "fpsdt-csqldb-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  // Database-level shared throughput at the 400 RU/s floor. Both throughput fields
+  // are createOnly, so the -replace fixture changes `name` instead.
+  new sqldb.SqlDatabase {
+    label = "plugin-sdk-test-cosmos-sqldb"
+    name = "fpsdt-inventory-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    throughput = 400
+  }
+}

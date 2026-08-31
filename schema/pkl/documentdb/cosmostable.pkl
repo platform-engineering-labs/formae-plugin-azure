@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmostable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::Table"
+const apiVersion = "2025-10-15"
+
+open class TableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TableResolvable = (this) {
+        property = "name"
+    }
+    hidden accountName: TableResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: TableResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A table in a Cosmos DB account running the Table API.
+///
+/// This is the Cosmos Table API, not Azure Storage tables — for those, see
+/// AZURE::Storage::Table.
+///
+/// The parent account must carry the `EnableTable` capability. Capabilities are
+/// createOnly on the account, so an account without it cannot be converted — declare
+/// a dedicated account for Table work. Table-API tables hang directly off the
+/// account; there is no intermediate database.
+///
+/// `throughput` and `autoscaleMaxThroughput` are createOnly: throughput lives in a
+/// separate ARM sub-resource that only accepts values at create time through
+/// request headers. Leave both unset on a serverless account.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::DatabaseAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Table extends formae.Resource {
+
+    /// Table-API names are alphanumeric, must start with a letter, and are limited
+    /// to 63 characters.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[A-Za-z][A-Za-z0-9]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Cosmos DB account.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Manual dedicated throughput in RU/s. Mutually exclusive with
+    /// `autoscaleMaxThroughput`.
+    @azure.FieldHint { createOnly = true }
+    throughput: Int(this >= 400)?
+
+    /// Autoscale ceiling in RU/s. Mutually exclusive with `throughput`.
+    @azure.FieldHint { createOnly = true }
+    autoscaleMaxThroughput: Int(this >= 1000 && this % 1000 == 0)?
+
+    hidden parent = this
+
+    hidden res: TableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

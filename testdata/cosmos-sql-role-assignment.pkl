@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/documentdb/databaseaccount.pkl" as cosmos
+import "@azure/managedidentity/userassignedidentity.pkl"
+import "@azure/documentdb/cosmossqlroleassignment.pkl" as sqlra
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "cosmos-sqlra-test-rg"
+  name = "formae-plugin-sdk-test-csqlra-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local account = new cosmos.DatabaseAccount {
+  label = "cosmos-sqlra-test-account"
+  name = "fpsdt-csqlra-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "GlobalDocumentDB"
+  geoLocations = new Listing {
+    new cosmos.GeoLocation {
+      locationName = "eastus"
+      failoverPriority = 0
+      isZoneRedundant = false
+    }
+  }
+  consistencyPolicy = new cosmos.ConsistencyPolicy {
+    defaultConsistencyLevel = "Session"
+  }
+}
+
+// The assignment needs a real AAD object ID, so the fixture brings its own
+// user-assigned identity and wires in its principalId.
+local uai = new userassignedidentity.UserAssignedIdentity {
+  label = "cosmos-sqlra-test-uai"
+  name = "formae-plugin-sdk-test-csqlra-uai-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Built-in data-plane roles, addressable without declaring a SqlRoleDefinition.
+// The account's ARM ID has to be spelled out here because a role-definition ID is
+// a plain string, not a resolvable; the dependency edge comes from accountName.
+local accountId = "/subscriptions/\(vars.subscriptionId)/resourceGroups/formae-plugin-sdk-test-csqlra-rg-\(vars.testRunID)/providers/Microsoft.DocumentDB/databaseAccounts/fpsdt-csqlra-\(vars.testRunID)"
+local dataReaderRoleId = "\(accountId)/sqlRoleDefinitions/00000000-0000-0000-0000-000000000001"
+local dataContributorRoleId = "\(accountId)/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  account
+
+  uai
+
+  new sqlra.SqlRoleAssignment {
+    label = "plugin-sdk-test-cosmos-sqlra"
+    name = "7b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e"
+    resourceGroupName = rg.res.name
+    accountName = account.res.name
+    roleDefinitionId = dataReaderRoleId
+    principalId = uai.res.principalId
+    scope = account.res.id
+  }
+}

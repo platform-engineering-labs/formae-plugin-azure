@@ -1,0 +1,104 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.documentdb.cosmossqlroledefinition
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DocumentDB::SqlRoleDefinition"
+const apiVersion = "2025-10-15"
+
+/// CustomRole is the only value worth declaring: BuiltInRole names the two roles
+/// Azure ships with every account, and those cannot be created or deleted.
+typealias RoleDefinitionType = "CustomRole"|"BuiltInRole"
+
+/// A set of data-plane operations. `dataActions` grants; `notDataActions` carves
+/// exceptions out of a grant.
+///
+/// Actions are Cosmos data-plane action strings, not ARM action strings, e.g.
+/// `Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/read`.
+class RolePermission {
+    dataActions: Listing<String>?
+
+    notDataActions: Listing<String>?
+}
+
+open class SqlRoleDefinitionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SqlRoleDefinitionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SqlRoleDefinitionResolvable = (this) {
+        property = "name"
+    }
+    hidden accountName: SqlRoleDefinitionResolvable = (this) {
+        property = "accountName"
+    }
+    hidden resourceGroupName: SqlRoleDefinitionResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A Cosmos DB NoSQL data-plane RBAC role definition.
+///
+/// This is a different permission system from ARM RBAC
+/// (AZURE::Authorization::RoleDefinition): it governs reading and writing documents
+/// through the data-plane endpoint, not managing Azure resources. An account-level
+/// Owner has no data-plane access unless a role assignment grants it.
+///
+/// `name` is a GUID the caller chooses — ARM does not generate one. Pick a stable
+/// GUID and keep it: re-PUTting the same GUID edits the definition in place.
+///
+/// Discovery deliberately skips the two built-in roles (Data Reader and Data
+/// Contributor) that every account exposes; ARM refuses to delete them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DocumentDB::DatabaseAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "accountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class SqlRoleDefinition extends formae.Resource {
+
+    /// GUID naming the role definition inside the account.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(matches(Regex(#"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Cosmos DB account.
+    @azure.FieldHint { required = true; createOnly = true }
+    accountName: String|formae.Resolvable
+
+    /// Display name, unique within the account.
+    @azure.FieldHint { required = true }
+    roleName: String(length >= 1 && length <= 256)
+
+    @azure.FieldHint { createOnly = true }
+    type: RoleDefinitionType = "CustomRole"
+
+    /// Fully qualified ARM scopes at or below which this role may be assigned.
+    /// Must have at least one entry; the account's own ARM ID is the usual value.
+    /// Scopes above the account are not enforceable.
+    @azure.FieldHint { required = true }
+    assignableScopes: Listing<String|formae.Resolvable>(length >= 1)
+
+    @azure.FieldHint { required = true }
+    permissions: Listing<RolePermission>(length >= 1)
+
+    hidden parent = this
+
+    hidden res: SqlRoleDefinitionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
