@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
@@ -22,10 +23,35 @@ import (
 // Plugin implements the Formae ResourcePlugin interface.
 // The SDK automatically provides identity methods (Name, Version, Namespace)
 // by reading formae-plugin.pkl at startup.
-type Plugin struct{}
+type Plugin struct {
+	// oidc carries the token source the SDK installs via SetOidcTokenSource,
+	// plus the plugin-lifetime credential cache it backs. Nil until the SDK
+	// calls SetOidcTokenSource (or on an agent too old to pair a broker), in
+	// which case every target config threads nil deps and Oidc auth fails
+	// closed rather than falling back to ambient credentials.
+	oidc *config.OidcDeps
+}
 
 // Compile-time check: Plugin must satisfy ResourcePlugin interface.
 var _ plugin.ResourcePlugin = &Plugin{}
+
+// Compile-time check: Plugin must satisfy OidcAware, so the SDK hands it an
+// OidcTokenSource at startup.
+var _ plugin.OidcAware = &Plugin{}
+
+// SetOidcTokenSource receives the token source the SDK mints OIDC identity
+// tokens through. It is called once at startup, before any operation, and
+// threads the resulting deps onto every parsed target config so Oidc auth
+// blocks can exchange a token for Azure credentials.
+func (p *Plugin) SetOidcTokenSource(src plugin.OidcTokenSource) {
+	p.oidc = config.NewOidcDeps(src)
+}
+
+// targetConfig parses a request's target config with this plugin instance's
+// OIDC deps attached.
+func (p *Plugin) targetConfig(raw json.RawMessage) (*config.Config, error) {
+	return config.FromTargetConfig(raw, p.oidc)
+}
 
 // =============================================================================
 // Configuration Methods
@@ -71,7 +97,7 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 
 // Create provisions a new Azure resource.
 func (p *Plugin) Create(ctx context.Context, request *resource.CreateRequest) (*resource.CreateResult, error) {
-	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := p.targetConfig(request.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +116,7 @@ func (p *Plugin) Create(ctx context.Context, request *resource.CreateRequest) (*
 
 // Read retrieves the current state of an Azure resource.
 func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*resource.ReadResult, error) {
-	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := p.targetConfig(request.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +135,7 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 
 // Update modifies an existing Azure resource.
 func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := p.targetConfig(request.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +154,7 @@ func (p *Plugin) Update(ctx context.Context, request *resource.UpdateRequest) (*
 
 // Delete removes an Azure resource.
 func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := p.targetConfig(request.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +173,7 @@ func (p *Plugin) Delete(ctx context.Context, request *resource.DeleteRequest) (*
 
 // Status checks the progress of an async operation.
 func (p *Plugin) Status(ctx context.Context, request *resource.StatusRequest) (*resource.StatusResult, error) {
-	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := p.targetConfig(request.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +198,7 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		"additionalProperties", request.AdditionalProperties,
 	)
 
-	targetConfig, err := config.FromTargetConfig(request.TargetConfig)
+	targetConfig, err := p.targetConfig(request.TargetConfig)
 	if err != nil {
 		log.Error("Failed to parse Azure config", "error", err)
 		return nil, err

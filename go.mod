@@ -1,6 +1,6 @@
 module github.com/platform-engineering-labs/formae-plugin-azure
 
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.0
@@ -51,8 +51,14 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.0
 	github.com/google/uuid v1.6.0
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.26
-	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.1
+	// The OidcAware interface this plugin implements landed after
+	// pkg/plugin/v0.4.1. Re-pin to the next official tag when one is cut, as
+	// the aws and gcp plugins do from the same commit.
+	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2-0.20260821224650-dc5149d5a102
 	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6
+	// Provides oidcx/azure, the workload identity federation credential
+	// exchange. Re-pin when oox cuts a tag.
+	github.com/platform-engineering-labs/oox v0.1.1-0.20260831005205-99489fc5e7ca
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.12.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -66,26 +72,25 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.2 // indirect
 	github.com/apple/pkl-go v0.13.2 // indirect
 	github.com/asdine/storm v2.1.2+incompatible // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.4 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.43.5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.7 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.32.12 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.12 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.20 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.32.35 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.34 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.35 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.1.10 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.20 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.20 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.21 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.36 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.36 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.36 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.12 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.20 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.35 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.20 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.0.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.13 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.17 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.41.9 // indirect
-	github.com/aws/smithy-go v1.24.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.5.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.33.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.45.4 // indirect
+	github.com/aws/smithy-go v1.27.7 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -106,6 +111,7 @@ require (
 	github.com/naegelejd/go-acl v0.0.0-20260323030528-42e4d61407df // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1 // indirect
+	github.com/platform-engineering-labs/formae/pkg/credential v0.0.0-20260821213704-ba68bacf6dd6 // indirect
 	github.com/platform-engineering-labs/orbital v0.1.36 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.1 // indirect

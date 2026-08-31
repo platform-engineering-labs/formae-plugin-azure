@@ -286,9 +286,10 @@ var newCredential = func(cfg *config.Config) (azcore.TokenCredential, error) {
 	return cfg.ToAzureCredential(context.Background())
 }
 
-// NewClient returns a cached *Client for the config's subscription, building one
-// on first use. The returned Client (and its shared credential) is reused across
-// operations so the SDK's token cache survives — see clientCache.
+// NewClient returns a cached *Client for the config's subscription and auth
+// block, building one on first use. The returned Client (and its shared
+// credential) is reused across operations so the SDK's token cache survives
+// — see clientCache.
 func NewClient(cfg *config.Config) (*Client, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("azure config is required")
@@ -297,12 +298,23 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("azure config requires non-empty SubscriptionId")
 	}
 
+	// The auth block is part of the key, not just the subscription: it is
+	// mutable (createOnly = false, so a target can move between ambient and
+	// Oidc auth without a replace) and the credential is a function of it.
+	// Keying on subscription alone would keep serving whichever credential
+	// happened to be built first - including silently keeping an ambient
+	// credential after an OidcAuth block is added, which is exactly the
+	// onboarding path this plugin exists to support, and exactly the kind of
+	// fall-through to ambient credentials the rest of this change fails
+	// closed against everywhere else.
+	key := cfg.SubscriptionId + "\x00" + string(cfg.Auth)
+
 	// Global lock guards only the map get-or-create — released immediately.
 	clientCacheMu.Lock()
-	entry, ok := clientCache[cfg.SubscriptionId]
+	entry, ok := clientCache[key]
 	if !ok {
 		entry = &clientEntry{}
-		clientCache[cfg.SubscriptionId] = entry
+		clientCache[key] = entry
 	}
 	clientCacheMu.Unlock()
 

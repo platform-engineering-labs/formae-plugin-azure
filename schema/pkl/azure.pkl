@@ -19,8 +19,47 @@ open class Config {
   hidden fixed type: String = "Azure"
   hidden subscriptionId: SubscriptionId
 
+  /// How the agent authenticates to this subscription. Omitting it means
+  /// the ambient default credential chain: environment variables, managed
+  /// identity, `az login`, etc - exactly as before this block existed.
+  ///
+  /// Mutable, like the AWS plugin's equivalent: how the agent authenticates
+  /// is not where the resources live, so switching a target between ambient
+  /// credentials and federation must be a target update rather than a
+  /// replace that destroys and recreates every resource on it.
+  @formae.ConfigFieldHint { createOnly = false }
+  hidden auth: Auth?
+
   fixed Type: String = type
   fixed SubscriptionId: SubscriptionId = subscriptionId
+  fixed Auth: Auth? = auth
+}
+
+/// How the agent authenticates to this subscription.
+abstract class Auth {
+  hidden fixed type: String
+  fixed Type: String = type
+}
+
+/// Workload identity federation: the agent exchanges a short-lived OIDC
+/// identity token for Azure credentials, with no client secret and no static
+/// credential anywhere.
+///
+/// There is no `DefaultChain` counterpart, for the same reason the GCP plugin
+/// has none: Azure's default chain takes no parameters, so the variant would
+/// be empty and its only meaning would be "what happens when you omit auth" -
+/// which omitting auth already says.
+class OidcAuth extends Auth {
+  fixed type = "Oidc"
+
+  /// The Entra tenant the managed identity lives in, as reported by
+  /// `formae connect azure`.
+  hidden tenantId: String
+  fixed TenantId: String = tenantId
+
+  /// The managed identity's client id. Not its principal or object id.
+  hidden clientId: String
+  fixed ClientId: String = clientId
 }
 
 /// Resource hint for Azure resources

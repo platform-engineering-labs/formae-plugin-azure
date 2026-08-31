@@ -10,6 +10,8 @@ formae agent.
 
 ## [Unreleased]
 
+## [0.1.11]
+
 ### Added
 
 - **25 new resource types**, taking the plugin from 148 to 173.
@@ -42,6 +44,17 @@ formae agent.
   previously ran `az group delete --no-wait || true` and reported success
   unconditionally, so a refused delete or a group created mid-sweep leaked silently.
 
+### Added
+
+- Optional `auth` block on `Config`, with one variant, `OidcAuth`: workload
+  identity federation for a hosted formae agent that has no ambient Azure
+  credentials of its own. The agent exchanges a short-lived OIDC identity
+  token for Azure credentials against the tenant and managed-identity
+  client id `formae connect azure` registers - no client secret or static
+  credential is ever stored. Omitting `auth` keeps today's behaviour:
+  `DefaultAzureCredential` (environment variables, managed identity, `az
+  login`, etc). `createOnly = false`, so a target can move onto or off
+  federation without replacing its resources.
 
 ### Changed
 
