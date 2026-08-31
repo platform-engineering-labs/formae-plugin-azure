@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webcertificate.pkl"
+
+import "vars.pkl"
+
+// Update: rotate the PFX password. Everything else on an App Service certificate is
+// either createOnly (the material, the plan, the Key Vault reference) or a read-only
+// output derived from the certificate, so the password is the one in-place change
+// there is.
+//
+// Same caveat as app-service-certificate.pkl: Azure will not accept a certificate
+// that matches no verified custom domain, so this pair cannot pass conformance on
+// the shared subscription.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "webcert-test-rg"
+  name = "formae-plugin-sdk-test-wcert-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local plan = new serviceplan.ServicePlan {
+  label = "webcert-test-plan"
+  name = "fpsdt-wcert-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "B1"
+    tier = "Basic"
+    capacity = 1
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+
+  new webcertificate.WebCertificate {
+    label = "plugin-sdk-test-app-service-certificate"
+    name = "fpsdt-wcert-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    serverFarmId = plan.res.id
+    pfxBlob = formae.value("cGxhY2Vob2xkZXItcGZ4LXJlcGxhY2UtbWU=").opaque
+    // Update: rotate the PFX password.
+    password = formae.value("placeholder-pfx-password-rotated").opaque
+  }
+}

@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+import "@azure/web/webapp.pkl"
+import "@azure/web/webappslot.pkl"
+
+import "vars.pkl"
+
+// A "staging" deployment slot under a Linux web app.
+//
+// The slot is served at `<site>-<slot>.azurewebsites.net` and gets its own
+// siteConfig, which — like the parent's — Azure fills in completely, so every field
+// the plugin reads back is spelled out (see web-app.pkl for why).
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "slot-test-rg"
+  name = "formae-plugin-sdk-test-slot-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Standard S1, not Basic: deployment slots need Standard or better and ARM rejects
+// the slot create outright on Free/Shared/Basic. Billed hourly, prorated to the run.
+local plan = new serviceplan.ServicePlan {
+  label = "slot-test-plan"
+  name = "fpsdt-slot-plan-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  kind = "linux"
+  reserved = true
+  sku = new serviceplan.ServicePlanSKU {
+    name = "S1"
+    tier = "Standard"
+    capacity = 1
+  }
+}
+
+local app = new webapp.WebApp {
+  label = "slot-test-app"
+  name = "fpsdt-slot-app-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  serverFarmId = plan.res.id
+  kind = "app,linux"
+  httpsOnly = true
+  siteConfig = new webapp.SiteConfig {
+    linuxFxVersion = "PYTHON|3.12"
+    netFrameworkVersion = "v4.0"
+    alwaysOn = true
+    ftpsState = "FtpsOnly"
+    minTlsVersion = "1.2"
+    http20Enabled = true
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  plan
+  app
+
+  new webappslot.WebAppSlot {
+    label = "plugin-sdk-test-web-app-slot"
+    name = "staging"
+    siteName = app.res.name
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    serverFarmId = plan.res.id
+    kind = "app,linux"
+    httpsOnly = true
+    siteConfig = new webappslot.SlotSiteConfig {
+      linuxFxVersion = "PYTHON|3.12"
+      netFrameworkVersion = "v4.0"
+      alwaysOn = true
+      ftpsState = "FtpsOnly"
+      minTlsVersion = "1.2"
+      http20Enabled = true
+    }
+    appSettings = new Listing {
+      new webappslot.AppSetting { name = "SLOT_ENV"; value = "staging" }
+    }
+  }
+}

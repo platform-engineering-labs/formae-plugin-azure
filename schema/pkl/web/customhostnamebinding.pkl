@@ -1,0 +1,103 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.web.customhostnamebinding
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Web::CustomHostnameBinding"
+const apiVersion = "2025-03-01"
+
+open class CustomHostnameBindingResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: CustomHostnameBindingResolvable = (this) {
+        property = "id"
+    }
+    hidden name: CustomHostnameBindingResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// How TLS is terminated for the hostname. `SniEnabled` needs a certificate
+/// thumbprint; `IpBasedEnabled` additionally consumes a dedicated IP.
+typealias SSLState = "Disabled"|"SniEnabled"|"IpBasedEnabled"
+
+/// Whether the hostname is a customer-verified domain or an Azure-managed one.
+typealias HostNameType = "Verified"|"Managed"
+
+/// DNS record type Azure expects for the hostname's ownership check.
+typealias CustomHostNameDNSRecordType = "CName"|"A"
+
+/// Kind of Azure resource the hostname points at.
+typealias AzureResourceType = "Website"|"TrafficManager"
+
+/// A custom hostname binding on an App Service app
+/// (`Microsoft.Web/sites/{site}/hostNameBindings/{hostname}`).
+///
+/// PREREQUISITE, and it is not optional: the hostname must already resolve to the
+/// app and pass Azure's domain-ownership check before the binding can be created.
+/// That means a CNAME (or A record plus an `asuid.<host>` TXT record) in the domain's
+/// real DNS zone naming the app. Azure rejects the create with
+/// `CustomDomainVerificationFailed` otherwise, so this type cannot be exercised
+/// against a domain the subscription does not own.
+///
+/// The binding is almost entirely immutable: everything except `sslState` and
+/// `thumbprint` forces a replace, and changing the hostname means a new binding.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Web::WebApp"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "siteName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class CustomHostnameBinding extends formae.Resource {
+
+    /// The fully-qualified custom hostname, e.g. `www.example.com`. This is the ARM
+    /// resource name of the binding.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 253)
+
+    /// Name of the app the hostname binds to, e.g. `app.res.name`.
+    @azure.FieldHint { required = true; createOnly = true }
+    siteName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// TLS binding state. Requires `thumbprint` unless `Disabled`.
+    @azure.FieldHint { hasProviderDefault = true }
+    sslState: SSLState?
+
+    /// SHA-1 thumbprint of the certificate to bind, e.g. `cert.res.thumbprint`.
+    @azure.FieldHint { }
+    thumbprint: (String|formae.Resolvable)?
+
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    hostNameType: HostNameType?
+
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    customHostNameDnsRecordType: CustomHostNameDNSRecordType?
+
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    azureResourceType: AzureResourceType?
+
+    /// ARM ID of an App Service domain that owns the hostname, when the domain is
+    /// managed by Azure.
+    @azure.FieldHint { createOnly = true }
+    domainId: (String|formae.Resolvable)?
+
+    hidden parent = this
+
+    hidden res: CustomHostnameBindingResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

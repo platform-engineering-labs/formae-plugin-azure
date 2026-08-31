@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.web.serviceplan
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Web::ServicePlan"
+const apiVersion = "2025-03-01"
+
+open class ServicePlanResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ServicePlanResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ServicePlanResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Kind of plan. `app` is a Windows plan, `linux` a Linux plan (which also
+/// requires `reserved = true`), `elastic` an Elastic Premium plan for functions,
+/// and `functionapp` a Consumption plan.
+typealias ServicePlanKind = "app"|"linux"|"elastic"|"functionapp"|"windows"|"xenon"
+
+/// SKU of the App Service plan.
+///
+/// `tier`, and `capacity` are echoed back by Azure whether or not the create body
+/// set them, and the conformance framework does not honour `hasProviderDefault` on
+/// fields of a nested class — only on top-level resource fields. Set both
+/// explicitly until nested provider defaults are supported, or a forma that omits
+/// them will show drift on `sku.tier` / `sku.capacity`.
+class ServicePlanSKU {
+    /// SKU name, e.g. `F1`, `B1`, `S1`, `P1v3`, `EP1`, `Y1`.
+    @azure.FieldHint { }
+    name: String(length >= 1)
+
+    /// Billing tier, e.g. `Free`, `Basic`, `Standard`, `PremiumV3`. Azure derives
+    /// it from `name` when omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    tier: String?
+
+    /// Number of worker instances. Azure always returns one (1 by default).
+    @azure.FieldHint { hasProviderDefault = true }
+    capacity: Int(this >= 0)?
+}
+
+/// An App Service plan (`Microsoft.Web/serverfarms`) — the compute a WebApp,
+/// FunctionApp or deployment slot runs on.
+///
+/// A Linux plan needs BOTH `kind = "linux"` and `reserved = true`; Azure treats
+/// `reserved` as the authoritative Linux flag and rejects a Linux app placed on a
+/// plan that does not carry it.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ServicePlan extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 60)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    sku: ServicePlanSKU
+
+    /// Immutable: a Windows plan cannot become a Linux plan in place.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    kind: ServicePlanKind?
+
+    /// `true` for a Linux plan. Immutable after creation.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    reserved: Boolean?
+
+    /// Spread instances across availability zones. Immutable after creation and
+    /// only supported on Premium v2/v3 and Isolated v2 SKUs with capacity >= 2
+    /// (>= 3 in some regions).
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    zoneRedundant: Boolean?
+
+    /// Let apps on this plan scale independently of one another.
+    @azure.FieldHint { hasProviderDefault = true }
+    perSiteScaling: Boolean?
+
+    /// Scale apps on this plan as if the plan were an ElasticPremium SKU.
+    @azure.FieldHint { hasProviderDefault = true }
+    elasticScaleEnabled: Boolean?
+
+    /// Upper bound on total workers when `elasticScaleEnabled` is set.
+    @azure.FieldHint { hasProviderDefault = true }
+    maximumElasticWorkerCount: Int(this >= 1)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ServicePlanResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

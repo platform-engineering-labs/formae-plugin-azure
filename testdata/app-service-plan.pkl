@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/web/serviceplan.pkl"
+
+import "vars.pkl"
+
+// A Linux App Service plan. Basic B1 is the cheapest tier that still supports
+// Always On and health check, which the web-app fixture needs; it is billed hourly
+// and prorated to the length of the run.
+//
+// Only the nested `sku` fields have to be spelled out: `hasProviderDefault` is
+// honoured on top-level fields but not on fields of a nested class, so an omitted
+// `sku.tier` / `sku.capacity` would read back as drift. The top-level provider
+// defaults (zoneRedundant, perSiteScaling, elasticScaleEnabled,
+// maximumElasticWorkerCount) are deliberately left out.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "asp-test-rg"
+  name = "formae-plugin-sdk-test-asp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new serviceplan.ServicePlan {
+    label = "plugin-sdk-test-app-service-plan"
+    name = "fpsdt-asp-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    kind = "linux"
+    reserved = true
+    sku = new serviceplan.ServicePlanSKU {
+      name = "B1"
+      tier = "Basic"
+      capacity = 1
+    }
+  }
+}
