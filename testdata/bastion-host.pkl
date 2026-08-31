@@ -91,6 +91,11 @@ forma {
         name = "IpConf"
         subnetId = bastionSubnet.res.id
         publicIpAddressId = pip.res.id
+        // Spelled out because Azure always populates it. `hasProviderDefault` is
+        // only honoured on top-level fields, so an omitted nested value comes back
+        // from ARM and reads as drift in every phase. Same reason
+        // dns-resolver-inbound-endpoint's fixture declares it.
+        privateIpAllocationMethod = "Dynamic"
       }
     }
     enableTunneling = true
