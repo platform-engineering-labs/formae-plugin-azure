@@ -71,3 +71,32 @@ virtual-hub
 vpn-gateway
 virtual-network-gateway
 virtual-network-gateway-connection
+
+# --- Wave 2 -----------------------------------------------------------------
+
+# Management group operations are tenant-scoped, and no principal on the test
+# subscription has any role assignment above subscription scope - verified with
+#   az role assignment list --scope /subscriptions/<sub> --include-inherited
+# which returns only subscription-scoped Owner/Contributor/Reader rows, and with
+#   az account management-group list
+#   -> AuthorizationFailed: ... does not have authorization to perform action
+#      'Microsoft.Management/managementGroups/read' over scope
+#      '/providers/Microsoft.Management'
+# The handlers are implemented and unit-tested; they cannot be exercised live
+# until a principal is granted a role at the tenant root. Remove these two lines
+# when that lands. Run locally against a tenant-root-capable login with:
+#   make conformance-test-crud TEST=management-group
+management-group
+management-group-subscription-association
+
+# A Managed HSM bills at roughly $3.20/hour from the moment it is created - by
+# far the most expensive resource in the suite - and takes 20-30 min to
+# provision. It also has soft-delete permanently on with a 7-day minimum
+# retention, so the conformance lifecycle's OOB-delete-then-recreate would hit
+# "name already in a soft-deleted state" unless the purge succeeds first. A run
+# that is killed mid-lifecycle therefore leaks a resource costing ~$2,300/month
+# until someone notices. Not worth running on every PR that touches the fixture.
+# The handler is implemented and unit-tested. Run it deliberately, and check
+# afterwards that nothing is left in `az keyvault list-deleted --resource-type mhsm`:
+#   make conformance-test-crud TEST=managed-hsm TIMEOUT=120
+managed-hsm

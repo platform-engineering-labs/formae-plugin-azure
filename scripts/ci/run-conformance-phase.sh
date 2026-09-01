@@ -103,6 +103,38 @@ case "$RESOURCE" in
     # that keeps its own budget.
     set_timeouts 30 90
     ;;
+  recovery-services-vault)
+    # A Recovery Services vault creates in a couple of minutes, but Delete is
+    # refused while any backup item or registered container is still attached,
+    # so the lifecycle spends most of its time on teardown.
+    set_timeouts 15 40
+    ;;
+  backup-policy-vm|backup-policy-file-share)
+    # Both stand up their own Recovery Services vault first.
+    set_timeouts 20 50
+    ;;
+  backup-protected-file-share)
+    # The longest fixture in wave 2: a vault, a storage account and a file share,
+    # then the container registration, before the protected item exists at all.
+    set_timeouts 30 75
+    ;;
+  autoscale-setting)
+    # Autoscale needs a scalable target. The conformance subscription has a
+    # dedicated-VM quota of 0, so a VM scale set and an App Service plan are both
+    # impossible; the fixture uses a Premium_P1 Web PubSub instead, which is
+    # serverless-billed and takes ~10-15 min to provision.
+    set_timeouts 25 60
+    ;;
+  prometheus-rule-group|data-collection-rule-association)
+    # Each builds its parent first - an Azure Monitor workspace, or a data
+    # collection rule plus the resource the association points at.
+    set_timeouts 15 40
+    ;;
+  monitor-workspace|keyvault-key|keyvault-access-policy)
+    # Quick control-plane creates, but the lifecycle does several of them and a
+    # Key Vault delete has to clear soft-delete before the recreate.
+    set_timeouts 10 30
+    ;;
   redis-cache)
     # Out of the matrix because a Basic C0 create is ~20 min and the lifecycle
     # does several; at 30 min the job still ran 60 min before failing on the
