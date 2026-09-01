@@ -73,10 +73,40 @@ list_groups() {
         | grep -E "^${TEST_PREFIX}[A-Za-z0-9._-]*$" || true
 }
 
+# remove_locks <groups...> - drop any management lock inside these groups.
+#
+# A CanNotDelete or ReadOnly lock makes `az group delete` fail permanently, so a
+# leaked lock does not just leave one resource behind - it wedges the whole group
+# and every resource in it, forever, until a human removes the lock by hand. The
+# AZURE::Authorization::ManagementLock fixture creates real locks, and a run that
+# is killed mid-lifecycle leaves one behind, so the reaper has to clear locks
+# before it can be trusted to clear groups.
+#
+# Scoped to the prefixed test groups the caller already verified - this never
+# touches a lock outside them.
+remove_locks() {
+    for RG in $@; do
+        local ids
+        ids=$(az lock list --resource-group "${RG}" --query "[].id" -o tsv 2>/dev/null) || continue
+        [[ -z "${ids}" ]] && continue
+        while IFS= read -r id; do
+            [[ -z "${id}" ]] && continue
+            echo "  removing lock ${id}"
+            az lock delete --ids "${id}" 2>/dev/null || echo "    could not remove lock"
+        done <<< "${ids}"
+    done
+    # Explicit: this script runs under `set -e`, and issue_deletes calls this
+    # first. A lock sweep that could not clean up must not abort the whole
+    # cleanup - deleting groups is the important part, and a lock that survives
+    # shows up as a REFUSED delete below, which is already reported.
+    return 0
+}
+
 # issue_deletes <groups...> - returns non-zero if ARM refused any delete outright.
 # A refusal is reported rather than swallowed; "already gone" is not a refusal.
 issue_deletes() {
     local failed=0
+    remove_locks $@
     for RG in $@; do
         echo "  deleting ${RG}"
         if ! err=$(az group delete --name "${RG}" --yes --no-wait 2>&1); then
