@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/monitor/monitorworkspace.pkl" as amw
+import "@azure/alertsmanagement/prometheusrulegroup.pkl" as prg
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "prg-test-rg"
+  name = "formae-plugin-sdk-test-prg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A Prometheus rule group is scoped to an Azure Monitor workspace — the managed
+// Prometheus metrics store the rules evaluate against — so the fixture stands one
+// up first. Both are in the same region. Nothing writes metrics to the workspace
+// during the run.
+local workspace = new amw.MonitorWorkspace {
+  label = "prg-test-amw"
+  name = "fpsdt-prg-amw-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  publicNetworkAccess = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  workspace
+
+  // One recording rule and one alerting rule. The alert expression is a constant
+  // that can never be true, so nothing ever fires on the shared subscription, and
+  // `enabled` is set on every rule because hasProviderDefault does not reach inside
+  // rules[].
+  new prg.PrometheusRuleGroup {
+    label = "plugin-sdk-test-prometheus-rule-group"
+    name = "fpsdt-prg-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    scopes = new Listing { workspace.res.id }
+    description = "conformance test rule group"
+    enabled = true
+    interval = "PT1M"
+    rules {
+      new prg.PrometheusRule {
+        `record` = "job:node_cpu_seconds:avg_rate5m"
+        expression = "avg by (job) (rate(node_cpu_seconds_total[5m]))"
+        enabled = true
+        labels {
+          ["team"] = "platform"
+        }
+      }
+      new prg.PrometheusRule {
+        alert = "ConformanceTestNeverFires"
+        expression = "vector(0) > 1"
+        enabled = true
+        `for` = "PT5M"
+        severity = 4
+        labels {
+          ["team"] = "platform"
+        }
+        annotations {
+          ["summary"] = "conformance test alert that never fires"
+        }
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

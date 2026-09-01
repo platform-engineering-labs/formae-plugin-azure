@@ -1,0 +1,163 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/networkinterface.pkl"
+import "@azure/compute/virtualmachine.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/datacollectionrule.pkl" as datacollectionrule
+import "@azure/insights/datacollectionruleassociation.pkl" as dcra
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "dcra-test-rg"
+  name = "formae-plugin-sdk-test-dcra-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "dcra-test-vnet"
+  name = "formae-plugin-sdk-test-dcra-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes = new Listing { "10.0.0.0/16" }
+  }
+}
+
+local snet = new subnet.Subnet {
+  label = "dcra-test-snet"
+  name = "dcra-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+local nic = new networkinterface.NetworkInterface {
+  label = "dcra-test-nic"
+  name = "formae-plugin-sdk-test-dcra-nic-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  ipConfigurations = new Listing {
+    new networkinterface.IPConfiguration {
+      name = "dcra-ipcfg"
+      subnet = snet.res.id
+      privateIPAllocationMethod = "Dynamic"
+    }
+  }
+}
+
+// The association's target. ARM only accepts a resource Azure Monitor Agent can
+// run on - a virtual machine, a scale set or an Arc-enabled machine - so the
+// fixture stands up the same small Linux VM the virtual-machine-extension fixture
+// uses. No agent extension is installed, so nothing is ever collected.
+local vm = new virtualmachine.VirtualMachine {
+  label = "dcra-test-vm"
+  name = "formae-plugin-sdk-test-dcra-vm-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  vmSize = "Standard_D2s_v4"
+  adminUsername = "azureuser"
+  adminPassword = "Formae!ConformanceTest42"
+  networkInterfaces = new Listing {
+    new virtualmachine.NetworkInterfaceReference {
+      id = nic.res.id
+      primary = true
+    }
+  }
+  imageReference = new virtualmachine.ImageReference {
+    publisher = "Canonical"
+    offer = "0001-com-ubuntu-server-jammy"
+    sku = "22_04-lts-gen2"
+    version = "latest"
+  }
+  osDisk = new virtualmachine.OSDisk {
+    createOption = "FromImage"
+    caching = "ReadWrite"
+    diskSizeGB = 30
+    managedDisk = new virtualmachine.ManagedDiskParameters {
+      storageAccountType = "Standard_LRS"
+    }
+  }
+}
+
+// Where the rule would write. 30-day retention is what the PerGB2018 base price
+// includes and the 1 GB daily cap bounds ingestion. Destroy soft-deletes the
+// workspace for 14 days, hence the run-ID suffix.
+local law = new workspace.Workspace {
+  label = "dcra-test-law"
+  name = "fpsdt-dcra-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+local rule = new datacollectionrule.DataCollectionRule {
+  label = "dcra-test-dcr"
+  name = "formae-plugin-sdk-test-dcra-dcr-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  kind = "Linux"
+  description = "conformance test cpu sampling"
+  performanceCounters {
+    new datacollectionrule.PerformanceCounterDataSource {
+      name = "perf-counters"
+      streams { "Microsoft-Perf" }
+      samplingFrequencyInSeconds = 60
+      counterSpecifiers {
+        "Processor(*)\\% Processor Time"
+      }
+    }
+  }
+  logAnalyticsDestinations {
+    new datacollectionrule.LogAnalyticsDestination {
+      name = "law-destination"
+      workspaceResourceId = law.res.id
+    }
+  }
+  dataFlows {
+    new datacollectionrule.DataFlow {
+      streams { "Microsoft-Perf" }
+      destinations { "law-destination" }
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  snet
+  nic
+  vm
+  law
+  rule
+
+  // Extension resource: no resourceGroupName of its own. Its ARM id is
+  // <targetResourceId>/providers/Microsoft.Insights/dataCollectionRuleAssociations/<name>.
+  // Exactly one of dataCollectionRuleId and dataCollectionEndpointId may be set.
+  new dcra.DataCollectionRuleAssociation {
+    label = "plugin-sdk-test-data-collection-rule-association"
+    name = "fpsdt-dcra-\(vars.testRunID)"
+    targetResourceId = vm.res.id
+    dataCollectionRuleId = rule.res.id
+    description = "conformance test association"
+  }
+}
