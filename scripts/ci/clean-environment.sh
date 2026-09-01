@@ -95,6 +95,11 @@ remove_locks() {
             az lock delete --ids "${id}" 2>/dev/null || echo "    could not remove lock"
         done <<< "${ids}"
     done
+    # Explicit: this script runs under `set -e`, and issue_deletes calls this
+    # first. A lock sweep that could not clean up must not abort the whole
+    # cleanup - deleting groups is the important part, and a lock that survives
+    # shows up as a REFUSED delete below, which is already reported.
+    return 0
 }
 
 # issue_deletes <groups...> - returns non-zero if ARM refused any delete outright.
