@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.management.managementgroupsubscriptionassociation
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Management::ManagementGroupSubscriptionAssociation"
+const apiVersion = "2021-04-01"
+
+open class ManagementGroupSubscriptionAssociationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagementGroupSubscriptionAssociationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ManagementGroupSubscriptionAssociationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Places one subscription under one management group, so that everything assigned
+/// to the group — policy, roles, exemptions — is inherited by the subscription.
+///
+/// Free.
+///
+/// TENANT-SCOPED, NOT SUBSCRIPTION-SCOPED: like the management group itself, the
+/// ARM calls run against `/providers/Microsoft.Management` and need a role at the
+/// group, not on the subscription.
+///
+/// A subscription belongs to exactly ONE management group. It is never unparented:
+/// deleting this association does not detach the subscription, it moves the
+/// subscription back to the tenant ROOT group. Creating a second association for
+/// the same subscription therefore silently re-parents it rather than failing, and
+/// two formae resources that name the same subscription will fight over it.
+///
+/// Both fields are immutable — moving a subscription to a different group is a
+/// delete of one association and a create of another, not an update.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Management::ManagementGroup"
+    listParam = new formae.ListProperty {
+        parentProperty = "id"
+        listParameter = "managementGroupId"
+    }
+}
+open class ManagementGroupSubscriptionAssociation extends formae.Resource {
+
+    /// Fully qualified ID of the management group the subscription is placed under,
+    /// e.g. `/providers/Microsoft.Management/managementGroups/my-group`.
+    @azure.FieldHint { required = true; createOnly = true }
+    managementGroupId: String(length >= 1)|formae.Resolvable
+
+    /// The subscription's GUID — the bare id, not `/subscriptions/<guid>`.
+    @azure.FieldHint { required = true; createOnly = true }
+    subscriptionId: String(length >= 1)|formae.Resolvable
+
+    /// The subscription's friendly name. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    displayName: String?
+
+    hidden parent = this
+
+    hidden res: ManagementGroupSubscriptionAssociationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

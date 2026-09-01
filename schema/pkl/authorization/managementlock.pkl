@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.managementlock
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Authorization::ManagementLock"
+const apiVersion = "2020-05-01"
+
+open class ManagementLockResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagementLockResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ManagementLockResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Blocks deletion — or all writes — of everything at and under a scope, whoever
+/// the caller is and whatever RBAC says. A lock is the only Azure control that a
+/// subscription Owner cannot simply override: it has to be removed first.
+///
+/// Free.
+///
+/// A LOCK IS A FOOTGUN. `CanNotDelete` at a resource group makes `az group delete`
+/// fail for good until the lock is gone, and a lock at subscription scope wedges
+/// every resource in the subscription — including other people's. Scope a lock as
+/// narrowly as the intent allows, and never at subscription scope in shared or test
+/// environments. Removing a lock needs `Microsoft.Authorization/locks/delete`,
+/// which of the built-in roles only Owner and User Access Administrator hold.
+///
+/// `ReadOnly` is stricter than it sounds: it forbids every write to the scope, so
+/// operations that look like reads but POST — listing storage account keys, for
+/// instance — start failing too.
+///
+/// Not modelled: `owners`, which ARM accepts but never acts on.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class ManagementLock extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 90)
+
+    /// What the lock protects: a subscription (`/subscriptions/{id}`), a resource
+    /// group, or a single resource. Everything beneath the scope is locked too.
+    ///
+    /// Prefer the narrowest scope that expresses the intent — see the class note.
+    @azure.FieldHint { required = true; createOnly = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// `CanNotDelete` lets authorized users read and modify but not delete.
+    /// `ReadOnly` forbids modification and deletion both. `NotSpecified` locks
+    /// nothing and exists only because ARM's enum carries it.
+    @azure.FieldHint { required = true }
+    level: ("CanNotDelete"|"ReadOnly"|"NotSpecified")
+
+    /// Why the lock exists — shown to whoever hits it. Up to 512 characters.
+    @azure.FieldHint { }
+    notes: String(length <= 512)?
+
+    hidden parent = this
+
+    hidden res: ManagementLockResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

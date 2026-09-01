@@ -1,0 +1,101 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.authorization.policyexemption
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Authorization::PolicyExemption"
+
+/// PREVIEW API VERSION ON PURPOSE. ARM publishes NO stable api-version for
+/// `Microsoft.Authorization/policyExemptions` — every version the provider
+/// advertises is a preview — so a preview contract is unavoidable here. This value
+/// matches the one the Go SDK's `armpolicy/v2` exemptions client sends; the stable
+/// `armpolicy` v1 module dropped the exemptions client entirely.
+const apiVersion = "2026-01-01-preview"
+
+open class PolicyExemptionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PolicyExemptionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PolicyExemptionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Carves a scope out of a policy assignment: resources at and under `scope` stop
+/// being evaluated by the named assignment, so a `deny` stops blocking them and an
+/// `audit` stops reporting them as non-compliant.
+///
+/// Free.
+///
+/// AN EXEMPTION TURNS A GUARDRAIL OFF. It is the supported way to do that — better
+/// than deleting the assignment — but it is silent: nothing surfaces at the exempt
+/// scope to say the policy no longer applies. Give it an `expiresOn` so it lapses
+/// on its own, and say why in `description`.
+///
+/// `scope` does not have to sit under the assignment's scope; when it does not, ARM
+/// rejects the exemption unless `assignmentScopeValidation` is `DoNotValidate`.
+///
+/// Not modelled: `metadata` (arbitrary JSON, as on the definition) and
+/// `resourceSelectors` (selective rollout). Neither is read back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class PolicyExemption extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    /// What is exempted — a subscription, a resource group, a single resource, or a
+    /// management group. Everything beneath it is exempted too.
+    @azure.FieldHint { required = true; createOnly = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// ARM ID of the policy assignment to stop evaluating over `scope`.
+    @azure.FieldHint { required = true }
+    policyAssignmentId: (String|formae.Resolvable)
+
+    /// `Waiver` — the scope is accepted as non-compliant. `Mitigated` — the risk is
+    /// handled some other way. The choice is documentation, not behaviour: both
+    /// stop evaluation identically.
+    @azure.FieldHint { required = true }
+    exemptionCategory: ("Waiver"|"Mitigated")
+
+    @azure.FieldHint { }
+    displayName: String?
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// When the exemption lapses, as UTC ISO 8601 (`2030-01-01T00:00:00Z`). After
+    /// this the assignment evaluates the scope again; the exemption resource stays
+    /// until it is deleted.
+    @azure.FieldHint { }
+    expiresOn: String?
+
+    /// When the assignment is an initiative, the definitions inside it that this
+    /// exemption covers. Omitted exempts the whole initiative.
+    @azure.FieldHint { }
+    policyDefinitionReferenceIds: Listing<String>?
+
+    /// `Default` makes ARM reject an exemption whose `scope` is not at or under the
+    /// assignment's scope. `DoNotValidate` bypasses that check.
+    @azure.FieldHint { hasProviderDefault = true }
+    assignmentScopeValidation: ("Default"|"DoNotValidate")?
+
+    hidden parent = this
+
+    hidden res: PolicyExemptionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -30,18 +30,21 @@ import (
 // List() reads must be supplied by that resource's hint, unless the resource is
 // listed in subscriptionWideList below.
 var subscriptionWideList = map[string]string{
-	"AZURE::Authorization::PolicyAssignment": "falls back to NewListPager over the whole subscription when scope is empty",
-	"AZURE::Authorization::RoleAssignment":   "defaults scope to /subscriptions/<id> when empty",
-	"AZURE::Authorization::RoleDefinition":   "defaults scope to /subscriptions/<id> when empty",
-	"AZURE::DBforPostgreSQL::Configuration":  "enumerates all flexible servers in the subscription when the server scope is empty",
-	"AZURE::DBforPostgreSQL::Database":       "enumerates all servers in the subscription when the server scope is empty",
-	"AZURE::DBforPostgreSQL::FirewallRule":   "enumerates all flexible servers in the subscription when the server scope is empty",
-	"AZURE::EventGrid::EventSubscription":    "enumerates subscription-wide when the target resource scope is empty",
-	"AZURE::Insights::DiagnosticSetting":     "hangs off an arbitrary target resource; no parent chain to drive it",
-	"AZURE::Network::PrivateDnsZoneGroup":    "enumerates all private endpoints in the subscription when the endpoint scope is empty",
-	"AZURE::Network::PrivateEndpoint":        "falls back to NewListBySubscriptionPager when the resource group is empty",
-	"AZURE::Sql::Database":                   "enumerates all servers in the subscription when the server scope is empty",
-	"AZURE::Sql::ElasticPool":                "enumerates all servers in the subscription when the server scope is empty",
+	"AZURE::Authorization::ManagementLock":     "falls back to NewListAtSubscriptionLevelPager, which returns locks at every scope beneath it, when scope is empty",
+	"AZURE::Authorization::PolicyAssignment":   "falls back to NewListPager over the whole subscription when scope is empty",
+	"AZURE::Authorization::PolicyExemption":    "falls back to NewListPager over the whole subscription when scope is empty",
+	"AZURE::Authorization::RoleAssignment":     "defaults scope to /subscriptions/<id> when empty",
+	"AZURE::Authorization::RoleDefinition":     "defaults scope to /subscriptions/<id> when empty",
+	"AZURE::DBforPostgreSQL::Configuration":    "enumerates all flexible servers in the subscription when the server scope is empty",
+	"AZURE::DBforPostgreSQL::Database":         "enumerates all servers in the subscription when the server scope is empty",
+	"AZURE::DBforPostgreSQL::FirewallRule":     "enumerates all flexible servers in the subscription when the server scope is empty",
+	"AZURE::EventGrid::EventSubscription":      "enumerates subscription-wide when the target resource scope is empty",
+	"AZURE::Insights::DiagnosticSetting":       "hangs off an arbitrary target resource; no parent chain to drive it",
+	"AZURE::Network::PrivateDnsZoneGroup":      "enumerates all private endpoints in the subscription when the endpoint scope is empty",
+	"AZURE::Network::PrivateEndpoint":          "falls back to NewListBySubscriptionPager when the resource group is empty",
+	"AZURE::PolicyInsights::PolicyRemediation": "falls back to NewListForSubscriptionPager over the whole subscription when scope is empty",
+	"AZURE::Sql::Database":                     "enumerates all servers in the subscription when the server scope is empty",
+	"AZURE::Sql::ElasticPool":                  "enumerates all servers in the subscription when the server scope is empty",
 }
 
 var (
