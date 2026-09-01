@@ -347,9 +347,13 @@ func (p *PolicyAssignment) List(ctx context.Context, request *resource.ListReque
 				return nil, fmt.Errorf("failed to list policy assignments: %w", err)
 			}
 			for _, assignment := range page.Value {
-				if assignment != nil && assignment.ID != nil {
-					nativeIDs = append(nativeIDs, *assignment.ID)
+				if assignment == nil || assignment.ID == nil {
+					continue
 				}
+				if !policyAssignmentIsWithinSubscription(*assignment.ID, p.config.SubscriptionId) {
+					continue
+				}
+				nativeIDs = append(nativeIDs, *assignment.ID)
 			}
 		}
 		return &resource.ListResult{NativeIDs: nativeIDs}, nil
@@ -363,9 +367,13 @@ func (p *PolicyAssignment) List(ctx context.Context, request *resource.ListReque
 			return nil, fmt.Errorf("failed to list policy assignments: %w", err)
 		}
 		for _, assignment := range page.Value {
-			if assignment != nil && assignment.ID != nil {
-				nativeIDs = append(nativeIDs, *assignment.ID)
+			if assignment == nil || assignment.ID == nil {
+				continue
 			}
+			if !policyAssignmentIsWithinSubscription(*assignment.ID, p.config.SubscriptionId) {
+				continue
+			}
+			nativeIDs = append(nativeIDs, *assignment.ID)
 		}
 	}
 	return &resource.ListResult{NativeIDs: nativeIDs}, nil
@@ -375,6 +383,31 @@ func (p *PolicyAssignment) List(ctx context.Context, request *resource.ListReque
 // or "" when the scope is broader than one. A scope that reaches further than a
 // group — down to an individual resource — has no group-level pager of its own, so
 // it falls back to the subscription listing.
+// policyAssignmentIsWithinSubscription reports whether an assignment id names
+// something at or below the given subscription.
+//
+// ARM's subscription-scoped list returns every assignment that APPLIES to the
+// subscription, which includes ones assigned on a management group above it.
+// Those are visible but not ours: the target grants formae rights on the
+// subscription, so reading an assignment above it is refused, and a resource
+// imported from there fails on every sync forever rather than once.
+//
+// Both list branches need this, not just the subscription-wide one. The SDK is
+// explicit that an unfiltered resource-group list "includes all policy
+// assignments associated with the resource group, including those that apply
+// directly or apply from containing scopes" - and a containing scope can be a
+// management group, so that pager returns inherited assignments too.
+//
+// Casing is normalised because ARM is inconsistent about it in resource ids, and
+// a casing difference must not drop an assignment that really is ours.
+func policyAssignmentIsWithinSubscription(nativeID, subscriptionID string) bool {
+	if nativeID == "" || subscriptionID == "" {
+		return false
+	}
+	prefix := "/subscriptions/" + strings.ToLower(subscriptionID) + "/"
+	return strings.HasPrefix(strings.ToLower(nativeID), prefix)
+}
+
 func policyAssignmentResourceGroupFromScope(scope string) string {
 	const marker = "/resourcegroups/"
 	idx := strings.Index(strings.ToLower(scope), marker)
