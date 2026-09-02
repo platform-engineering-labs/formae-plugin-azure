@@ -1,0 +1,118 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storageobjectreplicationpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::ObjectReplicationPolicy"
+const apiVersion = "2024-01-01"
+
+/// Narrows which blobs a replication rule copies.
+class ReplicationFilters {
+    /// Copy only blobs whose names start with one of these prefixes.
+    @azure.FieldHint { }
+    prefixMatch: Listing<String>?
+
+    /// Copy only blobs created at or after this instant, as
+    /// `yyyy-MM-ddTHH:mm:ssZ`.
+    @azure.FieldHint { }
+    minCreationTime: String?
+}
+
+/// One source-container to destination-container copy.
+///
+/// ARM mints a `ruleId` for every rule on the destination side and requires it
+/// back when the same policy is written to the source account. That id is
+/// service-owned and threaded through by the plugin, so it is deliberately not a
+/// field here.
+class ReplicationRule {
+    @azure.FieldHint { required = true }
+    sourceContainer: String(length >= 3 && length <= 63)
+
+    @azure.FieldHint { required = true }
+    destinationContainer: String(length >= 3 && length <= 63)
+
+    @azure.FieldHint { }
+    filters: ReplicationFilters?
+}
+
+open class ObjectReplicationPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ObjectReplicationPolicyResolvable = (this) {
+        property = "id"
+    }
+    /// Service-minted policy id, shared by the destination and source copies.
+    hidden policyId: ObjectReplicationPolicyResolvable = (this) {
+        property = "policyId"
+    }
+    /// ARM ID of the source-account copy of this policy.
+    hidden sourcePolicyId: ObjectReplicationPolicyResolvable = (this) {
+        property = "sourcePolicyId"
+    }
+}
+
+/// Object replication between two storage accounts
+/// (`Microsoft.Storage/storageAccounts/<account>/objectReplicationPolicies/<id>`).
+///
+/// ARM models one logical policy as TWO resources that must agree: it is created
+/// on the DESTINATION account under the name `default`, which mints the policy id
+/// and a rule id per rule, and the same document — carrying those ids — must then
+/// be written to the SOURCE account under the minted policy id. Neither half works
+/// alone.
+///
+/// This resource is the whole round trip: `resourceGroupName` and
+/// `storageAccountName` name the destination account (the resource's ARM parent),
+/// `sourceStorageAccountId` names the source, and the provider performs both
+/// writes and both deletes. The identifier is the destination copy's ARM ID.
+///
+/// Both accounts need change feed and blob versioning enabled on their blob
+/// service before ARM will accept the policy.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class ObjectReplicationPolicy extends formae.Resource {
+
+    /// Resource group of the DESTINATION account.
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the DESTINATION account — the parent this resource hangs off, and
+    /// the side ARM requires the policy to be created on first.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Full ARM resource ID of the SOURCE account, e.g. the source
+    /// `StorageAccount`'s `res.id`. ARM requires the resource ID rather than a
+    /// bare name whenever cross-tenant replication is disallowed, which is the
+    /// default on accounts created today.
+    @azure.FieldHint { required = true; createOnly = true }
+    sourceStorageAccountId: String(length >= 1)|formae.Resolvable
+
+    /// Publish object-replication metrics for this policy.
+    @azure.FieldHint { }
+    metricsEnabled: Boolean = false
+
+    /// ARM requires at least one rule.
+    @azure.FieldHint { required = true }
+    rules: Listing<ReplicationRule>(!isEmpty)
+
+    hidden parent = this
+
+    hidden res: ObjectReplicationPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storagequeueserviceproperties
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::QueueServiceProperties"
+const apiVersion = "2024-01-01"
+
+/// One CORS rule for the Queue service. Every field is required by ARM whenever a
+/// rule is present.
+class QueueCorsRule {
+    /// Origins allowed via CORS, or a single `*` for all.
+    @azure.FieldHint { required = true }
+    allowedOrigins: Listing<String>(!isEmpty)
+
+    @azure.FieldHint { required = true }
+    allowedMethods: Listing<"CONNECT"|"DELETE"|"GET"|"HEAD"|"MERGE"|"OPTIONS"|"PATCH"|"POST"|"PUT"|"TRACE">(!isEmpty)
+
+    /// Request headers allowed to cross origins.
+    @azure.FieldHint { required = true }
+    allowedHeaders: Listing<String>(!isEmpty)
+
+    /// Response headers exposed to the CORS client.
+    @azure.FieldHint { required = true }
+    exposedHeaders: Listing<String>(!isEmpty)
+
+    /// How long, in seconds, the browser may cache the preflight response.
+    @azure.FieldHint { required = true }
+    maxAgeInSeconds: Int(this >= 0)
+}
+
+open class QueueServicePropertiesResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: QueueServicePropertiesResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// Service-level settings of a storage account's Queue service
+/// (`Microsoft.Storage/storageAccounts/<account>/queueServices/default`).
+///
+/// This is a singleton that ARM creates with the account and never deletes: there
+/// is no create and no delete verb, only `getServiceProperties` and
+/// `setServiceProperties`. The provider therefore maps create and update onto the
+/// same `set` call, and maps delete onto setting the properties back to empty —
+/// which is what "no queue service configuration" means in ARM. At most five CORS
+/// rules are accepted.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class QueueServiceProperties extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent storage account.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// CORS rules for the Queue service, at most five. Omitting them disables CORS.
+    @azure.FieldHint { }
+    corsRules: Listing<QueueCorsRule>?
+
+    hidden parent = this
+
+    hidden res: QueueServicePropertiesResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
