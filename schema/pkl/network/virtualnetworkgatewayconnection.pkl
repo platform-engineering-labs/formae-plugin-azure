@@ -45,7 +45,7 @@ typealias IkeIntegrity = "MD5"|"SHA1"|"SHA256"|"SHA384"|"GCMAES128"|"GCMAES256"
 /// A custom IPsec/IKE policy. Azure requires the whole set — every field below is
 /// mandatory — and accepts at most one policy per connection. Omit
 /// `ipsecPolicies` entirely to use Azure's default proposals.
-class IpsecPolicy {
+class IpsecPolicy extends formae.SubResource {
     @azure.FieldHint { required = true }
     saLifeTimeSeconds: Int(this >= 300 && this <= 172799)
 

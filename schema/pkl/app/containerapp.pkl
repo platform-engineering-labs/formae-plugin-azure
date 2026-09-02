@@ -30,7 +30,7 @@ open class ContainerAppResolvable extends formae.Resolvable {
 typealias IngressTransportMethod = "auto"|"http"|"http2"
 
 /// Ingress configuration for the Container App.
-class Ingress {
+class Ingress extends formae.SubResource {
     /// Whether the app exposes an external HTTP endpoint.
     `external`: Boolean
 
@@ -48,7 +48,7 @@ class Ingress {
 }
 
 /// A secret used by the Container App. The value is write-only.
-class Secret {
+class Secret extends formae.SubResource {
     /// Secret name.
     name: String
 

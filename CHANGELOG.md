@@ -10,6 +10,32 @@ formae agent.
 
 ## [Unreleased]
 
+## [0.1.12]
+
+### Changed
+
+- 86 nested classes across the schema now `extend formae.SubResource` instead of
+  being plain classes. Schema extraction only walks nested classes that formally
+  extend `SubResource`, so a plain nested class's `@azure.FieldHint` annotations
+  never reached the schema and its nullable collections never got the
+  absent/explicit-null/explicit-empty handling a real sub-resource gets elsewhere.
+  Both now apply, which is a behavior change rather than a no-op:
+  - A field the provider always populates (e.g. a load balancer probe's
+    `intervalInSeconds`) is tolerated as a provider default instead of reading
+    as drift on every sync.
+  - An immutable nested field can no longer be planned for an in-place update.
+  - Six credential-bearing nested fields are now correctly excluded from drift
+    detection instead of drifting permanently: `App::ContainerApp`'s
+    `Secret.value`, `App::ManagedEnvironment`'s
+    `LogAnalyticsConfiguration.sharedKey`, `Network::ApplicationGateway`'s
+    `SSLCertificate.data` and `.password`, `Network::VirtualNetworkGateway`'s
+    `VpnClientConfiguration.radiusServerSecret`, and `Network::VpnGateway`'s
+    `VpnGatewayConnection.sharedKey`.
+  - Eleven nullable collections gain the unset/explicit-null/explicit-empty
+    distinction other sub-resources already have.
+  - `required` validation now fires for 118 previously-unenforced nested fields,
+    and eval may reject a forma that omitted one of them.
+
 ## [0.1.11]
 
 ### Added
