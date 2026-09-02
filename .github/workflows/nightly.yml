@@ -228,7 +228,20 @@ jobs:
           FORMAE_TEST_OOB_DELETE_TIMEOUT: "25"
           FORMAE_TEST_DISCOVERY_TIMEOUT: "25"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          FORMAE_TEST_PROVIDER_DEFAULT_OBSERVATIONS: /tmp/provider-default-observations.json
         run: make conformance-test TIMEOUT=75
+
+      # The omit-and-observe records for hasProviderDefault fields. Uploaded even
+      # when the case fails: a field the provider populates that the schema does
+      # not annotate is reported as a comparison failure, so a red case carries
+      # exactly the observation worth reading.
+      - name: Upload provider-default observations
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: provider-default-observations-${{ matrix.resource }}
+          path: /tmp/provider-default-observations.json
+          if-no-files-found: ignore
 
   # Clean up Azure resources after all matrix jobs complete
   cleanup:

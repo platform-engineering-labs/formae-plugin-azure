@@ -58,6 +58,12 @@ formae agent.
 
 ### Changed
 
+- Every `hasProviderDefault` schema annotation now carries a recorded
+  disposition in `schema/provider-default-dispositions.json`, enforced by a
+  unit test: new annotations fail CI until classified, and rows for removed
+  fields fail as stale. All current annotations start as `pending`;
+  classifications land per field as the provider-default audit reaches them.
+
 - `KeyVault::Secret` Read now includes the secret value in the returned properties,
   enabling the `value` resolvable to resolve for downstream resources. The value is
   protected at rest by formae's `SecretValue` hashing (introduced in v0.1.9).
