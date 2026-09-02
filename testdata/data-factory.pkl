@@ -1,0 +1,54 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adf-test-rg"
+  name = "formae-plugin-sdk-test-adf-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // An empty factory is free: Data Factory bills per activity run, per
+  // integration-runtime hour and per read/write operation, so a factory with
+  // nothing in it costs nothing.
+  //
+  // Factory names are globally unique within a region, hence the run ID.
+  //
+  // `identity` is deliberately NOT declared: the service creates a
+  // system-assigned identity on every factory whether or not one is asked for,
+  // which is exactly the provider default the schema records. Leaving it out is
+  // what exercises that.
+  //
+  // `repoConfiguration` is also left out. Git mode points the factory at a real
+  // GitHub or Azure DevOps repository and the service validates access to it, so
+  // a conformance fixture cannot exercise it without standing up a repo and a
+  // credential; the factory stays in live mode.
+  new datafactory.Factory {
+    label = "plugin-sdk-test-data-factory"
+    name = "fpsdt-adf-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    publicNetworkAccess = "Enabled"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}
