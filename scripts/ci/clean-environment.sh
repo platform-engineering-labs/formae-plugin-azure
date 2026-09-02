@@ -88,10 +88,20 @@ echo ""
 list_groups() {
     local raw
     raw=$(az group list -o json 2>/dev/null) || return 0
-    [[ -z "${raw}" ]] && return 0
+    # An if-block, not `[[ ... ]] && return 0`: when raw is non-empty that
+    # construct evaluates to the failed test's status, and this function's status
+    # is consumed by a `GROUPS=$(list_groups)` command substitution, where a
+    # non-zero exit kills the whole script under `set -e`.
+    if [[ -z "${raw}" ]]; then
+        return 0
+    fi
     printf '%s' "${raw}" \
         | jq -r --arg p "${TEST_PREFIX}" '.[]? | select(.name != null) | select(.name | startswith($p)) | .name' 2>/dev/null \
         | grep -E "^${TEST_PREFIX}[A-Za-z0-9._-]*$" || true
+    # Explicit: "no matching groups" is a normal result, not a failure. Every
+    # caller assigns this through a command substitution, so any non-zero status
+    # leaking out of here aborts the script before a single group is swept.
+    return 0
 }
 
 # remove_locks <groups...> - drop any management lock inside these groups.
