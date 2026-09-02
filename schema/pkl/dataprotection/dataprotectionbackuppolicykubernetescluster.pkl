@@ -1,0 +1,185 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dataprotection.dataprotectionbackuppolicykubernetescluster
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataProtection::BackupPolicyKubernetesCluster"
+const apiVersion = "2024-04-01"
+
+/// Which tier of the Backup vault a rule reads from or writes to.
+/// `OperationalStore` is the snapshot tier held in the source subscription,
+/// `VaultStore` the vault's own long-term tier, `ArchiveStore` the cold tier.
+typealias DataStoreType = "OperationalStore"|"VaultStore"|"ArchiveStore"
+
+/// A retention tag, and the rule that decides which triggered backups carry it.
+/// A backup rule needs exactly one default criterion; extra criteria pick out
+/// specific recovery points (the first of each day, week, ...) so a retention rule
+/// of the same tag name can keep them longer.
+///
+/// ARM also assigns each tag a `tagInfo.id` ("Default_"). That is service-owned and
+/// not modelled, so it never reads back as drift.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class TaggingCriterion extends formae.SubResource {
+    /// Matched against a retention rule's `name`.
+    @azure.FieldHint { required = true }
+    tagName: String(length > 0)
+
+    /// Exactly one criterion per backup rule must be the default.
+    @azure.FieldHint { required = true }
+    isDefault: Boolean
+
+    /// Lower wins. ARM's own templates use 99 for the default tag and smaller
+    /// numbers for the more selective ones.
+    @azure.FieldHint { required = true }
+    taggingPriority: Int(this >= 1)
+
+    /// Restricts the tag to particular recovery points. Leave unset on the default
+    /// criterion — ARM rejects a default criterion that carries criteria.
+    @azure.FieldHint { }
+    absoluteCriteria: Listing<"AllBackup"|"FirstOfDay"|"FirstOfWeek"|"FirstOfMonth"|"FirstOfYear">?
+}
+
+/// When a backup runs, what kind it is, and which tier it lands in.
+///
+/// ARM nests the schedule one level deeper
+/// (`trigger.schedule.repeatingTimeIntervals`) behind a polymorphic trigger. Only
+/// the schedule-based trigger is modelled — the adhoc trigger is not a policy a
+/// user declares — so the schedule is flattened onto the rule.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class BackupRule extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    name: String(length > 0)
+
+    /// Datasource-specific. `Discrete` for blobs, `Incremental` for disks and AKS,
+    /// `Full` for PostgreSQL flexible servers.
+    @azure.FieldHint { required = true }
+    backupType: String(length > 0)
+
+    @azure.FieldHint { required = true }
+    datastoreType: DataStoreType
+
+    /// ISO 8601 repeating intervals, e.g.
+    /// `R/2024-01-01T02:00:00+00:00/P1D` for daily at 02:00 UTC.
+    @azure.FieldHint { required = true }
+    repeatingTimeIntervals: Listing<String(length > 0)>
+
+    /// Olson or Windows time-zone name the intervals are read in, e.g.
+    /// `Pacific Standard Time`. ARM fills in `UTC` when it is omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    timeZone: String?
+
+    @azure.FieldHint { required = true }
+    taggingCriteria: Listing<TaggingCriterion>
+}
+
+/// Copies a recovery point on from the lifecycle's source tier into another tier.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class RetentionCopySetting extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    datastoreType: DataStoreType
+
+    /// ISO 8601 duration to wait before copying. Unset means copy immediately,
+    /// which is ARM's `ImmediateCopyOption`.
+    @azure.FieldHint { }
+    copyAfterDuration: String?
+}
+
+/// How long a recovery point survives in one tier, and where it is copied on to.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class RetentionLifecycle extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    sourceDatastoreType: DataStoreType
+
+    /// ISO 8601 duration, e.g. `P30D` or `P3M`.
+    @azure.FieldHint { required = true }
+    deleteAfterDuration: String(length > 0)
+
+    /// ARM echoes an empty list here on some datasource types; an unset list is
+    /// left absent on read rather than emitted as `[]`.
+    @azure.FieldHint { }
+    targetCopySettings: Listing<RetentionCopySetting>?
+}
+
+/// How long backups carrying one tag are kept. The rule whose `isDefault` is true
+/// governs every recovery point no other rule claims.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class RetentionRule extends formae.SubResource {
+    /// Must match a backup rule's `taggingCriteria[].tagName`, or be `Default`.
+    @azure.FieldHint { required = true }
+    name: String(length > 0)
+
+    @azure.FieldHint { required = true }
+    isDefault: Boolean
+
+    @azure.FieldHint { required = true }
+    lifecycles: Listing<RetentionLifecycle>
+}
+
+open class BackupPolicyKubernetesClusterResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupPolicyKubernetesClusterResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupPolicyKubernetesClusterResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Backup vault policy for AKS managed clusters
+/// (`datasourceTypes: ["Microsoft.ContainerService/managedClusters"]`).
+///
+/// Free — a policy is a record, and it needs no cluster to exist: what to include
+/// in a backup, which namespaces, and whether to snapshot volumes are all
+/// properties of the backup instance, not of the policy. Only a backup instance
+/// requires a real cluster with the Backup extension installed.
+///
+/// Operational-tier first: AKS backup snapshots into the source subscription, so
+/// the backup rule uses `OperationalStore` with `backupType: "Incremental"`. A
+/// vault-tier copy is expressed as a `targetCopySettings` entry on a retention
+/// lifecycle rather than as a second backup rule.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataProtection::BackupVault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BackupPolicyKubernetesCluster extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 150 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9\-_]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Backup vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String(length >= 2 && length <= 50)|formae.Resolvable
+
+    /// Schedules. Optional because some policies carry retention rules only: a
+    /// blob operational-tier policy has no schedule at all, because continuous
+    /// point-in-time restore is fed by the source account itself.
+    @azure.FieldHint { }
+    backupRules: Listing<BackupRule>?
+
+    /// At least one rule, and exactly one of them the default.
+    @azure.FieldHint { required = true }
+    retentionRules: Listing<RetentionRule>
+
+    hidden parent = this
+
+    hidden res: BackupPolicyKubernetesClusterResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
