@@ -2,6 +2,22 @@
   "_comment": "Disposition of every hasProviderDefault schema annotation. Checked by TestProviderDefaultDispositionsManifest: each annotation needs a row, stale rows fail, and disposition \"keep\" needs a pin (\"documentation\" or \"fixture:<path>\"). \"pending\" means the audit has not reached the field yet.",
   "dispositions": [
     {
+      "key": "alertsmanagement/alertprocessingruleactiongroup.pkl#AlertProcessingRuleActionGroup.enabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "alertsmanagement/alertprocessingrulesuppression.pkl#AlertProcessingRuleSuppression.enabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "alertsmanagement/prometheusrulegroup.pkl#PrometheusRuleGroup.enabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "alertsmanagement/prometheusrulegroup.pkl#PrometheusRuleGroup.interval",
+      "disposition": "pending"
+    },
+    {
       "key": "app/containerapp.pkl#ContainerApp.fqdn",
       "disposition": "pending"
     },
@@ -51,6 +67,10 @@
     },
     {
       "key": "authorization/policydefinition.pkl#PolicyDefinition.policyType",
+      "disposition": "pending"
+    },
+    {
+      "key": "authorization/policyexemption.pkl#PolicyExemption.assignmentScopeValidation",
       "disposition": "pending"
     },
     {
@@ -282,6 +302,10 @@
       "disposition": "pending"
     },
     {
+      "key": "dataprotection/resourceguard.pkl#ResourceGuard.provisioningState",
+      "disposition": "pending"
+    },
+    {
       "key": "dbformysql/mysqlflexibleserver.pkl#FlexibleServer.availabilityZone",
       "disposition": "pending"
     },
@@ -510,6 +534,18 @@
       "disposition": "pending"
     },
     {
+      "key": "insights/autoscalesetting.pkl#AutoscaleSetting.enabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "insights/autoscalesetting.pkl#AutoscaleSetting.predictiveAutoscaleMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "insights/autoscalesetting.pkl#AutoscaleSetting.targetResourceLocation",
+      "disposition": "pending"
+    },
+    {
       "key": "insights/component.pkl#Component.appId",
       "disposition": "pending"
     },
@@ -610,6 +646,46 @@
       "disposition": "pending"
     },
     {
+      "key": "keyvault/key.pkl#Key.curveName",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/key.pkl#Key.enabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/key.pkl#Key.keyOps",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/key.pkl#Key.keySize",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/key.pkl#Key.keyVersion",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/managedhsm.pkl#ManagedHsm.enablePurgeProtection",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/managedhsm.pkl#ManagedHsm.enableSoftDelete",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/managedhsm.pkl#ManagedHsm.hsmUri",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/managedhsm.pkl#ManagedHsm.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "keyvault/managedhsm.pkl#ManagedHsm.softDeleteRetentionInDays",
+      "disposition": "pending"
+    },
+    {
       "key": "keyvault/vault.pkl#Vault.enableRbacAuthorization",
       "disposition": "pending"
     },
@@ -627,6 +703,46 @@
     },
     {
       "key": "managedidentity/userassignedidentity.pkl#UserAssignedIdentity.tenantId",
+      "disposition": "pending"
+    },
+    {
+      "key": "management/managementgroup.pkl#ManagementGroup.displayName",
+      "disposition": "pending"
+    },
+    {
+      "key": "management/managementgroup.pkl#ManagementGroup.parentId",
+      "disposition": "pending"
+    },
+    {
+      "key": "management/managementgroup.pkl#ManagementGroup.tenantId",
+      "disposition": "pending"
+    },
+    {
+      "key": "management/managementgroupsubscriptionassociation.pkl#ManagementGroupSubscriptionAssociation.displayName",
+      "disposition": "pending"
+    },
+    {
+      "key": "monitor/monitorworkspace.pkl#MonitorWorkspace.accountId",
+      "disposition": "pending"
+    },
+    {
+      "key": "monitor/monitorworkspace.pkl#MonitorWorkspace.defaultDataCollectionEndpointId",
+      "disposition": "pending"
+    },
+    {
+      "key": "monitor/monitorworkspace.pkl#MonitorWorkspace.defaultDataCollectionRuleId",
+      "disposition": "pending"
+    },
+    {
+      "key": "monitor/monitorworkspace.pkl#MonitorWorkspace.metricsIngestionEndpoint",
+      "disposition": "pending"
+    },
+    {
+      "key": "monitor/monitorworkspace.pkl#MonitorWorkspace.prometheusQueryEndpoint",
+      "disposition": "pending"
+    },
+    {
+      "key": "monitor/monitorworkspace.pkl#MonitorWorkspace.publicNetworkAccess",
       "disposition": "pending"
     },
     {
@@ -967,6 +1083,86 @@
     },
     {
       "key": "operationalinsights/workspace.pkl#Workspace.sku",
+      "disposition": "pending"
+    },
+    {
+      "key": "policyinsights/policyremediation.pkl#PolicyRemediation.parallelDeployments",
+      "disposition": "pending"
+    },
+    {
+      "key": "policyinsights/policyremediation.pkl#PolicyRemediation.resourceCount",
+      "disposition": "pending"
+    },
+    {
+      "key": "policyinsights/policyremediation.pkl#PolicyRemediation.resourceDiscoveryMode",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/backuppolicyfileshare.pkl#BackupPolicyFileShare.timeZone",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/backuppolicyvm.pkl#BackupPolicyVM.instantRpRetentionRangeInDays",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/backuppolicyvm.pkl#BackupPolicyVM.timeZone",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/backupprotectedfileshare.pkl#BackupProtectedFileShare.containerName",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/backupprotectedfileshare.pkl#BackupProtectedFileShare.name",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/backupprotectedfileshare.pkl#BackupProtectedFileShare.protectionState",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.alertsForAllJobFailures",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.alertsForCriticalOperations",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.crossRegionRestore",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.crossSubscriptionRestoreState",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.immutabilityState",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.provisioningState",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.skuTier",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.softDeleteRetentionDays",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.softDeleteState",
+      "disposition": "pending"
+    },
+    {
+      "key": "recoveryservices/recoveryservicesvault.pkl#Vault.standardTierStorageRedundancy",
       "disposition": "pending"
     },
     {
