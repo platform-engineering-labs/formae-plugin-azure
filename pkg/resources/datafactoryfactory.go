@@ -245,8 +245,10 @@ func (f *DataFactoryFactory) buildPropertiesFromResult(factory *armdatafactory.F
 
 	// The identity block is echoed with its type and, for user-assigned
 	// identities, the ARM IDs. principalId and tenantId are lifted out to
-	// top-level properties instead: a provider default on a field of a plain
-	// nested class is not honoured, so read-only values must not live inside one.
+	// top-level properties instead, so they can be resolvables: a
+	// formae.Resolvable addresses a top-level property by name, and a role
+	// assignment granting the factory's managed identity a data role has no way
+	// to reach a value nested one level down.
 	if id := factory.Identity; id != nil {
 		identity := make(map[string]any)
 		if id.Type != nil {

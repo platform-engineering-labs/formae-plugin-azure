@@ -260,8 +260,9 @@ func TestDataFactoryFactory_CRUD(t *testing.T) {
 		require.Equal(t, "eastus", props["location"])
 		require.Equal(t, "Enabled", props["publicNetworkAccess"])
 		require.Equal(t, map[string]any{"type": "SystemAssigned"}, props["identity"])
-		// principalId and tenantId are lifted out of the nested identity block:
-		// a provider default on a field of a plain nested class is not honoured.
+		// principalId and tenantId are lifted out of the nested identity block
+		// so they can be resolvables — a formae.Resolvable addresses a top-level
+		// property by name and cannot reach one nested a level down.
 		require.Equal(t, "11111111-1111-1111-1111-111111111111", props["identityPrincipalId"])
 		require.Equal(t, "22222222-2222-2222-2222-222222222222", props["identityTenantId"])
 	})

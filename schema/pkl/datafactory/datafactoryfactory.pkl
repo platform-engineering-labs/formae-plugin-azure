@@ -22,12 +22,14 @@ typealias RepoConfigurationKind = "FactoryGitHubConfiguration"|"FactoryVSTSConfi
 /// Managed service identity of the factory.
 ///
 /// Declaring this block is optional — see the note on `identity` below.
-class Identity {
+class Identity extends formae.SubResource {
     /// Identity type.
+    @azure.FieldHint { required = true }
     type: IdentityType
 
     /// ARM IDs of user-assigned identities to attach. Required when `type`
     /// includes `UserAssigned`.
+    @azure.FieldHint { }
     userAssignedIdentityIds: Listing<(String|formae.Resolvable)>?
 }
 
@@ -38,28 +40,35 @@ class Identity {
 /// through the factory UI and would read back as drift on every sync. Bring-your-own
 /// GitHub OAuth app credentials (`clientId` / `clientSecret`) are not modelled
 /// either — the secret half is never returned by ARM.
-class RepoConfiguration {
+class RepoConfiguration extends formae.SubResource {
     /// Which provider this is. Chooses the ARM discriminator.
+    @azure.FieldHint { required = true }
     kind: RepoConfigurationKind
 
     /// GitHub account or organisation name, or the Azure DevOps organisation.
+    @azure.FieldHint { required = true }
     accountName: String(length >= 1)
 
     /// Repository name inside the account.
+    @azure.FieldHint { required = true }
     repositoryName: String(length >= 1)
 
     /// Branch the factory publishes from, e.g. `main`.
+    @azure.FieldHint { required = true }
     collaborationBranch: String(length >= 1)
 
     /// Folder inside the repository the factory writes to, e.g. `/` or `/adf`.
+    @azure.FieldHint { required = true }
     rootFolder: String(length >= 1)
 
     /// Azure DevOps project name. Required for `FactoryVSTSConfiguration`, and
     /// rejected for GitHub.
+    @azure.FieldHint { }
     projectName: String(length >= 1)?
 
     /// GitHub Enterprise host, e.g. `https://github.mydomain.com`. Only valid for
     /// `FactoryGitHubConfiguration`.
+    @azure.FieldHint { }
     hostName: String(length >= 1)?
 }
 
@@ -136,9 +145,11 @@ open class Factory extends formae.Resource {
     @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
     tags: Listing<azure.Tag>?
 
-    // Read-only outputs (populated by provider, not user-supplied). They are
-    // surfaced as top-level properties rather than inside `identity` because a
-    // provider default on a field of a plain nested class is not honoured.
+    // Read-only outputs (populated by provider, not user-supplied). ARM returns
+    // both inside the `identity` block, but they are lifted to the top level so
+    // they can be resolvables: a `formae.Resolvable` addresses a top-level
+    // property by name, so a role assignment granting the factory's managed
+    // identity a data role has no way to reach a value nested one level down.
 
     /// Object (principal) ID of the factory's managed identity.
     @azure.FieldHint { hasProviderDefault = true }
