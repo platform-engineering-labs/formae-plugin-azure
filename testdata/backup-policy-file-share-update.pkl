@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/recoveryservices/backuppolicyfileshare.pkl" as bpfs
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/recoveryservices/recoveryservicesvault.pkl" as rsv
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "fspol-test-rg"
+  name = "formae-plugin-sdk-test-fspol-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vault = new rsv.Vault {
+  label = "fspol-test-vault"
+  name = "fpsdt-fspol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Standard"
+  softDeleteState = "Disabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  vault
+
+  new bpfs.BackupPolicyFileShare {
+    label = "plugin-sdk-test-backup-policy-file-share"
+    name = "fpsdt-fspol-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    vaultName = vault.res.name
+    timeZone = "UTC"
+    // Update: earlier snapshot, longer daily retention, plus a weekly tier.
+    backupSchedule = new bpfs.FileShareBackupSchedule {
+      frequency = "Daily"
+      times = new Listing { "22:30" }
+    }
+    dailyRetention = new bpfs.FileShareDailyRetention {
+      count = 20
+    }
+    weeklyRetention = new bpfs.FileShareWeeklyRetention {
+      count = 4
+      daysOfWeek = new Listing { "Sunday" }
+    }
+  }
+}

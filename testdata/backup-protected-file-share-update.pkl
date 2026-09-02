@@ -1,0 +1,121 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/recoveryservices/backupprotectedfileshare.pkl" as pfs
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/fileshare.pkl"
+import "@azure/recoveryservices/recoveryservicesvault.pkl" as rsv
+import "@azure/recoveryservices/backuppolicyfileshare.pkl" as bpfs
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "pfs-test-rg"
+  name = "formae-plugin-sdk-test-pfs-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The storage account has to sit in the same region as the vault. Registering it
+// as a protection container takes an Azure Backup lock on it, so it cannot be
+// deleted until the protected item is destroyed and the container unregistered -
+// which is what the protected item does on the way out.
+local sa = new storageaccount.StorageAccount {
+  label = "pfs-test-sa"
+  name = "fpsdtpfs\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU {
+    name = "Standard_LRS"
+  }
+  kind = "StorageV2"
+}
+
+local share = new fileshare.FileShare {
+  label = "pfs-test-share"
+  name = "formae-plugin-sdk-test-pfs-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = sa.res.name
+  shareQuota = 100
+  enabledProtocols = "SMB"
+}
+
+// Soft delete stays Disabled: with it on, deleting the protected item leaves a
+// soft-deleted item behind that blocks both the container unregister and the
+// vault delete for the whole retention window.
+local vault = new rsv.Vault {
+  label = "pfs-test-vault"
+  name = "fpsdt-pfs-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Standard"
+  softDeleteState = "Disabled"
+}
+
+local policy = new bpfs.BackupPolicyFileShare {
+  label = "pfs-test-policy"
+  name = "fpsdt-pfspol-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  vaultName = vault.res.name
+  timeZone = "UTC"
+  backupSchedule = new bpfs.FileShareBackupSchedule {
+    frequency = "Daily"
+    times = new Listing { "23:00" }
+  }
+  dailyRetention = new bpfs.FileShareDailyRetention {
+    count = 10
+  }
+}
+
+local altPolicy = new bpfs.BackupPolicyFileShare {
+  label = "pfs-test-policy-alt"
+  name = "fpsdt-pfspol2-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  vaultName = vault.res.name
+  timeZone = "UTC"
+  backupSchedule = new bpfs.FileShareBackupSchedule {
+    frequency = "Daily"
+    times = new Listing { "21:00" }
+  }
+  dailyRetention = new bpfs.FileShareDailyRetention {
+    count = 30
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sa
+
+  share
+
+  vault
+
+  policy
+
+  altPolicy
+
+  // Update: rebind the share to the second policy. Everything else is createOnly -
+  // the storage account, the share and the vault are all fixed once the container
+  // is registered.
+  new pfs.BackupProtectedFileShare {
+    label = "plugin-sdk-test-backup-protected-file-share"
+    resourceGroupName = rg.res.name
+    vaultName = vault.res.name
+    storageAccountResourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    fileShareName = share.res.name
+    backupPolicyName = altPolicy.res.name
+  }
+}
