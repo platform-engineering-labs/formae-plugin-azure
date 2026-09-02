@@ -270,6 +270,26 @@
       "disposition": "pending"
     },
     {
+      "key": "datafactory/datafactoryfactory.pkl#Factory.identity",
+      "disposition": "pending"
+    },
+    {
+      "key": "datafactory/datafactoryfactory.pkl#Factory.identityPrincipalId",
+      "disposition": "pending"
+    },
+    {
+      "key": "datafactory/datafactoryfactory.pkl#Factory.identityTenantId",
+      "disposition": "pending"
+    },
+    {
+      "key": "datafactory/datafactoryfactory.pkl#Factory.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "datafactory/datafactoryintegrationruntimeazure.pkl#IntegrationRuntimeAzure.computeLocation",
+      "disposition": "pending"
+    },
+    {
       "key": "dataprotection/backupvault.pkl#BackupVault.crossSubscriptionRestoreState",
       "disposition": "pending"
     },
@@ -1351,6 +1371,34 @@
     },
     {
       "key": "storage/storageaccount.pkl#StorageAccount.networkAclsDefaultAction",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.compatibilityLevel",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.dataLocale",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.eventsLateArrivalMaxDelayInSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.eventsOutOfOrderMaxDelayInSeconds",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.eventsOutOfOrderPolicy",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.jobType",
+      "disposition": "pending"
+    },
+    {
+      "key": "streamanalytics/streamanalyticsjob.pkl#StreamingJob.outputErrorPolicy",
       "disposition": "pending"
     },
     {

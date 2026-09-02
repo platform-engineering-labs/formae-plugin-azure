@@ -137,3 +137,22 @@ log-analytics-table
 # wave, so this fixture should be reworked to point at one and this line removed
 # - it is a fixture-shape blocker, not an environment or SDK limit.
 log-analytics-linked-service
+
+# Both of these are blocked on a field the PARENT schema does not have, not on
+# anything the handler does. Handlers and mocked integration tests are complete;
+# remove each line when the parent gains what ARM demands.
+
+# ARM refuses a local user unless the account has a hierarchical namespace, and
+# SFTP additionally needs isSftpEnabled. `schema/pkl/storage/storageaccount.pkl`
+# models none of isHnsEnabled / isSftpEnabled / isLocalUserEnabled, so no fixture
+# can build a suitable parent and [Create] fails with ARM's own "local users are
+# not supported on this account". Fix: three fields on StorageAccount.
+storage-local-user
+
+# ARM requires the blob change feed on the source account and blob versioning on
+# the destination. Both live on the blob-service singleton
+# (storageAccounts/blobServices/default); StorageAccount carries neither and there
+# is no BlobServiceProperties resource type in the tree, so the create fails with
+# ChangeFeedNotEnabled. Fix: a BlobServiceProperties type, or change-feed and
+# versioning fields on StorageAccount.
+storage-object-replication-policy

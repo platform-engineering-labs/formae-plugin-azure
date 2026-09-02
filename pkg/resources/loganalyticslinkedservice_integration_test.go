@@ -21,8 +21,8 @@ import (
 const (
 	// ARM answers with a fully lower-cased ID for this type, which is exactly the
 	// case the ID parser has to canonicalize back.
-	testLinkedServiceNativeID = "/subscriptions/sub-1/resourcegroups/rg-1/providers/microsoft.operationalinsights/workspaces/ws1/linkedservices/cluster"
-	testLinkedServiceClusterID = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.OperationalInsights/clusters/lac1"
+	testLogAnalyticsLinkedServiceNativeID = "/subscriptions/sub-1/resourcegroups/rg-1/providers/microsoft.operationalinsights/workspaces/ws1/linkedservices/cluster"
+	testLinkedServiceClusterID            = "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.OperationalInsights/clusters/lac1"
 )
 
 type fakeLogAnalyticsLinkedServicesAPI struct {
@@ -55,7 +55,7 @@ func newTestLogAnalyticsLinkedService(api logAnalyticsLinkedServicesAPI) *LogAna
 	}
 }
 
-func linkedServiceDesired(writeAccessResourceID string) []byte {
+func logAnalyticsLinkedServiceDesired(writeAccessResourceID string) []byte {
 	out, _ := json.Marshal(map[string]any{
 		"name":                  "Cluster",
 		"resourceGroupName":     "rg-1",
@@ -67,7 +67,7 @@ func linkedServiceDesired(writeAccessResourceID string) []byte {
 
 func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 	linkResult := armoperationalinsights.LinkedService{
-		ID: to.Ptr(testLinkedServiceNativeID),
+		ID: to.Ptr(testLogAnalyticsLinkedServiceNativeID),
 		// ARM returns the name workspace-qualified, which is not what the schema
 		// declares — the read path must not surface this verbatim.
 		Name: to.Ptr("ws1/Cluster"),
@@ -105,7 +105,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 					return armoperationalinsights.LinkedServicesClientListByWorkspaceResponse{
 						LinkedServiceListResult: armoperationalinsights.LinkedServiceListResult{
 							Value: []*armoperationalinsights.LinkedService{
-								{ID: to.Ptr(testLinkedServiceNativeID)},
+								{ID: to.Ptr(testLogAnalyticsLinkedServiceNativeID)},
 								// A nil entry must not panic the walk.
 								nil,
 							},
@@ -119,11 +119,11 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 
 	t.Run("Create", func(t *testing.T) {
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{
-			Label: "Cluster", Properties: linkedServiceDesired(testLinkedServiceClusterID),
+			Label: "Cluster", Properties: logAnalyticsLinkedServiceDesired(testLinkedServiceClusterID),
 		})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
-		require.Equal(t, testLinkedServiceNativeID, got.ProgressResult.NativeID)
+		require.Equal(t, testLogAnalyticsLinkedServiceNativeID, got.ProgressResult.NativeID)
 
 		// The kind is the resource's own path segment, not a body field.
 		require.Equal(t, "Cluster", sentName)
@@ -159,7 +159,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 			return newInProgressPoller[armoperationalinsights.LinkedServicesClientCreateOrUpdateResponse](), nil
 		}
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{
-			Label: "Cluster", Properties: linkedServiceDesired(testLinkedServiceClusterID),
+			Label: "Cluster", Properties: logAnalyticsLinkedServiceDesired(testLinkedServiceClusterID),
 		})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusInProgress, got.ProgressResult.OperationStatus)
@@ -181,7 +181,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLinkedServiceNativeID})
+		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLogAnalyticsLinkedServiceNativeID})
 		require.NoError(t, err)
 		require.Empty(t, got.ErrorCode)
 		require.Equal(t, ResourceTypeLogAnalyticsLinkedService, got.ResourceType)
@@ -199,7 +199,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 	})
 
 	t.Run("Read_drops_service_state", func(t *testing.T) {
-		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLinkedServiceNativeID})
+		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLogAnalyticsLinkedServiceNativeID})
 		require.NoError(t, err)
 		for _, key := range []string{"provisioningState", "Succeeded", "ws1/Cluster"} {
 			require.NotContains(t, got.Properties, key)
@@ -211,8 +211,8 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 		before := writeCalls
 		other := "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.OperationalInsights/clusters/lac2"
 		got, err := prov.Update(context.Background(), &resource.UpdateRequest{
-			NativeID:          testLinkedServiceNativeID,
-			DesiredProperties: linkedServiceDesired(other),
+			NativeID:          testLogAnalyticsLinkedServiceNativeID,
+			DesiredProperties: logAnalyticsLinkedServiceDesired(other),
 		})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
@@ -223,7 +223,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 
 	t.Run("Delete", func(t *testing.T) {
 		before := deleteCalls
-		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testLinkedServiceNativeID})
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testLogAnalyticsLinkedServiceNativeID})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 		require.Equal(t, before+1, deleteCalls)
@@ -233,26 +233,26 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 		fake.beginDeleteFn = func(_ context.Context, _, _, _ string, _ *armoperationalinsights.LinkedServicesClientBeginDeleteOptions) (*runtime.Poller[armoperationalinsights.LinkedServicesClientDeleteResponse], error) {
 			return newInProgressPoller[armoperationalinsights.LinkedServicesClientDeleteResponse](), nil
 		}
-		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testLinkedServiceNativeID})
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testLogAnalyticsLinkedServiceNativeID})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusInProgress, got.ProgressResult.OperationStatus)
 		reqID, err := decodeLROStatus(got.ProgressResult.RequestID)
 		require.NoError(t, err)
 		require.Equal(t, lroOpDelete, reqID.OperationType)
-		require.Equal(t, testLinkedServiceNativeID, reqID.NativeID)
+		require.Equal(t, testLogAnalyticsLinkedServiceNativeID, reqID.NativeID)
 	})
 
 	t.Run("Delete_NotFound_is_success", func(t *testing.T) {
 		fake.beginDeleteFn = func(_ context.Context, _, _, _ string, _ *armoperationalinsights.LinkedServicesClientBeginDeleteOptions) (*runtime.Poller[armoperationalinsights.LinkedServicesClientDeleteResponse], error) {
 			return nil, &azcore.ResponseError{StatusCode: 404}
 		}
-		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testLinkedServiceNativeID})
+		got, err := prov.Delete(context.Background(), &resource.DeleteRequest{NativeID: testLogAnalyticsLinkedServiceNativeID})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
 	})
 
 	t.Run("Status_rejects_an_unknown_operation", func(t *testing.T) {
-		reqID, err := encodeLROStart("nonsense", "token", testLinkedServiceNativeID)
+		reqID, err := encodeLROStart("nonsense", "token", testLogAnalyticsLinkedServiceNativeID)
 		require.NoError(t, err)
 		_, err = prov.Status(context.Background(), &resource.StatusRequest{RequestID: reqID})
 		require.ErrorContains(t, err, "unknown operation type")
@@ -263,7 +263,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 			AdditionalProperties: map[string]string{"resourceGroupName": "rg-1", "workspaceName": "ws1"},
 		})
 		require.NoError(t, err)
-		require.Equal(t, []string{testLinkedServiceNativeID}, got.NativeIDs)
+		require.Equal(t, []string{testLogAnalyticsLinkedServiceNativeID}, got.NativeIDs)
 	})
 
 	t.Run("List_without_workspace_is_empty", func(t *testing.T) {
@@ -278,7 +278,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 		fake.getFn = func(_ context.Context, _, _, _ string, _ *armoperationalinsights.LinkedServicesClientGetOptions) (armoperationalinsights.LinkedServicesClientGetResponse, error) {
 			return armoperationalinsights.LinkedServicesClientGetResponse{}, &azcore.ResponseError{StatusCode: 404}
 		}
-		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLinkedServiceNativeID})
+		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLogAnalyticsLinkedServiceNativeID})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationErrorCodeNotFound, got.ErrorCode)
 	})
@@ -288,7 +288,7 @@ func TestLogAnalyticsLinkedService_CRUD(t *testing.T) {
 			return nil, &azcore.ResponseError{StatusCode: 400}
 		}
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{
-			Label: "Cluster", Properties: linkedServiceDesired(testLinkedServiceClusterID),
+			Label: "Cluster", Properties: logAnalyticsLinkedServiceDesired(testLinkedServiceClusterID),
 		})
 		require.NoError(t, err)
 		require.Equal(t, resource.OperationStatusFailure, got.ProgressResult.OperationStatus)
