@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagersecurityadminconfiguration.pkl" as securityadmin
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmsac-test-rg"
+  name = "formae-plugin-sdk-test-nmsac-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+// SecurityAdmin is the scope access a security admin configuration needs; ARM
+// rejects the configuration if the manager does not list it.
+local manager = new netmanager.NetworkManager {
+  label = "nmsac-test-manager"
+  name = "fpsdt-nmsac-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "SecurityAdmin"
+  }
+  networkManagerScopes = managerScopes
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+
+  // Update: redescribe. applyOnNetworkIntentPolicyBasedServices stays None —
+  // widening it to All would apply the admin rules to every network-intent
+  // policy service in the subscription, which is not a conformance-safe change.
+  //
+  // Still UNCOMMITTED, for the same reason as the create fixture.
+  new securityadmin.NetworkManagerSecurityAdminConfiguration {
+    label = "plugin-sdk-test-network-manager-security-admin-configuration"
+    name = "conformance-securityadmin"
+    resourceGroupName = rg.res.name
+    networkManagerName = manager.res.name
+    applyOnNetworkIntentPolicyBasedServices {
+      "None"
+    }
+    description = "Conformance security admin configuration, redescribed"
+  }
+}

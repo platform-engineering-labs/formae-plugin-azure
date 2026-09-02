@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanagersecurityadminconfiguration
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerSecurityAdminConfiguration"
+const apiVersion = "2023-05-01"
+
+open class NetworkManagerSecurityAdminConfigurationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerSecurityAdminConfigurationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerSecurityAdminConfigurationResolvable = (this) {
+        property = "name"
+    }
+    hidden networkManagerName: NetworkManagerSecurityAdminConfigurationResolvable = (this) {
+        property = "networkManagerName"
+    }
+}
+
+/// A security admin configuration: the container for admin rule collections, which
+/// in turn hold the security admin rules a virtual network manager enforces.
+///
+/// Security admin rules sit ABOVE network security groups — an `AlwaysAllow` or
+/// `Deny` admin rule cannot be overridden by an NSG rule on the member subnet,
+/// which is the whole point of the feature.
+///
+/// The configuration is INERT until it is committed to a region. Commits are a
+/// separate ARM verb (`networkManagerCommits`) and are deliberately not modelled,
+/// because a committed configuration cannot be deleted. An uncommitted
+/// configuration is therefore the only shape this provider can safely tear down.
+///
+/// The manager must list `SecurityAdmin` in its `networkManagerScopeAccesses` or
+/// ARM rejects the configuration.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkManager"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "networkManagerName" }
+    )
+}
+open class NetworkManagerSecurityAdminConfiguration extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkManagerName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    /// Which network-intent-policy services the admin rules are also applied to.
+    /// `None` (the usual choice) leaves intent policies alone; `All` applies the
+    /// rules to every such service; `AllowRulesOnly` applies only the allow rules.
+    @azure.FieldHint { }
+    applyOnNetworkIntentPolicyBasedServices: Listing<("All"|"AllowRulesOnly"|"None")>?
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerSecurityAdminConfigurationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

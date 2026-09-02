@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanagerstaticmember
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerStaticMember"
+const apiVersion = "2023-05-01"
+
+open class NetworkManagerStaticMemberResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerStaticMemberResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerStaticMemberResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// One virtual network pinned into a network group by ARM ID.
+///
+/// This is the static half of network-group membership: the group lists exactly the
+/// virtual networks its static members name. The dynamic half is an Azure Policy
+/// definition and is authored as policy, not here.
+///
+/// Every field is create-only — a static member is nothing but the pointer, so
+/// aiming it at a different virtual network is a replace, not an update.
+///
+/// `region` is not modelled: the service derives it from the target virtual network
+/// and it is read-only, so declaring it would only ever read as drift.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkManagerNetworkGroup"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "networkManagerName" listParameter = "networkManagerName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "networkGroupName" }
+    )
+}
+open class NetworkManagerStaticMember extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkManagerName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkGroupName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    /// ARM ID of the virtual network to add to the group.
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceId: String|formae.Resolvable
+
+    hidden parent = this
+
+    hidden res: NetworkManagerStaticMemberResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
