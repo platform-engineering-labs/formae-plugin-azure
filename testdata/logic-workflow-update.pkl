@@ -1,0 +1,39 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicworkflow.pkl" as logicworkflow
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicwf-test-rg"
+  name = "formae-plugin-sdk-test-logicwf-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Update: a weekly recurrence and a different response body. The whole
+  // workflow is re-PUT because `WorkflowsClient.Update` is a bare PATCH that
+  // takes no request body in api-version 2019-05-01 and so cannot carry a new
+  // definition. `state` stays `Disabled` so nothing fires and nothing is billed.
+  new logicworkflow.Workflow {
+    label = "plugin-sdk-test-logic-workflow"
+    name = "conformance-workflow"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    state = "Disabled"
+    definition = #"{"$schema":"https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#","actions":{"reply":{"inputs":{"body":"updated","statusCode":202},"kind":"Http","type":"Response"}},"contentVersion":"1.0.0.0","triggers":{"tick":{"recurrence":{"frequency":"Week","interval":1},"type":"Recurrence"}}}"#
+  }
+}

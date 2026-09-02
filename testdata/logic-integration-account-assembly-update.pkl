@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountassembly.pkl" as logicasm
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicasm-test-rg"
+  name = "formae-plugin-sdk-test-logicasm-rg-\(vars.testRunID)"
+  location = "westeurope"
+}
+
+// westeurope: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicasm-test-account"
+  name = "fpsdt-logicasm-\(vars.testRunID)"
+  location = "westeurope"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Update: a new assembly version. The whole artifact is re-PUT because an
+  // assembly has no PATCH verb; `content` is write-only, so the version is the
+  // only part of this change a read can confirm.
+  new logicasm.IntegrationAccountAssembly {
+    label = "plugin-sdk-test-logic-integration-account-assembly"
+    name = "conformance-assembly"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    assemblyName = "Formae.Conformance.Transforms"
+    assemblyVersion = "1.1.0.0"
+    content = "TVqQAAMAAAAEAAAA//8AAGZvcm1hZSBjb25mb3JtYW5jZSBzdHViIGFzc2VtYmx5AA=="
+  }
+}
