@@ -1,0 +1,92 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/loganalyticscluster.pkl" as lacluster
+import "@azure/operationalinsights/loganalyticslinkedservice.pkl" as linkedservice
+import "vars.pkl"
+
+// WARNING - THIS FIXTURE IS EXPENSIVE AND SLOW, AND IS EXPECTED TO BE ON THE
+// PR SKIP LIST, for exactly the reason log-analytics-cluster is.
+//
+// A linked service has only two possible targets, and neither is cheap in this
+// environment:
+//
+//   - `Cluster`, used here, needs a Log Analytics dedicated cluster: a 500
+//     GB/day capacity reservation billed whether or not it is used, and 1-3
+//     HOURS to provision. That is past the ~45 minutes a CI job has before the
+//     OIDC client assertion expires (AADSTS700024).
+//   - `Automation` needs an Automation account, and
+//     AZURE::Automation::Account is not a resource type this plugin
+//     implements, so a fixture cannot create one to point at.
+//
+// The Cluster shape is used because it at least stands on its own: everything
+// it references is created by this forma. Do not add it to
+// conformance-matrix.txt until either the cluster wait is affordable or an
+// Automation account type exists.
+//
+// There is deliberately no -update.pkl: the only mutable property is the link
+// target, and changing it would mean provisioning a SECOND dedicated cluster.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lals-test-rg"
+  name = "formae-plugin-sdk-test-lals-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local cluster = new lacluster.Cluster {
+  label = "lals-test-cluster"
+  name = "fpsdt-lals-lac-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new lacluster.ClusterSKU {
+    capacity = 500
+  }
+  billingType = "Cluster"
+}
+
+// 30-day retention is what the PerGB2018 base price includes; the 1 GB daily cap
+// bounds ingestion. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "lals-test-law"
+  name = "fpsdt-lals-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  cluster
+
+  workspaceRes
+
+  // The link itself is free. `name` is the link's kind, not a free-form name:
+  // ARM uses it as the resource's path segment.
+  new linkedservice.LinkedService {
+    label = "plugin-sdk-test-log-analytics-linked-service"
+    name = "Cluster"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    writeAccessResourceId = cluster.res.id
+  }
+}

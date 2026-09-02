@@ -1,0 +1,92 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.loganalyticsdatasourcewindowsperfcounter
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::DataSourceWindowsPerformanceCounter"
+const apiVersion = "2020-08-01"
+
+open class DataSourceWindowsPerformanceCounterResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataSourceWindowsPerformanceCounterResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataSourceWindowsPerformanceCounterResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Tells the Log Analytics agents reporting to a workspace to sample one Windows
+/// performance counter.
+///
+/// The data source is free; the samples it produces bill the workspace's normal
+/// ingestion rate, and the bill scales with `1 / intervalSeconds` multiplied by
+/// the number of instances the counter expands to — a wildcard `instanceName` on
+/// a machine with many disks is not a cheap collection.
+///
+/// ARM models every data source as one resource type
+/// (`workspaces/<ws>/dataSources/<name>`) with a `kind` discriminator over an
+/// untyped `properties` blob. There is one formae type per kind because each
+/// kind's blob is a different schema; `kind` itself is fixed by the type and is
+/// therefore not a field.
+///
+/// This is the *legacy* Log Analytics agent's configuration surface. The Azure
+/// Monitor agent is configured instead through
+/// AZURE::Insights::DataCollectionRule, which is the resource to reach for on
+/// anything new.
+///
+/// The API is fully synchronous — no operation ever reports as in progress.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DataSourceWindowsPerformanceCounter extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// Performance object, as perfmon names it — `Processor`, `Memory`,
+    /// `LogicalDisk`.
+    @azure.FieldHint { required = true }
+    objectName: String
+
+    /// Instance to sample. `*` collects every instance the object expands to,
+    /// `_Total` the aggregate one where the object publishes it.
+    @azure.FieldHint { required = true }
+    instanceName: String
+
+    /// Counter within the object — `% Processor Time`, `Available MBytes`.
+    @azure.FieldHint { required = true }
+    counterName: String
+
+    /// Sampling interval in seconds. 10 is the portal's default; every sample is
+    /// a billed row.
+    @azure.FieldHint { required = true }
+    intervalSeconds: Int(this >= 1 && this <= 1800)
+
+    hidden parent = this
+
+    hidden res: DataSourceWindowsPerformanceCounterResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
