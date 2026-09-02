@@ -16,7 +16,8 @@ const apiVersion = "2024-01-01"
 ///
 /// `permissions` is a set of single letters: `r` read, `w` write, `d` delete,
 /// `l` list, `c` create, `o` modify ownership, `p` modify permissions.
-class PermissionScope {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class PermissionScope extends formae.SubResource {
     @azure.FieldHint { required = true }
     permissions: String(length >= 1 && length <= 7 && matches(Regex("[rwdlcop]+")))
 
@@ -30,7 +31,8 @@ class PermissionScope {
 
 /// An SSH public key authorised for SFTP as this local user. Public halves only —
 /// ARM never accepts or returns a private key here.
-class SshPublicKey {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class SshPublicKey extends formae.SubResource {
     /// Base64-encoded key with its algorithm prefix, e.g. `ssh-rsa AAAAB3Nz...`.
     @azure.FieldHint { required = true }
     key: String(length >= 1)

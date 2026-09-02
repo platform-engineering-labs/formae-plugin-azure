@@ -18,7 +18,8 @@ const apiVersion = "2024-01-01"
 /// `VersionId` and `IsCurrentVersion`, `includeSnapshots` requires `Snapshot`, and
 /// `includeDeleted` requires `Deleted` plus `RemainingRetentionDays`. Setting one
 /// without its fields is rejected at create time.
-class InventoryFilters {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InventoryFilters extends formae.SubResource {
     /// Blob types to report. Required when `objectType` is `Blob`; must be omitted
     /// when it is `Container`. `pageBlob` is not available on HNS accounts.
     @azure.FieldHint { }
@@ -43,7 +44,8 @@ class InventoryFilters {
 }
 
 /// What one rule reports, in what format, how often.
-class InventoryDefinition {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InventoryDefinition extends formae.SubResource {
     @azure.FieldHint { required = true }
     format: ("Csv"|"Parquet")
 
@@ -64,7 +66,8 @@ class InventoryDefinition {
     filters: InventoryFilters?
 }
 
-class InventoryRule {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InventoryRule extends formae.SubResource {
     /// Alphanumeric, case-sensitive, unique within the policy.
     @azure.FieldHint { required = true }
     name: String(length >= 1 && length <= 256)

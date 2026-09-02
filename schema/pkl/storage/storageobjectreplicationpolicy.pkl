@@ -13,7 +13,8 @@ const type = "AZURE::Storage::ObjectReplicationPolicy"
 const apiVersion = "2024-01-01"
 
 /// Narrows which blobs a replication rule copies.
-class ReplicationFilters {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ReplicationFilters extends formae.SubResource {
     /// Copy only blobs whose names start with one of these prefixes.
     @azure.FieldHint { }
     prefixMatch: Listing<String>?
@@ -30,7 +31,8 @@ class ReplicationFilters {
 /// back when the same policy is written to the source account. That id is
 /// service-owned and threaded through by the plugin, so it is deliberately not a
 /// field here.
-class ReplicationRule {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ReplicationRule extends formae.SubResource {
     @azure.FieldHint { required = true }
     sourceContainer: String(length >= 3 && length <= 63)
 

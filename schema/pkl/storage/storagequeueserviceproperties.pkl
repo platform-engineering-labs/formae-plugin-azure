@@ -14,7 +14,8 @@ const apiVersion = "2024-01-01"
 
 /// One CORS rule for the Queue service. Every field is required by ARM whenever a
 /// rule is present.
-class QueueCorsRule {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class QueueCorsRule extends formae.SubResource {
     /// Origins allowed via CORS, or a single `*` for all.
     @azure.FieldHint { required = true }
     allowedOrigins: Listing<String>(!isEmpty)
