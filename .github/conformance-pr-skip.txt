@@ -172,3 +172,31 @@ api-management-gateway
 # schema, test and fixture are complete and work the day
 # AZURE::ApiManagement::Tag exists. Remove this line then.
 api-management-api-tag-description
+
+# The Consumption tier has no user store, no group store and no subscription
+# store, so these five cannot be created there. Every APIM fixture in this wave
+# is Consumption because it is the only tier CI can afford - a Consumption
+# instance reached Succeeded in 159s on 2026-09-02, against 30-45 min for a
+# dedicated tier and a ~45 min ceiling where the OIDC assertion expires
+# (AADSTS700024). Handlers, schemas, tests and fixtures are complete for all
+# five; only the tier blocks them.
+#
+# Evidence, from Microsoft's own tier matrix
+# (learn.microsoft.com/azure/api-management/api-management-features):
+#   "Developer portal2 | (Consumption) NO | ..."
+#   "2 Including related functionality such as users, groups, issues,
+#    applications, and email templates and notifications."
+# and from the service limits page, Consumption column:
+#   "Subscriptions | N/A"      "Users | N/A"
+#
+# ProductGroup is blocked transitively: its fixture names the built-in
+# `developers` group, which does not exist on Consumption, and a custom group
+# would not help because the group store itself is absent.
+#
+# Remove these five lines if the conformance subscription ever gets a dedicated
+# tier that CI can wait for.
+api-management-group
+api-management-group-user
+api-management-user
+api-management-subscription
+api-management-product-group

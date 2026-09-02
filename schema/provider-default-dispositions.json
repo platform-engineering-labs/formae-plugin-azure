@@ -26,6 +26,30 @@
       "disposition": "pending"
     },
     {
+      "key": "apimanagement/apimanagementapidiagnostic.pkl#ApiDiagnostic.httpCorrelationProtocol",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapidiagnostic.pkl#ApiDiagnostic.logClientIp",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapidiagnostic.pkl#ApiDiagnostic.operationNameFormat",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapidiagnostic.pkl#ApiDiagnostic.verbosity",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapidiagnostic.pkl#ApiDiagnosticSampling.percentage",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapidiagnostic.pkl#ApiDiagnosticSampling.samplingType",
+      "disposition": "pending"
+    },
+    {
       "key": "apimanagement/apimanagementapioperationpolicy.pkl#ApiOperationPolicy.format",
       "disposition": "pending"
     },
@@ -58,7 +82,75 @@
       "disposition": "pending"
     },
     {
+      "key": "apimanagement/apimanagementbackend.pkl#BackendTls.validateCertificateChain",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementbackend.pkl#BackendTls.validateCertificateName",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementcertificate.pkl#Certificate.expirationDate",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementcertificate.pkl#Certificate.subject",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementcertificate.pkl#Certificate.thumbprint",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementdiagnostic.pkl#Diagnostic.httpCorrelationProtocol",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementdiagnostic.pkl#Diagnostic.logClientIp",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementdiagnostic.pkl#Diagnostic.operationNameFormat",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementdiagnostic.pkl#Diagnostic.verbosity",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementdiagnostic.pkl#DiagnosticSampling.percentage",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementdiagnostic.pkl#DiagnosticSampling.samplingType",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementgroup.pkl#Group.groupType",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementlogger.pkl#Logger.isBuffered",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementnamedvalue.pkl#NamedValue.secret",
+      "disposition": "pending"
+    },
+    {
       "key": "apimanagement/apimanagementpolicy.pkl#Policy.format",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementproduct.pkl#Product.state",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementproduct.pkl#Product.subscriptionRequired",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementproductpolicy.pkl#ProductPolicy.format",
       "disposition": "pending"
     },
     {
@@ -95,6 +187,18 @@
     },
     {
       "key": "apimanagement/apimanagementservice.pkl#Service.virtualNetworkType",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementsubscription.pkl#Subscription.allowTracing",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementsubscription.pkl#Subscription.state",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementuser.pkl#User.state",
       "disposition": "pending"
     },
     {
