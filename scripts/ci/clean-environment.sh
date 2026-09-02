@@ -86,21 +86,24 @@ echo ""
 # projection - is dropped instead of being passed to `az group delete`. Deleting is
 # destructive, so it only ever acts on a name it has re-verified itself.
 list_groups() {
-    local raw rc=0 err
+    local raw err
     err=$(mktemp)
-    # `set +e` around the call on purpose. A CLEAN_DEBUG=1 trace showed
-    # `az group list` exiting NON-ZERO while writing a complete, valid JSON body
-    # for all 117 groups - and 2>/dev/null was discarding whatever it complained
-    # about. That non-zero status propagated out of this command substitution and
-    # killed the script under `set -e` before a single group was swept, which is
-    # the silent failure seen in pre-cleanup, the nightly cleanup job and the
-    # reaper. The output is usable, so the status must not be fatal.
-    set +e
-    raw=$(az group list -o json 2>"${err}")
-    rc=$?
-    set -e
-    if [[ ${rc} -ne 0 ]]; then
-        echo "  note: 'az group list' exited ${rc}; continuing with the output it produced" >&2
+    # `|| true` goes INSIDE the substitution.
+    #
+    # A CLEAN_DEBUG=1 trace showed `az group list` exiting 1 in CI while writing a
+    # complete, valid JSON body for all 117 groups, with `2>/dev/null` discarding
+    # whatever it complained about. That status escaped the command substitution
+    # and killed the script before a single group was swept - the silent failure
+    # seen in pre-cleanup, the nightly cleanup job and the reaper. Neither `set +e`
+    # around the call nor an explicit `return 0` below stopped it, so the status
+    # must not be allowed to leave the subshell in the first place: with `true` as
+    # the last command inside it, the substitution cannot report failure at all.
+    # That holds without needing errexit or ERR-trap semantics to be exactly right.
+    raw=$(az group list -o json 2>"${err}" || true)
+    # Judge success by the output, not an exit status: a non-empty stderr from az
+    # is worth surfacing even when the JSON that came with it is perfectly usable.
+    if [[ -s "${err}" ]]; then
+        echo "  note: 'az group list' wrote to stderr; continuing with the output it produced" >&2
         sed 's/^/    az: /' "${err}" >&2 || true
     fi
     rm -f "${err}"
