@@ -1,0 +1,160 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.desktopvirtualization.avdhostpool
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DesktopVirtualization::HostPool"
+const apiVersion = "2021-07-12"
+
+/// How the host pool's session-host registration token is managed.
+///
+/// This is the whole of `host_pool_registration_info` — it is a property of the
+/// host pool, not a resource of its own. The token itself is never surfaced:
+/// ARM returns it only from a separate RetrieveRegistrationToken call, so
+/// putting it in resource state would persist a live joining credential.
+///
+/// The block is declared `writeOnly` on the resource because none of it is
+/// comparable: `expirationTime` is rewritten by the service (it is clamped into
+/// the allowed 1-hour-to-30-day window and re-serialised), and
+/// `registrationTokenOperation` is an imperative verb rather than a state, so
+/// ARM never answers Get with the value that was sent.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class RegistrationInfo extends formae.SubResource {
+
+    /// `None` leaves the current token alone, `Update` mints a new one that
+    /// expires at `expirationTime`, `Delete` revokes the current one.
+    @azure.FieldHint { required = true }
+    registrationTokenOperation: ("None"|"Update"|"Delete")
+
+    /// When the freshly minted token expires, as an RFC 3339 timestamp. ARM
+    /// requires it between one hour and thirty days in the future, and only
+    /// looks at it when `registrationTokenOperation` is `Update`.
+    @azure.FieldHint { }
+    expirationTime: String(length >= 1)?
+}
+
+open class HostPoolResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: HostPoolResolvable = (this) {
+        property = "id"
+    }
+    hidden name: HostPoolResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: HostPoolResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Virtual Desktop host pool — the collection session hosts register
+/// into and the anchor every other AVD resource hangs off.
+///
+/// A host pool with zero session hosts is a valid, free ARM record: it is pure
+/// configuration, and nothing bills until a VM joins it. This schema
+/// deliberately models no session hosts.
+///
+/// Deliberately not modelled:
+///
+///  - `customRdpProperty`. The service rewrites the semicolon-separated blob it
+///    is handed (it normalises separators and folds in its own defaults), so a
+///    declared value reads back changed and would report drift on every sync.
+///  - `vmTemplate`. Portal-only metadata: a JSON blob the session-host creation
+///    wizard reads and nothing in ARM validates.
+///  - `ring`, `objectId`, `cloudPcResource`. Internal service bookkeeping.
+///  - the four `sso*` fields. Single sign-on needs an ADFS deployment and a Key
+///    Vault-held certificate; the fields are meaningless without both.
+///  - `applicationGroupReferences`. Read-only, and it grows every time an
+///    application group points at this pool, so surfacing it would report drift
+///    the moment an `AZURE::DesktopVirtualization::ApplicationGroup` is created.
+///    The link is modelled from the owning side, on the application group's
+///    `hostPoolArmPath`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class HostPool extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// `Pooled` shares hosts between users and is the only type a scaling plan
+    /// can attach to. `Personal` assigns one host per user and additionally
+    /// requires `personalDesktopAssignmentType`. `BYODesktop` lets users bring
+    /// their own machine and, like `Personal`, needs the assignment type.
+    ///
+    /// createOnly: ARM's PATCH has no hostPoolType field at all.
+    @azure.FieldHint { required = true; createOnly = true }
+    hostPoolType: ("Pooled"|"Personal"|"BYODesktop")
+
+    /// How new sessions pick a host. `BreadthFirst` spreads users across hosts,
+    /// `DepthFirst` fills one host before using the next, `Persistent` is the
+    /// only legal value for a `Personal` pool.
+    @azure.FieldHint { required = true }
+    loadBalancerType: ("BreadthFirst"|"DepthFirst"|"Persistent")
+
+    /// Which kind of application group the client feed prefers.
+    /// `RailApplications` goes with `RemoteApp` groups, `Desktop` with
+    /// `Desktop` groups, `None` with neither.
+    @azure.FieldHint { required = true }
+    preferredAppGroupType: ("Desktop"|"None"|"RailApplications")
+
+    /// Required by ARM for `Personal` and `BYODesktop`, rejected for `Pooled`.
+    /// `Automatic` hands out the next free host on first sign-in, `Direct`
+    /// requires an administrator to assign each one.
+    @azure.FieldHint { }
+    personalDesktopAssignmentType: ("Automatic"|"Direct")?
+
+    /// How many concurrent sessions one host accepts. Only meaningful for
+    /// `Pooled`; ARM answers Get with its own very large default (999999) when
+    /// it is not declared, which is why it is a provider default rather than a
+    /// plain optional.
+    @azure.FieldHint { hasProviderDefault = true }
+    maxSessionLimit: Int(this >= 1 && this <= 999999)?
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    @azure.FieldHint { }
+    friendlyName: String(length <= 260)?
+
+    /// Power on a deallocated session host when a user connects. ARM echoes it
+    /// back as `false` when it is not declared.
+    @azure.FieldHint { hasProviderDefault = true }
+    startVmOnConnect: Boolean?
+
+    /// Opt the pool into the validation (early-release) service ring. ARM
+    /// echoes it back as `false` when it is not declared.
+    @azure.FieldHint { hasProviderDefault = true }
+    validationEnvironment: Boolean?
+
+    /// Session-host registration token management. Write-only; see
+    /// `RegistrationInfo`.
+    @azure.FieldHint { writeOnly = true }
+    registrationInfo: RegistrationInfo?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: HostPoolResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
