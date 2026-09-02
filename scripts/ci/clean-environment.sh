@@ -86,8 +86,24 @@ echo ""
 # projection - is dropped instead of being passed to `az group delete`. Deleting is
 # destructive, so it only ever acts on a name it has re-verified itself.
 list_groups() {
-    local raw
-    raw=$(az group list -o json 2>/dev/null) || return 0
+    local raw rc=0 err
+    err=$(mktemp)
+    # `set +e` around the call on purpose. A CLEAN_DEBUG=1 trace showed
+    # `az group list` exiting NON-ZERO while writing a complete, valid JSON body
+    # for all 117 groups - and 2>/dev/null was discarding whatever it complained
+    # about. That non-zero status propagated out of this command substitution and
+    # killed the script under `set -e` before a single group was swept, which is
+    # the silent failure seen in pre-cleanup, the nightly cleanup job and the
+    # reaper. The output is usable, so the status must not be fatal.
+    set +e
+    raw=$(az group list -o json 2>"${err}")
+    rc=$?
+    set -e
+    if [[ ${rc} -ne 0 ]]; then
+        echo "  note: 'az group list' exited ${rc}; continuing with the output it produced" >&2
+        sed 's/^/    az: /' "${err}" >&2 || true
+    fi
+    rm -f "${err}"
     # An if-block, not `[[ ... ]] && return 0`: when raw is non-empty that
     # construct evaluates to the failed test's status, and this function's status
     # is consumed by a `GROUPS=$(list_groups)` command substitution, where a
