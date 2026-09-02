@@ -83,8 +83,9 @@ forma {
 
   workspaceRes
 
-  // The link itself is free. `name` is the link's kind, not a free-form name:
-  // ARM uses it as the resource's path segment.
+  // Unchanged from the create fixture, deliberately - see the note above. ARM's
+  // linkedServices body carries nothing but the two target IDs, so there is no
+  // second property to vary that would not repoint the link at another cluster.
   new linkedservice.LinkedService {
     label = "plugin-sdk-test-log-analytics-linked-service"
     name = "Cluster"
