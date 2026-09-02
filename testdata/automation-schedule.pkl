@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/automation/automationaccount.pkl"
+import "@azure/automation/automationschedule.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aasc-test-rg"
+  name = "formae-plugin-sdk-test-aasc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local acct = new automationaccount.AutomationAccount {
+  label = "aasc-test-account"
+  name = "fpsdt-aasc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+// ARM rejects a startTime that is not at least five minutes in the future, and
+// truncates whatever it accepts to the minute. A far-future whole-minute instant
+// satisfies both: nothing to round off, and it stays valid for years. It is a
+// literal rather than a computed value because Pkl has no clock.
+local scheduleStart = "2030-01-01T00:00:00Z"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  acct
+
+  // A schedule on its own starts nothing and costs nothing: it needs a job
+  // schedule to attach a runbook to it.
+  new automationschedule.AutomationSchedule {
+    label = "plugin-sdk-test-automation-schedule"
+    name = "fpsdt-schedule-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    automationAccountName = acct.res.name
+    frequency = "Hour"
+    interval = 1
+    startTime = scheduleStart
+    timeZone = "UTC"
+    isEnabled = true
+    description = "Conformance schedule"
+  }
+}

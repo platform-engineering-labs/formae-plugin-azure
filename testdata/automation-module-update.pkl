@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/automation/automationaccount.pkl"
+import "@azure/automation/automationmodule.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aamod-test-rg"
+  name = "formae-plugin-sdk-test-aamod-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local acct = new automationaccount.AutomationAccount {
+  label = "aamod-test-account"
+  name = "fpsdt-aamod-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  acct
+
+  // The name is NOT run-ID suffixed: it must match the module name inside the
+  // package or ARM refuses the import. Uniqueness comes from the automation
+  // account, which is created fresh for every run.
+  //
+  // The import is asynchronous with no poller: the PUT returns immediately and
+  // ARM then fetches this URI server-side, walking provisioningState to Succeeded
+  // (or Failed if the gallery is unreachable). A stable, versioned PowerShell
+  // Gallery nupkg URL is used so the package never changes under the fixture.
+  new automationmodule.AutomationModule {
+    label = "plugin-sdk-test-automation-module"
+    name = "xActiveDirectory"
+    resourceGroupName = rg.res.name
+    automationAccountName = acct.res.name
+    // Update: re-import a different version. ModuleUpdateParameters carries the
+    // content link, so this is a PATCH rather than a replace; ARM starts another
+    // out-of-band download exactly as create does.
+    contentLinkUri = "https://www.powershellgallery.com/api/v2/package/xActiveDirectory/2.20.0"
+    contentLinkVersion = "2.20.0"
+  }
+}
