@@ -33,7 +33,7 @@ typealias FtpsState = "AllAllowed"|"FtpsOnly"|"Disabled"
 typealias TLSVersion = "1.0"|"1.1"|"1.2"|"1.3"
 
 /// An app setting. Values are write-only — see `WebAppSlot.appSettings`.
-class AppSetting {
+class AppSetting extends formae.SubResource {
     @azure.FieldHint { }
     name: String(length >= 1)
 
@@ -50,7 +50,7 @@ class AppSetting {
 /// of a nested class — only on top-level resource fields. Set the ones that apply
 /// explicitly; a forma that omits them will show drift once Azure fills in its own
 /// default.
-class SlotSiteConfig {
+class SlotSiteConfig extends formae.SubResource {
     /// Linux runtime stack, e.g. `PYTHON|3.12`. Must match the parent app's plan.
     @azure.FieldHint { }
     linuxFxVersion: String?

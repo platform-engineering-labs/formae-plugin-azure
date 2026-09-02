@@ -46,7 +46,7 @@ typealias VpnClientProtocol = "IkeV2"|"OpenVPN"|"SSTP"
 /// Authentication method offered to point-to-site clients.
 typealias VpnAuthenticationType = "Certificate"|"Radius"|"AAD"
 
-class VirtualNetworkGatewaySku {
+class VirtualNetworkGatewaySku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: VirtualNetworkGatewaySkuName
 
@@ -59,7 +59,7 @@ class VirtualNetworkGatewaySku {
 /// Only the two values a caller owns are modelled: Azure allocates the gateway's
 /// BGP peering addresses out of the GatewaySubnet, so they are read back and
 /// discarded rather than compared.
-class VirtualNetworkGatewayBgpSettings {
+class VirtualNetworkGatewayBgpSettings extends formae.SubResource {
     /// The gateway's autonomous system number. Azure assigns 65515 when the
     /// gateway is created without one.
     @azure.FieldHint { required = true }
@@ -72,7 +72,7 @@ class VirtualNetworkGatewayBgpSettings {
 
 /// One front end of the gateway: the GatewaySubnet it lives in plus the public IP
 /// it answers on. An active-active gateway needs two of these.
-class VirtualNetworkGatewayIPConfiguration {
+class VirtualNetworkGatewayIPConfiguration extends formae.SubResource {
     /// Name of the IP configuration.
     @azure.FieldHint { required = true }
     name: String(length >= 1 && length <= 80)
@@ -97,7 +97,7 @@ class VirtualNetworkGatewayIPConfiguration {
 }
 
 /// A trusted root certificate for point-to-site certificate authentication.
-class VpnClientRootCertificate {
+class VpnClientRootCertificate extends formae.SubResource {
     /// Name of the certificate entry.
     @azure.FieldHint { required = true }
     name: String(length >= 1 && length <= 80)
@@ -110,7 +110,7 @@ class VpnClientRootCertificate {
 
 /// Point-to-site (VPN client) configuration. Omit it entirely for a
 /// site-to-site-only gateway.
-class VpnClientConfiguration {
+class VpnClientConfiguration extends formae.SubResource {
     /// CIDR pool the gateway hands out to VPN clients. It must not overlap the
     /// virtual network or any on-premises range.
     @azure.FieldHint { required = true }

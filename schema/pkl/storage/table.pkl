@@ -14,7 +14,7 @@ const apiVersion = "2023-05-01"
 
 /// Abbreviated table permissions: `r` read, `a` add, `u` update, `d` delete.
 /// Combine them in that order, e.g. `"rau"`.
-class TableAccessPolicy {
+class TableAccessPolicy extends formae.SubResource {
     @azure.FieldHint { required = true }
     permission: String(matches(Regex("^[raud]+$")))
 
@@ -29,7 +29,7 @@ class TableAccessPolicy {
 
 /// A stored access policy. SAS tokens can reference it by `id` so the policy can be
 /// revoked without reissuing tokens.
-class TableSignedIdentifier {
+class TableSignedIdentifier extends formae.SubResource {
     @azure.FieldHint { required = true }
     id: String(length >= 1 && length <= 64)
 

@@ -19,7 +19,7 @@ typealias SnapshotStorageAccountType = "Standard_LRS"|"Premium_LRS"|"Standard_ZR
 /// or snapshot by ARM ID; `Import`/`Upload` bring in a VHD.
 typealias SnapshotCreateOption = "Copy"|"CopyStart"|"Import"|"Upload"|"Restore"|"Empty"
 
-class SnapshotCreationData {
+class SnapshotCreationData extends formae.SubResource {
     @azure.FieldHint { required = true; createOnly = true }
     createOption: SnapshotCreateOption
 
@@ -28,7 +28,7 @@ class SnapshotCreationData {
     sourceResourceId: (String|formae.Resolvable)?
 }
 
-class SnapshotSku {
+class SnapshotSku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: SnapshotStorageAccountType
 }

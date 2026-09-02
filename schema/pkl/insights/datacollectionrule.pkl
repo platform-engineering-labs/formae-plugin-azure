@@ -13,7 +13,7 @@ const type = "AZURE::Insights::DataCollectionRule"
 const apiVersion = "2024-03-11"
 
 /// A set of performance counters to sample, and the stream they feed.
-class PerformanceCounterDataSource {
+class PerformanceCounterDataSource extends formae.SubResource {
     /// Referenced from a data flow's `streams`, so it must be unique in the rule.
     @azure.FieldHint { required = true }
     name: String
@@ -33,7 +33,7 @@ class PerformanceCounterDataSource {
 }
 
 /// A Log Analytics workspace the collected data is written to.
-class LogAnalyticsDestination {
+class LogAnalyticsDestination extends formae.SubResource {
     /// Referenced from a data flow's `destinations`, so it must be unique in the rule.
     @azure.FieldHint { required = true }
     name: String
@@ -43,7 +43,7 @@ class LogAnalyticsDestination {
 }
 
 /// Wires one or more streams to one or more named destinations.
-class DataFlow {
+class DataFlow extends formae.SubResource {
     @azure.FieldHint { required = true }
     streams: Listing<String>
 
