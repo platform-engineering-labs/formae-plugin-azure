@@ -156,3 +156,19 @@ storage-local-user
 # ChangeFeedNotEnabled. Fix: a BlobServiceProperties type, or change-feed and
 # versioning fields on StorageAccount.
 storage-object-replication-policy
+
+# Self-hosted gateways require the Developer or Premium tier. Every APIM fixture
+# in this wave uses Consumption, which is the only tier CI can afford: a
+# throwaway Consumption instance reached Succeeded in 159s on 2026-09-02, while
+# Developer/Standard take 30-45 min and blow the ~45 min point at which the OIDC
+# client assertion expires (AADSTS700024). ARM rejects the create outright on
+# Consumption. Handler, schema and fixture are complete; the SKU stays as it is.
+api-management-gateway
+
+# ARM addresses a tag description by the id of an APIM tag that must already
+# exist, and does not create it as a side effect. There is no way to create that
+# tag from anything in scope: `TagClient` is deliberately unwired and the Api
+# contract carries no APIM-tag field, so the fixture 404s at [Create]. Handler,
+# schema, test and fixture are complete and work the day
+# AZURE::ApiManagement::Tag exists. Remove this line then.
+api-management-api-tag-description

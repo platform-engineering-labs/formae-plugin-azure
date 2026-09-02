@@ -2,6 +2,102 @@
   "_comment": "Disposition of every hasProviderDefault schema annotation. Checked by TestProviderDefaultDispositionsManifest: each annotation needs a row, stale rows fail, and disposition \"keep\" needs a pin (\"documentation\" or \"fixture:<path>\"). \"pending\" means the audit has not reached the field yet.",
   "dispositions": [
     {
+      "key": "apimanagement/apimanagementapi.pkl#Api.apiRevision",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapi.pkl#Api.apiType",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapi.pkl#Api.isCurrent",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapi.pkl#Api.subscriptionKeyHeaderName",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapi.pkl#Api.subscriptionKeyQueryName",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapi.pkl#Api.subscriptionRequired",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapioperationpolicy.pkl#ApiOperationPolicy.format",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapipolicy.pkl#ApiPolicy.format",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapitagdescription.pkl#ApiTagDescription.displayName",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementapitagdescription.pkl#ApiTagDescription.tagId",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementauthorizationserver.pkl#AuthorizationServer.authorizationMethods",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementauthorizationserver.pkl#AuthorizationServer.bearerTokenSendingMethods",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementauthorizationserver.pkl#AuthorizationServer.clientAuthenticationMethod",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementauthorizationserver.pkl#AuthorizationServer.supportState",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementpolicy.pkl#Policy.format",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.developerPortalUrl",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.gatewayUrl",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.managementApiUrl",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.notificationSenderEmail",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.principalId",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.publicNetworkAccess",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.skuCapacity",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.tenantId",
+      "disposition": "pending"
+    },
+    {
+      "key": "apimanagement/apimanagementservice.pkl#Service.virtualNetworkType",
+      "disposition": "pending"
+    },
+    {
       "key": "app/containerapp.pkl#ContainerApp.fqdn",
       "disposition": "pending"
     },
