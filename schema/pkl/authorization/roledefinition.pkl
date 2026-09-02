@@ -14,7 +14,7 @@ const apiVersion = "2022-04-01"
 
 /// One set of allowed and denied operations. A role may carry several; a caller is
 /// permitted an operation when any permission allows it and none denies it.
-class Permission {
+class Permission extends formae.SubResource {
     /// Control-plane operations allowed, e.g. `Microsoft.Storage/storageAccounts/read`.
     /// Wildcards are permitted.
     @azure.FieldHint { required = true }
