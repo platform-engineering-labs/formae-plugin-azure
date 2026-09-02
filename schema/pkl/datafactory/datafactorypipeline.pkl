@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorypipeline
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::Pipeline"
+const apiVersion = "2018-06-01"
+
+open class PipelineResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PipelineResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PipelineResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Data Factory pipeline — an ordered set of activities plus the policy that
+/// governs a run.
+///
+/// A pipeline that no trigger fires costs nothing: Data Factory bills per activity
+/// run, and defining a pipeline is a metadata write. An empty pipeline (no
+/// activities) is valid and is the cheapest thing this type can express.
+///
+/// `activities` is the pipeline body — arbitrarily nested JSON that no PKL class
+/// can usefully describe — so it is carried as a JSON string, the same way
+/// `AZURE::Authorization::PolicyDefinition` carries a policy rule. It is
+/// additionally declared `writeOnly`: the service re-serialises activity JSON
+/// through its own activity model and the echo is not byte-stable (it fills in
+/// per-activity defaults such as empty `dependsOn` and `userProperties` lists), so
+/// comparing it on read would report drift on a pipeline nobody touched. Changing
+/// it in a forma still pushes the new body; drift introduced elsewhere is not
+/// detected.
+///
+/// `parameters` and `variables` are not modelled for the same reason, and are not
+/// read back: a pipeline authored in the Data Factory UI reads without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Pipeline extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// The activity list, as compact JSON with sorted keys — e.g.
+    /// `[{"name":"wait","type":"Wait","typeProperties":{"waitTimeInSeconds":1}}]`.
+    /// Write-only; see the note above.
+    @azure.FieldHint { writeOnly = true }
+    activities: (formae.Value|String)?
+
+    /// Maximum simultaneous runs of this pipeline. Further runs queue.
+    @azure.FieldHint { }
+    concurrency: Int(this >= 1 && this <= 50)?
+
+    /// Folder the pipeline is filed under in the authoring UI. Purely cosmetic.
+    @azure.FieldHint { }
+    folderName: String(length >= 1)?
+
+    /// Free-form labels the authoring UI shows against the pipeline. Unrelated to
+    /// ARM resource tags — a pipeline is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: PipelineResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactoryintegrationruntimeselfhosted.pkl" as shir
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfshir-test-rg"
+  name = "formae-plugin-sdk-test-adfshir-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfshir-test-factory"
+  name = "fpsdt-adfshir-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // No compute and no quota: a self-hosted runtime is a registration record that
+  // hands back a pair of auth keys, and nothing runs until an operator installs
+  // the Integration Runtime agent on a machine of their own. It stays Offline for
+  // the whole test, which is the expected state for an unregistered runtime.
+  //
+  // The auth keys are not properties: ARM returns them only from a separate
+  // ListAuthKeys call, so surfacing them would persist live credentials.
+  new shir.IntegrationRuntimeSelfHosted {
+    label = "plugin-sdk-test-adf-ir-self-hosted"
+    name = "conformance-shir"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    description = "conformance self-hosted runtime"
+  }
+}

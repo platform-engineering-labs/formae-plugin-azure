@@ -1,0 +1,55 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedserviceweb.pkl" as lsweb
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adflsweb-test-rg"
+  name = "formae-plugin-sdk-test-adflsweb-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adflsweb-test-factory"
+  name = "fpsdt-adflsweb-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // Free: creating a linked service is a metadata write, and nothing calls the
+  // endpoint — no activity in this forma uses the linked service.
+  //
+  // `Anonymous` is deliberate: `Basic` would add a password that the service
+  // returns only as a mask, so a fixture using it could never verify the half
+  // that matters. `ClientCertificate` is not expressible through this type at
+  // all, for the same reason.
+  new lsweb.LinkedServiceWeb {
+    label = "plugin-sdk-test-adf-ls-web"
+    name = "conformance-web"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    // Update: repoint at another URL. `url` is updatable in place; only name,
+    // resourceGroupName and factoryName are create-only.
+    url = "https://learn.microsoft.com/en-us/azure/data-factory/introduction"
+    authenticationType = "Anonymous"
+    description = "conformance web endpoint, updated"
+    annotations = new Listing { "conformance" }
+  }
+}
