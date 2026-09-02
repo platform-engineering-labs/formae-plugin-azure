@@ -163,6 +163,7 @@ func TestLogicIntegrationAccountPartner_CRUD(t *testing.T) {
 		require.ErrorContains(t, err, "businessIdentities[0].qualifier is required")
 	})
 
+
 	t.Run("Read", func(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLogicIntegrationAccountPartnerNativeID})
 		require.NoError(t, err)
