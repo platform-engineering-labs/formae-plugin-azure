@@ -398,6 +398,38 @@
       "disposition": "pending"
     },
     {
+      "key": "dataprotection/dataprotectionbackupinstanceblobstorage.pkl#BackupInstanceBlobStorage.currentProtectionState",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackupinstanceblobstorage.pkl#BackupInstanceBlobStorage.friendlyName",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackupinstancedisk.pkl#BackupInstanceDisk.currentProtectionState",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackupinstancedisk.pkl#BackupInstanceDisk.friendlyName",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackuppolicyblobstorage.pkl#BackupRule.timeZone",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackuppolicydisk.pkl#BackupRule.timeZone",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackuppolicykubernetescluster.pkl#BackupRule.timeZone",
+      "disposition": "pending"
+    },
+    {
+      "key": "dataprotection/dataprotectionbackuppolicypostgresqlflex.pkl#BackupRule.timeZone",
+      "disposition": "pending"
+    },
+    {
       "key": "dbformysql/mysqlflexibleserver.pkl#FlexibleServer.availabilityZone",
       "disposition": "pending"
     },
@@ -427,6 +459,22 @@
     },
     {
       "key": "dbforpostgresql/flexibleserver.pkl#FlexibleServer.fullyQualifiedDomainName",
+      "disposition": "pending"
+    },
+    {
+      "key": "desktopvirtualization/avdapplication.pkl#Application.showInPortal",
+      "disposition": "pending"
+    },
+    {
+      "key": "desktopvirtualization/avdhostpool.pkl#HostPool.maxSessionLimit",
+      "disposition": "pending"
+    },
+    {
+      "key": "desktopvirtualization/avdhostpool.pkl#HostPool.startVmOnConnect",
+      "disposition": "pending"
+    },
+    {
+      "key": "desktopvirtualization/avdhostpool.pkl#HostPool.validationEnvironment",
       "disposition": "pending"
     },
     {
