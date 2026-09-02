@@ -1,0 +1,86 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapiversionset
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiVersionSet"
+const apiVersion = "2021-08-01"
+
+/// Where the gateway looks for the version of an incoming request.
+///
+/// `Segment` takes it from a path segment after the API path, `Header` from a
+/// named request header, and `Query` from a named query-string parameter. The
+/// last two require the matching name property to be set.
+typealias VersioningScheme = "Segment"|"Header"|"Query"
+
+open class ApiVersionSetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiVersionSetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiVersionSetResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A version set — the grouping several versions of the same API belong to, and
+/// the rule the gateway uses to decide which version a request is for.
+///
+/// A version set has to exist before an API can name it through
+/// `apiVersionSetId`, and it is what makes several APIs show up in the portal as
+/// versions of one thing rather than as unrelated APIs.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class ApiVersionSet extends formae.Resource {
+
+    /// Version-set identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 100)
+
+    @azure.FieldHint { required = true }
+    versioningScheme: VersioningScheme
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Header the version is read from. Required when `versioningScheme` is
+    /// `Header`, and rejected by ARM otherwise.
+    @azure.FieldHint { }
+    versionHeaderName: String(length >= 1 && length <= 100)?
+
+    /// Query-string parameter the version is read from. Required when
+    /// `versioningScheme` is `Query`, and rejected by ARM otherwise.
+    @azure.FieldHint { }
+    versionQueryName: String(length >= 1 && length <= 100)?
+
+    hidden parent = this
+
+    hidden res: ApiVersionSetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
