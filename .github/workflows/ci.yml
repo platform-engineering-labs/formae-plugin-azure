@@ -103,11 +103,6 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Clean up test resources
-        # TEMPORARY (remove before merge): clean-environment.sh still aborts at
-        # `GROUPS=$(list_groups)` even with the explicit `return 0` from #147, so
-        # the set -x trace is needed to name the command that actually fails.
-        env:
-          CLEAN_DEBUG: "1"
         run: ./scripts/ci/clean-environment.sh
 
   # Conformance runs the full CRUD + discovery lifecycle against real Azure
