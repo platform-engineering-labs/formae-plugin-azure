@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementproduct.pkl" as apimproduct
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-product-test-rg"
+  name = "formae-plugin-sdk-test-apimproduct-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-product-test-service"
+  name = "fpsdt-apimproduct-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // An OPEN product: subscriptionRequired = false. The Consumption tier has no
+  // subscription store at all, so a product that demanded a subscription key
+  // could never be called there. Leaving subscriptionRequired at ARM's default
+  // of true would also make approvalRequired and subscriptionsLimit legal
+  // fields to set, and both are deliberately unset here — ARM rejects either
+  // one on an open product.
+  new apimproduct.Product {
+    label = "plugin-sdk-test-apim-product"
+    name = "conformance-product"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance Product"
+    description = "Product used by the formae Azure plugin conformance suite."
+    terms = "No terms. This product exists for an automated test."
+    subscriptionRequired = false
+    state = "published"
+  }
+}
