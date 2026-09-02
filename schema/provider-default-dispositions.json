@@ -942,6 +942,18 @@
       "disposition": "pending"
     },
     {
+      "key": "operationalinsights/loganalyticscluster.pkl#Cluster.billingType",
+      "disposition": "pending"
+    },
+    {
+      "key": "operationalinsights/loganalyticscluster.pkl#Cluster.isAvailabilityZonesEnabled",
+      "disposition": "pending"
+    },
+    {
+      "key": "operationalinsights/loganalyticscluster.pkl#Cluster.isDoubleEncryptionEnabled",
+      "disposition": "pending"
+    },
+    {
       "key": "operationalinsights/savedsearch.pkl#SavedSearch.version",
       "disposition": "pending"
     },
