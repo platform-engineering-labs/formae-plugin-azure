@@ -1,0 +1,157 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactoryfactory
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::Factory"
+const apiVersion = "2018-06-01"
+
+/// Managed identity type for the factory. Unlike most ARM services there is no
+/// `None`: Data Factory always keeps a system-assigned identity.
+typealias IdentityType = "SystemAssigned"|"UserAssigned"|"SystemAssigned,UserAssigned"
+
+/// Which git provider backs the factory's authoring repository.
+typealias RepoConfigurationKind = "FactoryGitHubConfiguration"|"FactoryVSTSConfiguration"
+
+/// Managed service identity of the factory.
+///
+/// Declaring this block is optional — see the note on `identity` below.
+class Identity {
+    /// Identity type.
+    type: IdentityType
+
+    /// ARM IDs of user-assigned identities to attach. Required when `type`
+    /// includes `UserAssigned`.
+    userAssignedIdentityIds: Listing<(String|formae.Resolvable)>?
+}
+
+/// Git repository the factory authors against ("git mode"). Omit it for a
+/// factory in live mode, where definitions are published straight to the service.
+///
+/// `lastCommitId` is deliberately not modelled: it moves every time anyone commits
+/// through the factory UI and would read back as drift on every sync. Bring-your-own
+/// GitHub OAuth app credentials (`clientId` / `clientSecret`) are not modelled
+/// either — the secret half is never returned by ARM.
+class RepoConfiguration {
+    /// Which provider this is. Chooses the ARM discriminator.
+    kind: RepoConfigurationKind
+
+    /// GitHub account or organisation name, or the Azure DevOps organisation.
+    accountName: String(length >= 1)
+
+    /// Repository name inside the account.
+    repositoryName: String(length >= 1)
+
+    /// Branch the factory publishes from, e.g. `main`.
+    collaborationBranch: String(length >= 1)
+
+    /// Folder inside the repository the factory writes to, e.g. `/` or `/adf`.
+    rootFolder: String(length >= 1)
+
+    /// Azure DevOps project name. Required for `FactoryVSTSConfiguration`, and
+    /// rejected for GitHub.
+    projectName: String(length >= 1)?
+
+    /// GitHub Enterprise host, e.g. `https://github.mydomain.com`. Only valid for
+    /// `FactoryGitHubConfiguration`.
+    hostName: String(length >= 1)?
+}
+
+open class FactoryResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FactoryResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FactoryResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: FactoryResolvable = (this) {
+        property = "resourceGroupName"
+    }
+    /// Object ID of the factory's managed identity — bind this into a role
+    /// assignment to let the factory read a storage account or key vault.
+    hidden identityPrincipalId: FactoryResolvable = (this) {
+        property = "identityPrincipalId"
+    }
+    hidden identityTenantId: FactoryResolvable = (this) {
+        property = "identityTenantId"
+    }
+}
+
+/// An Azure Data Factory (v2) — the container for linked services, datasets,
+/// pipelines, triggers, data flows and integration runtimes.
+///
+/// An empty factory is free: Data Factory bills per pipeline-activity run, per
+/// integration-runtime hour and per read/write operation, so a factory with
+/// nothing scheduled costs nothing.
+///
+/// Factory names are globally unique within a region and cannot be renamed.
+///
+/// The system-assigned managed identity is NOT optional in practice: the service
+/// creates one on every factory whether or not `identity` was declared, which is
+/// why `identity` carries a provider default.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Factory extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The service returns `Enabled` even when nothing was declared, so this is a
+    /// provider default rather than a plain optional.
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    /// Managed service identity. Declaring nothing still yields a system-assigned
+    /// identity, which is why this is a provider default — see the note above.
+    @azure.FieldHint { hasProviderDefault = true }
+    identity: Identity?
+
+    /// Git repository backing the factory. Omit for live mode.
+    @azure.FieldHint { }
+    repoConfiguration: RepoConfiguration?
+
+    /// ARM ID of a Microsoft Purview account to send lineage to.
+    @azure.FieldHint { }
+    purviewResourceId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied). They are
+    // surfaced as top-level properties rather than inside `identity` because a
+    // provider default on a field of a plain nested class is not honoured.
+
+    /// Object (principal) ID of the factory's managed identity.
+    @azure.FieldHint { hasProviderDefault = true }
+    identityPrincipalId: String?
+
+    /// Entra tenant the factory's managed identity lives in.
+    @azure.FieldHint { hasProviderDefault = true }
+    identityTenantId: String?
+
+    hidden parent = this
+
+    hidden res: FactoryResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

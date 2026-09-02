@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactoryintegrationruntimeazure
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::IntegrationRuntimeAzure"
+const apiVersion = "2018-06-01"
+
+/// Cluster shape for data flow jobs this runtime executes.
+typealias DataFlowComputeType = "General"|"MemoryOptimized"|"ComputeOptimized"
+
+open class IntegrationRuntimeAzureResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationRuntimeAzureResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationRuntimeAzureResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure (service-managed) integration runtime — the compute Data Factory uses
+/// for copy activities, lookups and mapping data flows.
+///
+/// Like the self-hosted runtime this is only a record: no cluster exists until a
+/// pipeline activity runs, at which point the service allocates one and bills for
+/// the minutes used. Creating the runtime itself is free and takes no VM quota.
+///
+/// Azure-SSIS is a different animal and is deliberately NOT modelled here:
+/// `nodeSize` and `numberOfNodes` turn a managed runtime into a dedicated SSIS
+/// cluster that must be started explicitly and bills per node-hour. Only the
+/// on-demand shape is expressible through this type.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationRuntimeAzure extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    /// Where activity compute is allocated. `AutoResolve` lets the service pick the
+    /// region closest to the sink, which is also what it fills in when nothing is
+    /// declared — hence the provider default.
+    @azure.FieldHint { hasProviderDefault = true }
+    computeLocation: (azure.Location|"AutoResolve")?
+
+    /// Cluster shape for mapping data flows. Only meaningful together with
+    /// `dataFlowCoreCount`.
+    @azure.FieldHint { }
+    dataFlowComputeType: DataFlowComputeType?
+
+    /// Cores in the data flow cluster. Supported values are 8, 16, 32, 48, 80, 144
+    /// and 272.
+    @azure.FieldHint { }
+    dataFlowCoreCount: Int(this == 8 || this == 16 || this == 32 || this == 48 || this == 80 || this == 144 || this == 272)?
+
+    /// Minutes an idle data flow cluster is kept alive so the next activity reuses
+    /// it instead of paying the cold-start.
+    @azure.FieldHint { }
+    dataFlowTimeToLive: Int(this >= 0 && this <= 1440)?
+
+    hidden parent = this
+
+    hidden res: IntegrationRuntimeAzureResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
