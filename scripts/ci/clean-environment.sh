@@ -40,6 +40,27 @@
 
 set -euo pipefail
 
+# Report where an unexpected failure happened.
+#
+# This script has failed three times in CI (pre-cleanup on #145, the nightly
+# cleanup job, and the scheduled reaper) with NO output beyond the banner: it
+# prints "Using subscription: ..." and exits 1 about a second later, before
+# either "Pass 1 - found:" or "No resource groups found" can be reached. Under
+# `set -e` the failing command is silent, and the failure does not reproduce
+# outside CI, so there is nothing to read.
+#
+# $LINENO and $BASH_COMMAND in an ERR trap name the exact command that failed,
+# which turns the next occurrence into a one-line diagnosis instead of a guess.
+# Set CLEAN_DEBUG=1 for a full `set -x` trace on top of it.
+trap 'rc=$?; echo "::error::clean-environment.sh failed at line ${LINENO} (exit ${rc}): ${BASH_COMMAND}" >&2' ERR
+
+# An if-block, not `[[ ... ]] && set -x`, for the reason this file already
+# documents further down: under `set -e` that construct takes the exit status of
+# the failed test, which is the class of silent failure being chased here.
+if [[ "${CLEAN_DEBUG:-0}" == "1" ]]; then
+    set -x
+fi
+
 TEST_PREFIX="${TEST_PREFIX:-formae-plugin-sdk-test-}"
 CLEAN_WAIT_MINUTES="${CLEAN_WAIT_MINUTES:-25}"
 
