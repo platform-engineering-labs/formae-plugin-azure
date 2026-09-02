@@ -1,0 +1,118 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedserviceblobstorage.pkl" as lsblob
+import "@azure/datafactory/datafactorydatasetdelimitedtext.pkl" as dsdt
+import "@azure/datafactory/datafactorydataflow.pkl" as adfdataflow
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfdf-test-rg"
+  name = "formae-plugin-sdk-test-adfdf-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfdf-test-factory"
+  name = "fpsdt-adfdf-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// The managed-identity shape — `serviceEndpoint` and no credential anywhere. No
+// storage account is created: creating a linked service or a dataset does not test
+// the connection, so the endpoint only has to be a well-formed blob service URI.
+local blobLinkedService = new lsblob.LinkedServiceAzureBlobStorage {
+  label = "adfdf-test-linked-service"
+  name = "conformance-blob"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  serviceEndpoint = "https://fpsdtdf\(vars.testRunID).blob.core.windows.net"
+  accountKind = "StorageV2"
+}
+
+local inputDataset = new dsdt.DatasetDelimitedText {
+  label = "adfdf-test-source-dataset"
+  name = "conformance-ds-in"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  linkedServiceName = blobLinkedService.res.name
+  container = "landing"
+  folderPath = "incoming"
+  firstRowAsHeader = true
+}
+
+local outputDataset = new dsdt.DatasetDelimitedText {
+  label = "adfdf-test-sink-dataset"
+  name = "conformance-ds-out"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  linkedServiceName = blobLinkedService.res.name
+  container = "curated"
+  folderPath = "orders"
+  firstRowAsHeader = true
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  blobLinkedService
+  inputDataset
+  outputDataset
+
+  // Free: defining a data flow is a metadata write. A data flow only costs money
+  // when a pipeline's Execute Data Flow activity runs it, or when somebody opens a
+  // debug session — and a debug session lives on an API this provider never calls.
+  // No pipeline references this data flow, so nothing ever runs it.
+  //
+  // The script names the two transformations declared below it, `src` and `dst`.
+  // It is write-only: the service reparses the DSL and stores it as `scriptLines`,
+  // so what comes back is a re-serialisation rather than this text, and comparing
+  // it would report drift on a data flow nobody touched.
+  new adfdataflow.DataFlow {
+    label = "plugin-sdk-test-adf-data-flow"
+    name = "conformance-data-flow"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    script = """
+      source(allowSchemaDrift: false,
+        validateSchema: false) ~> src
+      src sink(allowSchemaDrift: false,
+        validateSchema: false,
+        skipDuplicateMapInputs: true,
+        skipDuplicateMapOutputs: true) ~> dst
+      """
+    sources = new Listing {
+      new adfdataflow.DataFlowEndpoint {
+        name = "src"
+        datasetName = inputDataset.res.name
+        description = "conformance source"
+      }
+    }
+    sinks = new Listing {
+      new adfdataflow.DataFlowEndpoint {
+        name = "dst"
+        datasetName = outputDataset.res.name
+        description = "conformance sink"
+      }
+    }
+    // Update: turn schema drift off on both ends and retitle. Only name,
+    // resourceGroupName and factoryName are create-only; the script, the sources
+    // and the sinks are all updatable in place.
+    description = "conformance mapping data flow, updated"
+    folderName = "conformance"
+    annotations = new Listing { "conformance" }
+  }
+}

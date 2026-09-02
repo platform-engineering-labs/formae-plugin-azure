@@ -1,0 +1,92 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorypipeline.pkl" as adfpipeline
+import "@azure/datafactory/datafactorytriggerblobevent.pkl" as trgbev
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adftrgbev-test-rg"
+  name = "formae-plugin-sdk-test-adftrgbev-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adftrgbev-test-factory"
+  name = "fpsdt-adftrgbev-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Declared as a local so the SDK test patch logic does not target it.
+local blobEventSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// Unlike the dataset fixtures, this one DOES need a real storage account: `scope`
+// is an ARM resource ID and the service resolves it when the trigger is written.
+// An empty Standard_LRS account costs a fraction of a cent for the life of a
+// conformance run.
+//
+// StorageAccount names are 3-24 characters, lowercase alphanumeric only.
+local eventSource = new storageaccount.StorageAccount {
+  label = "adftrgbev-test-storage-account"
+  name = "fpsdtbev\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = blobEventSku
+  kind = "StorageV2"
+}
+
+// A pipeline for the trigger to point at, so the factory -> pipeline -> trigger
+// resolvable chain is actually exercised. The trigger is never started, so nothing
+// ever runs.
+local waitPipeline = new adfpipeline.Pipeline {
+  label = "adftrgbev-test-pipeline"
+  name = "conformance-pipeline"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  activities = #"[{"name":"pause","type":"Wait","typeProperties":{"waitTimeInSeconds":1}}]"#
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  eventSource
+  waitPipeline
+
+  // Free: creating a blob-event trigger provisions nothing. The Event Grid system
+  // topic and event subscription that deliver the events are created by the
+  // service's SubscribeToEvents operation, which runs when the trigger is
+  // STARTED — and this provider never starts one, so the trigger stays inert and
+  // no Event Grid resource is ever billed.
+  //
+  // ignoreEmptyBlobs is stated rather than omitted: the service fills it in with
+  // true, and a service-chosen value would read back as drift.
+  new trgbev.TriggerBlobEvent {
+    label = "plugin-sdk-test-adf-trigger-blob-event"
+    name = "conformance-trigger-blob-event"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    scope = eventSource.res.id
+    events = new Listing { "Microsoft.Storage.BlobCreated" }
+    ignoreEmptyBlobs = true
+    blobPathBeginsWith = "/landing/blobs/incoming/"
+    pipelineNames = new Listing { waitPipeline.res.name }
+    description = "conformance blob arrival trigger"
+    annotations = new Listing { "conformance" }
+  }
+}
