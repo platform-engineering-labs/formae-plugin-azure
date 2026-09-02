@@ -18,7 +18,7 @@ typealias VMSSUpgradeMode = "Manual"|"Automatic"|"Rolling"
 typealias VMSSOrchestrationMode = "Uniform"|"Flexible"
 typealias VMSSOSDiskCreateOption = "FromImage"|"Empty"|"Attach"
 
-class VMSSSku {
+class VMSSSku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: String
 
@@ -29,7 +29,7 @@ class VMSSSku {
     tier: String = "Standard"
 }
 
-class VMSSUpgradePolicy {
+class VMSSUpgradePolicy extends formae.SubResource {
     @azure.FieldHint { required = true }
     mode: VMSSUpgradeMode
 }
@@ -77,7 +77,7 @@ class VMSSOSProfile {
     linuxConfiguration: VMSSLinuxConfiguration?
 }
 
-class VMSSIPConfiguration {
+class VMSSIPConfiguration extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: String
 
@@ -85,7 +85,7 @@ class VMSSIPConfiguration {
     subnetId: String|formae.Resolvable
 }
 
-class VMSSNICConfiguration {
+class VMSSNICConfiguration extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: String
 
@@ -96,7 +96,7 @@ class VMSSNICConfiguration {
     ipConfigurations: Listing<VMSSIPConfiguration>
 }
 
-class VMSSNetworkProfile {
+class VMSSNetworkProfile extends formae.SubResource {
     @azure.FieldHint { required = true }
     networkInterfaceConfigurations: Listing<VMSSNICConfiguration>
 }

@@ -14,7 +14,7 @@ const apiVersion = "2023-07-03"
 
 /// Marketplace-style triple that names an image definition. All three parts are
 /// immutable.
-class GalleryImageIdentifier {
+class GalleryImageIdentifier extends formae.SubResource {
     @azure.FieldHint { required = true; createOnly = true }
     publisher: String(length >= 1 && length <= 128)
 

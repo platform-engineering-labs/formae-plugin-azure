@@ -14,14 +14,14 @@ const apiVersion = "2021-11-01"
 
 /// Matches on a SQL-92 subset evaluated against message properties, e.g.
 /// `priority = 'high' AND region = 'emea'`. `1=1` matches everything.
-class SqlFilter {
+class SqlFilter extends formae.SubResource {
     @azure.FieldHint { required = true }
     sqlExpression: String(length >= 1 && length <= 1024)
 }
 
 /// Matches on exact equality of the listed system and user properties. Cheaper to
 /// evaluate than a SQL filter, and the properties left unset are ignored.
-class CorrelationFilter {
+class CorrelationFilter extends formae.SubResource {
     @azure.FieldHint { hasProviderDefault = true }
     correlationId: String?
 
@@ -47,7 +47,7 @@ class CorrelationFilter {
 
 /// Rewrites a matching message before it lands in the subscription, e.g.
 /// `SET priority = 'low'`.
-class RuleAction {
+class RuleAction extends formae.SubResource {
     @azure.FieldHint { required = true }
     sqlExpression: String(length >= 1 && length <= 1024)
 }

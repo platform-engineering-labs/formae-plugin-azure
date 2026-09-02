@@ -31,7 +31,7 @@ open class ManagedEnvironmentResolvable extends formae.Resolvable {
 
 /// Log Analytics workspace configuration used when appLogsConfiguration.destination
 /// is "log-analytics".
-class LogAnalyticsConfiguration {
+class LogAnalyticsConfiguration extends formae.SubResource {
     /// Log Analytics workspace customer (workspace) ID.
     customerId: String
 

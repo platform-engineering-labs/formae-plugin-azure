@@ -29,7 +29,7 @@ open class SubnetResolvable extends formae.Resolvable {
 /// Hands the subnet to an Azure service that needs to inject its own resources
 /// into it — DNS resolver endpoints, NetApp volumes, App Service or ACI vnet
 /// integration all require one. A delegated subnet can hold nothing else.
-class Delegation {
+class Delegation extends formae.SubResource {
     /// Free-form label for the delegation, unique within the subnet.
     @azure.FieldHint { required = true }
     name: String(length >= 1)
