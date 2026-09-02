@@ -5,6 +5,18 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # armalertsmanagement is pinned to v0.10.0 ON PURPOSE - it is deliberately a
+      # minor BEHIND latest. v0.11.0 removed NewAlertProcessingRulesClient and
+      # NewPrometheusRuleGroupsClient outright (see that module's CHANGELOG), and
+      # pkg/client/client.go calls both. Taking the bump does not deprecate
+      # anything - it stops the plugin compiling, and with it
+      # AZURE::AlertsManagement::AlertProcessingRuleActionGroup,
+      # ::AlertProcessingRuleSuppression and ::PrometheusRuleGroup.
+      #
+      # Remove this entry only once a release restores those clients; check the
+      # CHANGELOG rather than the version number.
+      - dependency-name: "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/alertsmanagement/armalertsmanagement"
 
   - package-ecosystem: "github-actions"
     directory: "/"
