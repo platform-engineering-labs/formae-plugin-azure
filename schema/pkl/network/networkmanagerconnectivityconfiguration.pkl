@@ -1,0 +1,127 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanagerconnectivityconfiguration
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerConnectivityConfiguration"
+const apiVersion = "2023-05-01"
+
+/// One network group the configuration is applied to, and how its members are
+/// wired.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ConnectivityGroupItem extends formae.SubResource {
+    /// ARM ID of the network group.
+    @azure.FieldHint { required = true }
+    networkGroupId: String|formae.Resolvable
+
+    /// `DirectlyConnected` gives the group's members direct connectivity to each
+    /// other (mesh) or to the hub; `None` leaves them reachable only through the
+    /// hub's gateway.
+    @azure.FieldHint { required = true }
+    groupConnectivity: ("DirectlyConnected"|"None")
+
+    /// Whether the group's members participate across regions. ARM echoes `False`
+    /// when it is not sent.
+    @azure.FieldHint { hasProviderDefault = true }
+    isGlobal: ("True"|"False")?
+
+    /// Route the group's traffic through the hub's virtual network gateway.
+    /// Meaningful only for `HubAndSpoke`. ARM echoes `False` when it is not sent.
+    @azure.FieldHint { hasProviderDefault = true }
+    useHubGateway: ("True"|"False")?
+}
+
+/// The hub of a hub-and-spoke topology.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ConnectivityHub extends formae.SubResource {
+    /// ARM ID of the hub resource.
+    @azure.FieldHint { required = true }
+    resourceId: String|formae.Resolvable
+
+    /// ARM type of the hub, e.g. `Microsoft.Network/virtualNetworks`.
+    @azure.FieldHint { required = true }
+    resourceType: String
+}
+
+open class NetworkManagerConnectivityConfigurationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerConnectivityConfigurationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerConnectivityConfigurationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A connectivity configuration: the topology a virtual network manager builds
+/// between the members of one or more network groups.
+///
+/// Two topologies exist. `Mesh` connects every member of the applied groups to
+/// every other and needs no hub. `HubAndSpoke` connects each member to the hub
+/// named in `hubs` and requires at least one entry there.
+///
+/// The configuration is INERT until it is committed to a region — commits are a
+/// separate ARM verb (`networkManagerCommits`) and are deliberately not modelled,
+/// because a committed configuration cannot be deleted. An uncommitted
+/// configuration is therefore the only shape this provider can safely tear down;
+/// treat it as declared-but-not-deployed intent.
+///
+/// The manager must list `Connectivity` in its `networkManagerScopeAccesses` or
+/// ARM rejects the configuration.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkManager"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "networkManagerName" }
+    )
+}
+open class NetworkManagerConnectivityConfiguration extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkManagerName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    connectivityTopology: ("Mesh"|"HubAndSpoke")
+
+    @azure.FieldHint { required = true }
+    appliesToGroups: Listing<ConnectivityGroupItem>
+
+    /// Required for `HubAndSpoke`; must be empty for `Mesh`.
+    @azure.FieldHint { }
+    hubs: Listing<ConnectivityHub>?
+
+    /// Whether the topology spans regions. ARM echoes `False` when it is not sent.
+    @azure.FieldHint { hasProviderDefault = true }
+    isGlobal: ("True"|"False")?
+
+    /// Remove virtual network peerings that already exist between the members
+    /// before building the topology. ARM echoes `False` when it is not sent.
+    @azure.FieldHint { hasProviderDefault = true }
+    deleteExistingPeering: ("True"|"False")?
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerConnectivityConfigurationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

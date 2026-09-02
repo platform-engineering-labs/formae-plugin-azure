@@ -1,0 +1,98 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanager
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManager"
+const apiVersion = "2023-05-01"
+
+/// The set of scopes a network manager may manage resources inside.
+///
+/// Scope: SUBSCRIPTIONS ONLY. ARM also accepts `managementGroups` here, and a
+/// manager scoped to a management group governs every subscription beneath it —
+/// but writing that scope requires a role assignment ABOVE subscription level,
+/// which this provider cannot assume it has. Modelling the field would offer a
+/// value most callers cannot set and would be untestable, so it is deliberately
+/// absent. A manager authored elsewhere with management-group scopes therefore
+/// reads back with only its subscription scopes visible.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class NetworkManagerScopes extends formae.SubResource {
+    /// Fully-qualified subscription scopes, each `/subscriptions/<guid>`.
+    @azure.FieldHint { required = true }
+    subscriptions: Listing<(String|formae.Resolvable)>
+}
+
+open class NetworkManagerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerResolvable = (this) {
+        property = "name"
+    }
+    hidden location: NetworkManagerResolvable = (this) {
+        property = "location"
+    }
+}
+
+/// An Azure Virtual Network Manager instance — the container for network groups,
+/// connectivity configurations and security admin configurations.
+///
+/// A manager on its own changes nothing. Membership comes from network groups,
+/// intent comes from configurations, and neither takes effect until the
+/// configuration is COMMITTED to a region. Commits are a separate ARM verb
+/// (`networkManagerCommits`) and are not modelled: a committed configuration
+/// cannot be deleted, so an uncommitted configuration is the only shape this
+/// provider can safely tear down.
+///
+/// `networkManagerScopeAccesses` declares which configuration families the manager
+/// may use; a configuration of a family the manager does not list is rejected.
+///
+/// Free — the manager and its configurations carry no charge of their own.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class NetworkManager extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Which configuration families this manager may carry: `Connectivity` for
+    /// connectivity configurations, `SecurityAdmin` for security admin
+    /// configurations. Both may be listed.
+    @azure.FieldHint { required = true }
+    networkManagerScopeAccesses: Listing<("Connectivity"|"SecurityAdmin")>
+
+    @azure.FieldHint { required = true }
+    networkManagerScopes: NetworkManagerScopes
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
