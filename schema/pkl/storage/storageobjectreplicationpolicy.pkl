@@ -34,10 +34,10 @@ class ReplicationFilters extends formae.SubResource {
 @azure.SubResourceHint { apiVersion = module.apiVersion }
 class ReplicationRule extends formae.SubResource {
     @azure.FieldHint { required = true }
-    sourceContainer: String(length >= 3 && length <= 63)
+    sourceContainer: (String(length >= 3 && length <= 63)|formae.Resolvable)
 
     @azure.FieldHint { required = true }
-    destinationContainer: String(length >= 3 && length <= 63)
+    destinationContainer: (String(length >= 3 && length <= 63)|formae.Resolvable)
 
     @azure.FieldHint { }
     filters: ReplicationFilters?

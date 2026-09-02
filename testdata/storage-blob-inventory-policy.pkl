@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/blobcontainer.pkl"
+import "@azure/storage/storageblobinventorypolicy.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "bip-test-rg"
+  name = "formae-plugin-sdk-test-bip-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// Blob inventory needs a general-purpose v2 account; it is not offered on the
+// legacy Storage kind.
+local sa = new storageaccount.StorageAccount {
+  label = "bip-test-sa"
+  name = "fpsdtbip\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+// The destination container must already exist — ARM does not create it, and a
+// policy naming a missing container is rejected at create time. Declaring it here
+// makes the ordering a real dependency rather than a race.
+local reportContainer = new blobcontainer.BlobContainer {
+  label = "bip-test-report-container"
+  name = "plugin-sdk-test-bip-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = sa.res.name
+  publicAccess = "None"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  reportContainer
+
+  // Singleton child: ARM always names the inventory policy `default`, so this
+  // resource has no name property — one policy per storage account.
+  new storageblobinventorypolicy.BlobInventoryPolicy {
+    label = "plugin-sdk-test-bip"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    enabled = true
+    rules = new Listing {
+      new storageblobinventorypolicy.InventoryRule {
+        name = "blobreport"
+        destination = reportContainer.res.name
+        enabled = true
+        definition = new storageblobinventorypolicy.InventoryDefinition {
+          format = "Csv"
+          objectType = "Blob"
+          
+          schedule = "Daily"
+          // Every schema field here is available on a flat account with no
+          // versioning: nothing version-, snapshot- or soft-delete-aware, so the
+          // rule needs no blob-service configuration the parent cannot express.
+          schemaFields = new Listing {
+            "Name"
+            "Creation-Time"
+            "Last-Modified"
+            "Content-Length"
+          }
+          filters = new storageblobinventorypolicy.InventoryFilters {
+            blobTypes = new Listing { "blockBlob" }
+            prefixMatch = new Listing { "data/" }
+          }
+        }
+      }
+    }
+  }
+}

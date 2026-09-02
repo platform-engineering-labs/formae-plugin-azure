@@ -75,7 +75,7 @@ class InventoryRule extends formae.SubResource {
     /// Container the inventory files are written to. It must already exist — ARM
     /// does not create it.
     @azure.FieldHint { required = true }
-    destination: String(length >= 3 && length <= 63)
+    destination: (String(length >= 3 && length <= 63)|formae.Resolvable)
 
     /// Set false to keep the rule defined but inactive.
     @azure.FieldHint { }
