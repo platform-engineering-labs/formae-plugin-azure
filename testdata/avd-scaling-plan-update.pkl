@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/desktopvirtualization/avdhostpool.pkl"
+import "@azure/desktopvirtualization/avdscalingplan.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "avd-sp-test-rg"
+  name = "formae-plugin-sdk-test-avd-sp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A scaling plan can only attach to a Pooled pool.
+local hostPool = new avdhostpool.HostPool {
+  label = "avd-sp-test-host-pool"
+  name = "fpsdt-avd-sp-hp-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  hostPoolType = "Pooled"
+  loadBalancerType = "BreadthFirst"
+  preferredAppGroupType = "RailApplications"
+  maxSessionLimit = 10
+  startVmOnConnect = false
+  validationEnvironment = false
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  hostPool
+
+  // The pools a plan drives are a plain field, not association resources.
+  // scalingPlanEnabled is false: the pool has no session hosts, so there is
+  // nothing for the plan to act on and an enabled plan would only log.
+  //
+  // Schedule phase times are HH:MM wall-clock in the plan's timeZone. ARM
+  // requires ramp-up < peak < ramp-down < off-peak.
+  // Update: move the ramp-down window and rewrite the free-text fields. The
+  // schedule list is sent whole on every update so a dropped schedule actually
+  // disappears rather than being read as "no change".
+  new avdscalingplan.ScalingPlan {
+    label = "plugin-sdk-test-avd-scaling-plan"
+    name = "fpsdt-avd-sp-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    timeZone = "UTC"
+    hostPoolType = "Pooled"
+    description = "Conformance scaling plan, updated"
+    friendlyName = "fpsdt scaling plan renamed"
+    hostPoolReferences = new Listing {
+      new avdscalingplan.ScalingHostPoolReference {
+        hostPoolArmPath = hostPool.res.id
+        scalingPlanEnabled = false
+      }
+    }
+    schedules = new Listing {
+      new avdscalingplan.ScalingSchedule {
+        name = "weekdays"
+        daysOfWeek = new Listing {
+          "Monday"
+          "Tuesday"
+          "Wednesday"
+          "Thursday"
+          "Friday"
+        }
+        rampUpStartTime = "06:00"
+        rampUpLoadBalancingAlgorithm = "BreadthFirst"
+        rampUpMinimumHostsPct = 20
+        rampUpCapacityThresholdPct = 60
+        peakStartTime = "09:00"
+        peakLoadBalancingAlgorithm = "BreadthFirst"
+        rampDownStartTime = "17:30"
+        rampDownLoadBalancingAlgorithm = "DepthFirst"
+        rampDownMinimumHostsPct = 10
+        rampDownCapacityThresholdPct = 90
+        rampDownForceLogoffUsers = false
+        rampDownWaitTimeMinutes = 15
+        rampDownNotificationMessage = "You will be signed out in 15 minutes."
+        rampDownStopHostsWhen = "ZeroSessions"
+        offPeakStartTime = "20:00"
+        offPeakLoadBalancingAlgorithm = "DepthFirst"
+      }
+    }
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

@@ -1,0 +1,208 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.desktopvirtualization.avdscalingplan
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DesktopVirtualization::ScalingPlan"
+const apiVersion = "2021-07-12"
+
+/// A day of the week a scaling schedule is active on.
+typealias ScalingDayOfWeek = "Monday"|"Tuesday"|"Wednesday"|"Thursday"|"Friday"|"Saturday"|"Sunday"
+
+/// Load-balancing algorithm for one phase of a scaling schedule.
+typealias ScalingLoadBalancingAlgorithm = "BreadthFirst"|"DepthFirst"
+
+/// A wall-clock time of day, `HH:MM` on a 24-hour clock, interpreted in the
+/// scaling plan's `timeZone`.
+///
+/// The 2021-07-12 API carries these as full RFC 3339 timestamps whose date part
+/// is meaningless — only the time of day is used. Declaring an absolute
+/// timestamp in a forma would be wrong twice over: it would go stale, and the
+/// service re-serialises the date part, so the value read back never matches the
+/// value sent. The handler pins the date to a fixed reference day on the way in
+/// and reduces the response back to `HH:MM` on the way out, which is exactly the
+/// shape later API versions adopted natively.
+typealias ScalingTimeOfDay = String(matches(Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")))
+
+/// One host pool a scaling plan drives.
+///
+/// This is the `..._host_pool_association` case again: ARM stores the list on
+/// the scaling plan, so the pairing is a field rather than a resource.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ScalingHostPoolReference extends formae.SubResource {
+
+    /// Full ARM ID of the host pool — reference a sibling pool with
+    /// `hostPool.res.id`. The pool must be `Pooled`; ARM rejects a scaling plan
+    /// pointed at a `Personal` or `BYODesktop` pool.
+    @azure.FieldHint { required = true }
+    hostPoolArmPath: String(length >= 1)|formae.Resolvable
+
+    /// Whether the plan actually acts on this pool. A disabled reference stays
+    /// configured and does nothing.
+    @azure.FieldHint { required = true }
+    scalingPlanEnabled: Boolean
+}
+
+/// One day-pattern of scaling behaviour, in four phases: ramp-up, peak,
+/// ramp-down, off-peak. Every phase's start time and every threshold is
+/// required — ARM rejects a `Pooled` schedule with any of them missing, and a
+/// half-declared schedule would read back filled in by the service and report
+/// drift.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ScalingSchedule extends formae.SubResource {
+
+    /// Unique within the plan.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 260)
+
+    /// Days this schedule applies to. Two schedules in the same plan may not
+    /// share a day.
+    @azure.FieldHint { required = true }
+    daysOfWeek: Listing<ScalingDayOfWeek>(length >= 1 && length <= 7)
+
+    @azure.FieldHint { required = true }
+    rampUpStartTime: ScalingTimeOfDay
+
+    @azure.FieldHint { required = true }
+    rampUpLoadBalancingAlgorithm: ScalingLoadBalancingAlgorithm
+
+    /// Percentage of the pool to have running when ramp-up begins.
+    @azure.FieldHint { required = true }
+    rampUpMinimumHostsPct: Int(this >= 0 && this <= 100)
+
+    /// Session-occupancy percentage above which ramp-up starts another host.
+    @azure.FieldHint { required = true }
+    rampUpCapacityThresholdPct: Int(this >= 1 && this <= 100)
+
+    @azure.FieldHint { required = true }
+    peakStartTime: ScalingTimeOfDay
+
+    @azure.FieldHint { required = true }
+    peakLoadBalancingAlgorithm: ScalingLoadBalancingAlgorithm
+
+    @azure.FieldHint { required = true }
+    rampDownStartTime: ScalingTimeOfDay
+
+    @azure.FieldHint { required = true }
+    rampDownLoadBalancingAlgorithm: ScalingLoadBalancingAlgorithm
+
+    /// Percentage of the pool to keep running through ramp-down.
+    @azure.FieldHint { required = true }
+    rampDownMinimumHostsPct: Int(this >= 0 && this <= 100)
+
+    /// Session-occupancy percentage below which ramp-down drains a host.
+    @azure.FieldHint { required = true }
+    rampDownCapacityThresholdPct: Int(this >= 1 && this <= 100)
+
+    /// Sign users out rather than waiting for them to leave.
+    @azure.FieldHint { required = true }
+    rampDownForceLogoffUsers: Boolean
+
+    /// Grace period, in minutes, between warning users and acting.
+    @azure.FieldHint { required = true }
+    rampDownWaitTimeMinutes: Int(this >= 0)
+
+    /// Warning shown to signed-in users before ramp-down acts.
+    @azure.FieldHint { required = true }
+    rampDownNotificationMessage: String(length >= 1)
+
+    /// `ZeroSessions` stops a host once nobody is signed in at all;
+    /// `ZeroActiveSessions` stops it once nobody is actively using it, leaving
+    /// disconnected sessions to be discarded.
+    @azure.FieldHint { required = true }
+    rampDownStopHostsWhen: ("ZeroSessions"|"ZeroActiveSessions")
+
+    @azure.FieldHint { required = true }
+    offPeakStartTime: ScalingTimeOfDay
+
+    @azure.FieldHint { required = true }
+    offPeakLoadBalancingAlgorithm: ScalingLoadBalancingAlgorithm
+}
+
+open class ScalingPlanResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ScalingPlanResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ScalingPlanResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: ScalingPlanResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Virtual Desktop scaling plan — a weekly timetable that starts and
+/// stops the session hosts of one or more `Pooled` host pools.
+///
+/// The plan is pure configuration and costs nothing on its own; it only acts on
+/// pools that have session hosts, and this plugin models none, so a plan
+/// declared against an empty pool is inert.
+///
+/// Deliberately not modelled: `objectId` is internal service bookkeeping.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ScalingPlan extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The timezone every schedule time is interpreted in, as a Windows
+    /// timezone name — e.g. `UTC`, `W. Europe Standard Time`, `Pacific Standard
+    /// Time`. Not an IANA identifier.
+    @azure.FieldHint { required = true }
+    timeZone: String(length >= 1)
+
+    /// Only `Pooled` pools can be scaled by a plan in this API version, so the
+    /// plan's own type has exactly one legal value. It is required rather than
+    /// implied because ARM answers Get with it and an omitted value would read
+    /// as drift.
+    @azure.FieldHint { required = true }
+    hostPoolType: "Pooled"
+
+    /// The host pools this plan drives.
+    @azure.FieldHint { }
+    hostPoolReferences: Listing<ScalingHostPoolReference>?
+
+    /// At least one weekly schedule. Two schedules may not claim the same day.
+    @azure.FieldHint { required = true }
+    schedules: Listing<ScalingSchedule>(length >= 1)
+
+    /// Session hosts carrying this tag are left alone by the plan.
+    @azure.FieldHint { }
+    exclusionTag: String(length >= 1)?
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    @azure.FieldHint { }
+    friendlyName: String(length <= 260)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ScalingPlanResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

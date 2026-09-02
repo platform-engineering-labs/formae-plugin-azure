@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.desktopvirtualization.avdapplicationgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DesktopVirtualization::ApplicationGroup"
+const apiVersion = "2021-07-12"
+
+open class ApplicationGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApplicationGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApplicationGroupResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: ApplicationGroupResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Virtual Desktop application group — what a host pool publishes to
+/// users, either a full desktop or a set of individual applications.
+///
+/// The group's link to its host pool is a plain field, `hostPoolArmPath`, not a
+/// separate association resource: ARM stores exactly one host pool per
+/// application group, so the "many-to-many" a Terraform
+/// `..._host_pool_association` resource exists to break apart does not exist
+/// here.
+///
+/// `applicationGroupType` must agree with the pool's `preferredAppGroupType`
+/// and cannot be changed afterwards. A `Desktop` group publishes the whole
+/// desktop and cannot hold `AZURE::DesktopVirtualization::Application`
+/// children; only a `RemoteApp` group can.
+///
+/// Deliberately not modelled: `workspaceArmPath` is read-only and is written by
+/// the service the moment an `AZURE::DesktopVirtualization::Workspace` lists
+/// this group in its `applicationGroupReferences`, so surfacing it would report
+/// drift as soon as the workspace exists. `objectId`, `cloudPcResource` and
+/// `migrationRequest` are internal service bookkeeping.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ApplicationGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The full ARM ID of the host pool this group publishes from — reference a
+    /// sibling host pool with `hostPool.res.id`.
+    @azure.FieldHint { required = true; createOnly = true }
+    hostPoolArmPath: String(length >= 1)|formae.Resolvable
+
+    /// `RemoteApp` publishes individual applications, `Desktop` publishes the
+    /// whole session. ARM's PATCH cannot change it.
+    @azure.FieldHint { required = true; createOnly = true }
+    applicationGroupType: ("RemoteApp"|"Desktop")
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    @azure.FieldHint { }
+    friendlyName: String(length <= 260)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ApplicationGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
