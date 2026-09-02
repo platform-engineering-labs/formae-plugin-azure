@@ -19,6 +19,7 @@ const apiVersion = "2023-09-01"
 /// `storageAccountType` and `diskSizeGB` on the nested disk, and provider defaults
 /// are not honoured below the top level of a resource, so modelling them would show
 /// as permanent drift.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class ImageOsDisk extends formae.SubResource {
     @azure.FieldHint { required = true; createOnly = true }
     osType: "Linux"|"Windows"
@@ -34,6 +35,7 @@ class ImageOsDisk extends formae.SubResource {
     managedDiskId: (String|formae.Resolvable)?
 }
 
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class ImageStorageProfile extends formae.SubResource {
     @azure.FieldHint { required = true; createOnly = true }
     osDisk: ImageOsDisk

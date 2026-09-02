@@ -16,6 +16,7 @@ const apiVersion = "2021-08-01"
 /// when they are omitted, so both are required here rather than optional:
 /// `hasProviderDefault` is not honoured on the fields of a nested class, and an
 /// omitted value would read back as drift.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class FailingPeriods extends formae.SubResource {
     /// How many of the last `numberOfEvaluationPeriods` must fail. Cannot exceed it.
     @azure.FieldHint { required = true }
@@ -26,6 +27,7 @@ class FailingPeriods extends formae.SubResource {
 }
 
 /// One KQL query and the threshold its result is compared against.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class Condition extends formae.SubResource {
     /// The KQL to run against every scope, e.g.
     /// `Heartbeat | where Computer == "web1" | summarize count()`.

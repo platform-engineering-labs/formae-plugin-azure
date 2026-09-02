@@ -27,6 +27,7 @@ open class NamespaceResolvable extends formae.Resolvable {
 typealias NamespaceSKUName = "Basic"|"Standard"|"Premium"
 
 /// SKU configuration for Event Hubs Namespace
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class NamespaceSKU extends formae.SubResource {
     /// SKU name (Basic, Standard, Premium)
     name: NamespaceSKUName

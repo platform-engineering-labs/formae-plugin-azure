@@ -20,6 +20,7 @@ typealias BastionHostSkuName = "Basic"|"Standard"
 /// Private IP allocation for the bastion's own interface.
 typealias BastionIPAllocationMethod = "Dynamic"|"Static"
 
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class BastionHostSku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: BastionHostSkuName
@@ -27,6 +28,7 @@ class BastionHostSku extends formae.SubResource {
 
 /// The bastion's front end: the dedicated subnet it lives in plus the public IP
 /// it answers on.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class BastionHostIPConfiguration extends formae.SubResource {
     /// Name of the IP configuration.
     @azure.FieldHint { required = true }

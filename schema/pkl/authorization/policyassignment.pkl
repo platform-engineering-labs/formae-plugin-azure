@@ -13,6 +13,7 @@ const type = "AZURE::Authorization::PolicyAssignment"
 const apiVersion = "2022-06-01"
 
 /// Text shown to a user whose request is denied, or on a non-compliant resource.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class NonComplianceMessage extends formae.SubResource {
     @azure.FieldHint { required = true }
     message: String
