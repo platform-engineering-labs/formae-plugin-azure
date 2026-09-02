@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountcertificate.pkl" as logiccert
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logiccrt-test-rg"
+  name = "formae-plugin-sdk-test-logiccrt-rg-\(vars.testRunID)"
+  location = "northeurope"
+}
+
+// northeurope: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logiccrt-test-account"
+  name = "fpsdt-logiccrt-\(vars.testRunID)"
+  location = "northeurope"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Free: a certificate is metadata on the parent account and is not billed
+  // separately.
+  //
+  // The PUBLIC blob form. ARM's other form — a KeyVaultKeyReference naming a
+  // private key — is not modelled: it needs a data-plane grant on the vault plus
+  // an access policy for the integration account's identity, neither of which
+  // this resource type can express.
+  //
+  // The value below is the base64 DER of a throwaway self-signed certificate
+  // generated for this fixture (CN=formae-conformance-as2). Only the public half
+  // is here; the private key was never kept. It is what an AS2 agreement would
+  // use to verify a partner's signature.
+  new logiccert.IntegrationAccountCertificate {
+    label = "plugin-sdk-test-logic-integration-account-certificate"
+    name = "conformance-as2-cert"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    publicCertificate = "MIIDIzCCAgugAwIBAgIUHoaq4IO1Gcn2inqN8Cb5CAQ/hL8wDQYJKoZIhvcNAQELBQAwITEfMB0GA1UEAwwWZm9ybWFlLWNvbmZvcm1hbmNlLWFzMjAeFw0yNjA5MDIyMTM4MTdaFw00NjA4MjgyMTM4MTdaMCExHzAdBgNVBAMMFmZvcm1hZS1jb25mb3JtYW5jZS1hczIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCrZER0axJiHuy5AXA3w9t9s1Fbn9mz+DoSxjnMM9NnfEWQIWZdixEoVjT+qUDKMBIBZTsLVnFy9a6UvN1t6EQQ8YE0FXF9qSTAXD+JcSHa4cGsQRqUw2CHCtiFpoWczZ+T+VeKuApyG6GvWrBiB416TYQTaQtsWn/upCD83hEi2LDD6Tl7G7gf869BEiYzbmuNSdwn63C6FVg9ovup96VCnHt/mrT1nGSMm6c1Eq195JKn77K+nzD8MHhMNeYEA3j8ZfkboPiNx5ot8N9rp5JhJgQrnkWZsxC8A0UhIwESLYv3Z5jbVKGZEdBbkTLQvgPZW4sexMgJFwrLm8syGt+VAgMBAAGjUzBRMB0GA1UdDgQWBBTM+W6CCTZL5/Tp+NgvTtChjf7kjTAfBgNVHSMEGDAWgBTM+W6CCTZL5/Tp+NgvTtChjf7kjTAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAp2nb896oWR4Excbboq8PY4F7hUE2Gir557609U9MyDgz6KVKX+umXSfCg+4jT/k29G0fkJDZtd/5BZIvlayRaAXEUzszlENaewInHIt3a2Sx/OO0UsxkaUdWzi6isK7p67UYRjwnWyw7+4VPnvzwGyeIOtxm0faCZzH85954f5fh9d7y/pT1/sL0zdyT10crZz3XNhyYapEROSzkqQ5yA6HIR4UDHPjLPRi4EU4/8wN0rceUvuxY5CoqIoVQUGcIj3R0u/8gAHWt9dBTusaDtubfjc7faFjnFfrEDnLXoTAttvBPTRyRb6qnTbOa7lfSRB2aM0XrFL5ZHZcYTRkqZ"
+  }
+}

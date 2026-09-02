@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountassembly.pkl" as logicasm
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicasm-test-rg"
+  name = "formae-plugin-sdk-test-logicasm-rg-\(vars.testRunID)"
+  location = "westeurope"
+}
+
+// westeurope: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicasm-test-account"
+  name = "fpsdt-logicasm-\(vars.testRunID)"
+  location = "westeurope"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Free: an assembly is metadata on the parent account and is not billed
+  // separately.
+  //
+  // `content` is the base64 of the .dll bytes and is write-only: ARM copies the
+  // blob into storage and answers a GET with a `contentLink` SAS URL, never with
+  // the bytes. The payload below is a small stub with a DOS/PE signature rather
+  // than a real assembly — nothing in this fixture loads it, and committing a
+  // real binary to the repo is not worth it.
+  //
+  // `name` is the ARM child resource name; `assemblyName` is the .NET identity
+  // recorded inside it. ARM requires both and they are independent.
+  new logicasm.IntegrationAccountAssembly {
+    label = "plugin-sdk-test-logic-integration-account-assembly"
+    name = "conformance-assembly"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    assemblyName = "Formae.Conformance.Transforms"
+    assemblyVersion = "1.0.0.0"
+    content = "TVqQAAMAAAAEAAAA//8AAGZvcm1hZSBjb25mb3JtYW5jZSBzdHViIGFzc2VtYmx5AA=="
+  }
+}

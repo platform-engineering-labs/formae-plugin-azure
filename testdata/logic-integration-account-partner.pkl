@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountpartner.pkl" as logicpartner
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicptn-test-rg"
+  name = "formae-plugin-sdk-test-logicptn-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+// westus2: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicptn-test-account"
+  name = "fpsdt-logicptn-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Free: a partner is metadata on the parent account and is not billed
+  // separately.
+  //
+  // `businessIdentities` flattens ARM's content.b2b.businessIdentities wrapper:
+  // PartnerContent has exactly one member and B2BPartnerContent exactly one
+  // after that, so neither intermediate object carries anything a caller could
+  // set. `AS2Identity` is the qualifier an AS2 agreement matches on.
+  new logicpartner.IntegrationAccountPartner {
+    label = "plugin-sdk-test-logic-integration-account-partner"
+    name = "conformance-host-partner"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    partnerType = "B2B"
+    businessIdentities = new Listing {
+      new logicpartner.BusinessIdentity {
+        qualifier = "AS2Identity"
+        value = "FORMAE-HOST"
+      }
+    }
+  }
+}

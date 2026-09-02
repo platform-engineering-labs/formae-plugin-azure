@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountmap.pkl" as logicmap
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicmap-test-rg"
+  name = "formae-plugin-sdk-test-logicmap-rg-\(vars.testRunID)"
+  location = "westus"
+}
+
+// westus: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicmap-test-account"
+  name = "fpsdt-logicmap-\(vars.testRunID)"
+  location = "westus"
+  resourceGroupName = rg.res.name
+  skuName = "Free"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Free: a map is metadata on the parent account and is not billed separately.
+  //
+  // `content` is write-only for the same reason as a schema's: ARM copies the
+  // stylesheet into blob storage and answers a GET with a `contentLink` SAS URL.
+  // `contentType` is derived from `mapType` by the provider rather than being a
+  // property the caller has to repeat.
+  new logicmap.IntegrationAccountMap {
+    label = "plugin-sdk-test-logic-integration-account-map"
+    name = "conformance-order-map"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    mapType = "Xslt"
+    content = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+        <xsl:output method="xml" indent="yes" />
+        <xsl:template match="/">
+          <Receipt>
+            <OrderId><xsl:value-of select="/Order/OrderId" /></OrderId>
+          </Receipt>
+        </xsl:template>
+      </xsl:stylesheet>
+      """
+  }
+}
