@@ -156,7 +156,6 @@ func TestLogicIntegrationAccountSchema_CRUD(t *testing.T) {
 		require.Nil(t, sentCreate.Properties.FileName)
 	})
 
-
 	t.Run("Read", func(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLogicIntegrationAccountSchemaNativeID})
 		require.NoError(t, err)

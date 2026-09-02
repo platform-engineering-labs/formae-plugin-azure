@@ -156,7 +156,6 @@ func TestLogicIntegrationAccountMap_CRUD(t *testing.T) {
 		require.Nil(t, sentCreate.Properties.ParametersSchema)
 	})
 
-
 	t.Run("Read", func(t *testing.T) {
 		got, err := prov.Read(context.Background(), &resource.ReadRequest{NativeID: testLogicIntegrationAccountMapNativeID})
 		require.NoError(t, err)
