@@ -108,7 +108,7 @@ class BackendAddressPool {
 }
 
 /// Backend HTTP settings governing how the gateway talks to the pool.
-class BackendHTTPSettings {
+class BackendHTTPSettings extends formae.SubResource {
     /// Name of the backend HTTP settings.
     name: String(length >= 1 && length <= 80)
 
@@ -131,7 +131,7 @@ class BackendHTTPSettings {
 }
 
 /// Health probe.
-class Probe {
+class Probe extends formae.SubResource {
     /// Probe name.
     name: String(length >= 1 && length <= 80)
 
@@ -162,7 +162,7 @@ class Probe {
 
 /// SSL certificate served by the gateway. Provide either an inline PFX
 /// (`data` + `password`) or a Key Vault secret reference (`keyVaultSecretId`).
-class SSLCertificate {
+class SSLCertificate extends formae.SubResource {
     /// Name of the SSL certificate.
     name: String(length >= 1 && length <= 80)
 

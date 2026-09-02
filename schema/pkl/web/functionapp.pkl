@@ -43,7 +43,7 @@ typealias IdentityType = "SystemAssigned"|"UserAssigned"|"SystemAssigned, UserAs
 typealias FunctionAppKind = "functionapp"|"functionapp,linux"|"functionapp,linux,container"|"functionapp,workflowapp"
 
 /// Managed service identity for the function app.
-class FunctionAppIdentity {
+class FunctionAppIdentity extends formae.SubResource {
     /// Identity type.
     @azure.FieldHint { }
     type: IdentityType
@@ -55,7 +55,7 @@ class FunctionAppIdentity {
 }
 
 /// An app setting. Values are write-only — see `FunctionApp.appSettings`.
-class AppSetting {
+class AppSetting extends formae.SubResource {
     @azure.FieldHint { }
     name: String(length >= 1)
 
@@ -72,7 +72,7 @@ class AppSetting {
 /// of a nested class — only on top-level resource fields. Set the ones that apply
 /// to your runtime explicitly; a forma that omits them will show drift once Azure
 /// fills in its own default.
-class FunctionSiteConfig {
+class FunctionSiteConfig extends formae.SubResource {
     /// Linux runtime stack, e.g. `PYTHON|3.12`, `NODE|20`, `DOTNET-ISOLATED|8.0`.
     /// Linux plans only (`ServicePlan.reserved = true`).
     @azure.FieldHint { }

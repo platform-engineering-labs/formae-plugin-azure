@@ -17,7 +17,7 @@ const apiVersion = "2023-05-01"
 /// **Pin both fields.** ARM always echoes this block back with its own defaults,
 /// and provider defaults are only honoured on top-level resource fields — a forma
 /// that omits `format` will therefore show permanent drift.
-class FlowLogFormat {
+class FlowLogFormat extends formae.SubResource {
     @azure.FieldHint { required = true }
     type: "JSON"
 
@@ -29,7 +29,7 @@ class FlowLogFormat {
 /// keep forever; retention is a paid feature above the free tier.
 ///
 /// **Pin both fields** — same nested-default reason as `FlowLogFormat`.
-class FlowLogRetentionPolicy {
+class FlowLogRetentionPolicy extends formae.SubResource {
     @azure.FieldHint { required = true }
     days: Int(this >= 0 && this <= 365)
 

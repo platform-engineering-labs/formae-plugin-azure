@@ -21,7 +21,7 @@ typealias EventHubStatus = "Active"|"Disabled"|"Restoring"|"SendDisabled"|"Recei
 typealias CleanupPolicy = "Delete"|"Compact"
 
 /// The newer retention model. When set it supersedes `messageRetentionInDays`.
-class RetentionDescription {
+class RetentionDescription extends formae.SubResource {
     @azure.FieldHint { }
     cleanupPolicy: CleanupPolicy?
 

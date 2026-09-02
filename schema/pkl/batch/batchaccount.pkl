@@ -22,7 +22,7 @@ typealias AuthenticationMode = "AAD"|"SharedKey"|"TaskAuthenticationToken"
 
 /// Auto-storage is the linked storage account Batch uses for application
 /// packages and task output. Without it, application packages are unavailable.
-class AutoStorage {
+class AutoStorage extends formae.SubResource {
     /// ARM ID of the storage account. Must be in the same region as the account.
     @azure.FieldHint { required = true }
     storageAccountId: (String|formae.Resolvable)

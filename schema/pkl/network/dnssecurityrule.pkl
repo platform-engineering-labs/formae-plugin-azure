@@ -15,7 +15,7 @@ const apiVersion = "2023-07-01-preview"
 /// What to do with a query that matches one of the rule's domain lists.
 /// `Alert` logs and resolves anyway; `Block` refuses; `Allow` exempts the domains
 /// from lower-priority Block rules.
-class DnsSecurityRuleAction {
+class DnsSecurityRuleAction extends formae.SubResource {
     @azure.FieldHint { required = true }
     actionType: ("Alert"|"Allow"|"Block")
 }
