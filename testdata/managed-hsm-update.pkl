@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/managedidentity/userassignedidentity.pkl"
+import "@azure/keyvault/managedhsm.pkl"
+import "vars.pkl"
+
+// WARNING - this fixture is on .github/conformance-pr-skip.txt and must stay
+// there. A Managed HSM bills at roughly $3.20/hour from the moment it is created,
+// takes 20-30 minutes to provision, and its soft delete cannot be turned off, so
+// a run killed mid-lifecycle leaves a pool costing ~$2,300/month behind. Run it
+// deliberately, and afterwards check that nothing survives in
+//   az keyvault list-deleted --resource-type mhsm
+local azureTenantId = "35412a0c-6726-4fc9-98ef-6e91adcb8d0e"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "mhsm-test-rg"
+  name = "formae-plugin-sdk-test-mhsm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A pool with no administrator can never have its security domain activated, so
+// ARM rejects the create. A user-assigned identity gives the fixture a real AAD
+// object id without depending on who is running the test.
+local admin = new userassignedidentity.UserAssignedIdentity {
+  label = "mhsm-test-admin"
+  name = "formae-plugin-sdk-test-mhsm-admin-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+local hsmSku = new managedhsm.ManagedHsmSKU {
+  family = "B"
+  name = "Standard_B1"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  admin
+
+  new managedhsm.ManagedHsm {
+    label = "plugin-sdk-test-mhsm"
+    name = "fpsdt-hsm-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    tenantId = azureTenantId
+    sku = hsmSku
+    initialAdminObjectIds = new Listing { admin.res.principalId }
+    // 7 is the minimum Azure allows and the shortest window in which a purge can
+    // reclaim the name; purge protection stays off so a purge is possible at all.
+    softDeleteRetentionInDays = 7
+    enablePurgeProtection = false
+    publicNetworkAccess = "Enabled"
+    // Update: add a tag. sku, location, tenantId and the initial administrators
+    // are all createOnly, so tags are the mutable surface worth exercising.
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+  }
+}

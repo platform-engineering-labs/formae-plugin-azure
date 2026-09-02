@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.keyvault.accesspolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::KeyVault::AccessPolicy"
+const apiVersion = "2023-07-01"
+
+/// Key permissions. Repeated here rather than imported from `vault.pkl`: no
+/// schema module in this plugin imports a sibling, and the two lists are versioned
+/// by the same ARM api-version anyway.
+typealias KeyPermission = "all"|"encrypt"|"decrypt"|"wrapKey"|"unwrapKey"|"sign"|"verify"|"get"|"list"|"create"|"update"|"import"|"delete"|"backup"|"restore"|"recover"|"purge"|"release"|"rotate"|"getrotationpolicy"|"setrotationpolicy"
+
+/// Secret permissions.
+typealias SecretPermission = "all"|"get"|"list"|"set"|"delete"|"backup"|"restore"|"recover"|"purge"
+
+/// Certificate permissions.
+typealias CertificatePermission = "all"|"get"|"list"|"delete"|"create"|"import"|"update"|"managecontacts"|"getissuers"|"listissuers"|"setissuers"|"deleteissuers"|"manageissuers"|"recover"|"purge"|"backup"|"restore"
+
+/// Storage account permissions.
+typealias StoragePermission = "all"|"get"|"list"|"delete"|"set"|"update"|"regeneratekey"|"getsas"|"listsas"|"deletesas"|"setsas"|"recover"|"backup"|"restore"|"purge"
+
+open class AccessPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AccessPolicyResolvable = (this) {
+        property = "id"
+    }
+    hidden objectId: AccessPolicyResolvable = (this) {
+        property = "objectId"
+    }
+}
+
+/// Permissions granted to one identity. Declare only the categories the identity
+/// needs: a category left unset is not sent and is not read back.
+class Permissions {
+    keys: Listing<KeyPermission>?
+    secrets: Listing<SecretPermission>?
+    certificates: Listing<CertificatePermission>?
+    storage: Listing<StoragePermission>?
+}
+
+/// One entry of a Key Vault's access policy list.
+///
+/// ARM has no PUT for an access policy - it is a mutation of the parent vault via
+/// `.../vaults/{vault}/accessPolicies/{add|remove}` - so the resource id below is
+/// synthesised from the vault id and the object id. That is safe because ARM
+/// requires the object id to be unique within a vault's policy list.
+///
+/// A vault with `enableRbacAuthorization = true` bypasses access policies
+/// entirely: the entry is stored and read back but grants nothing. Set the
+/// vault's `enableRbacAuthorization = false` for this resource to have any effect.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::KeyVault::Vault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AccessPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Key Vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Entra tenant of the vault. Every entry must use the vault's own tenant.
+    @azure.FieldHint { required = true; createOnly = true }
+    tenantId: String|formae.Resolvable
+
+    /// Object id of the user, group or service principal being granted access.
+    /// This is the entry's identity within the vault, hence createOnly: pointing
+    /// the policy at a different principal is a different policy.
+    @azure.FieldHint { required = true; createOnly = true }
+    objectId: String|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    permissions: Permissions
+
+    hidden parent = this
+
+    hidden res: AccessPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
