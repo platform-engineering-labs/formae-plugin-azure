@@ -1,0 +1,81 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccount"
+const apiVersion = "2019-05-01"
+
+/// `Free` is the only tier that carries no charge, and a subscription may hold
+/// exactly ONE Free integration account PER REGION. `Basic` and `Standard` bill
+/// per hour from the moment they exist. `NotSpecified` is accepted by ARM but
+/// behaves as an unusable account, so it is not offered.
+typealias IntegrationAccountSKUName = "Free"|"Basic"|"Standard"
+
+open class IntegrationAccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An integration account — the container for the B2B artifacts a Logic Apps
+/// workflow uses: schemas, maps, partners, agreements, certificates and
+/// assemblies.
+///
+/// The account itself holds no logic. It is referenced from a workflow through
+/// `AZURE::Logic::Workflow.integrationAccountId`, and its children are the six
+/// `AZURE::Logic::IntegrationAccount*` resource types.
+///
+/// COST: use `Free`. It is the only tier that is not billed per hour, and a
+/// subscription may hold only one Free account per region — two formae stacks
+/// that each declare one in the same region cannot both apply.
+///
+/// The account's shared access keys are NOT surfaced as properties: ARM returns
+/// them only from a separate ListCallbackURL / RegenerateAccessKey call, so
+/// exposing them would persist live credentials in resource state.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class IntegrationAccount extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-_.()]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Required rather than provider-defaulted: ARM's own default is
+    /// `NotSpecified`, which produces an account no workflow can use, and the
+    /// two paid tiers bill per hour. Making the caller name the tier keeps an
+    /// accidental `Standard` out of a conformance run.
+    @azure.FieldHint { required = true }
+    skuName: IntegrationAccountSKUName
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
