@@ -1,0 +1,96 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/devices/iothub.pkl" as iot
+import "@azure/streamanalytics/streamanalyticsjob.pkl" as sajob
+import "@azure/streamanalytics/streamanalyticsinputiothub.pkl" as sainput
+import "vars.pkl"
+
+// The datasource credential below is a placeholder, not a real key.
+//
+// ARM accepts any string here and never returns it (the field is writeOnly in the
+// schema for exactly that reason), and Stream Analytics validates a datasource only
+// when the job starts or when the separate Test operation is called. The job this
+// fixture creates is never started, so no connection is ever attempted. There is
+// also no way to obtain a real key from a forma: this plugin deliberately does not
+// surface storage account keys or SAS policy keys as properties, since that would
+// persist live credentials in resource state.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "asa-input-iot-test-rg"
+  name = "formae-plugin-sdk-test-asaiiot-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// S1 with one unit rather than the F1 free tier: F1 allows one hub per
+// subscription, which would collide across conformance runs.
+local iotHub = new iot.IotHub {
+  label = "asa-input-iot-test-iothub"
+  name = "fpsdt-asa-iiot-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new iot.SKU {
+    name = "S1"
+    capacity = 1
+  }
+  publicNetworkAccess = "Enabled"
+}
+
+// Provisioned stopped and left that way: Start/Stop is a separate ARM verb pair,
+// and a running job bills streaming units per hour.
+local job = new sajob.StreamingJob {
+  label = "asa-input-iot-test-job"
+  name = "fpsdt-asa-iiot-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new sajob.StreamingJobSKU { name = "Standard" }
+  jobType = "Cloud"
+  compatibilityLevel = "1.2"
+  dataLocale = "en-US"
+  eventsLateArrivalMaxDelayInSeconds = 5
+  eventsOutOfOrderMaxDelayInSeconds = 0
+  eventsOutOfOrderPolicy = "Adjust"
+  outputErrorPolicy = "Stop"
+  transformation = new sajob.JobTransformation {
+    name = "Transformation"
+    query = "SELECT * INTO [asaoutput] FROM [asainput]"
+    streamingUnits = 3
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iotHub
+  job
+
+  // iothubowner is the built-in policy that carries "service connect", the right
+  // an IoT Hub input needs. iotHubNamespace is ARM's field name for the hub itself.
+  new sainput.InputIotHub {
+    label = "plugin-sdk-test-stream-analytics-input-iot-hub"
+    name = "asainput"
+    resourceGroupName = rg.res.name
+    jobName = job.res.name
+    iotHubNamespace = iotHub.res.name
+    sharedAccessPolicyName = "iothubowner"
+    sharedAccessPolicyKey = "Zm9ybWFlLWNvbmZvcm1hbmNlLXBsYWNlaG9sZGVyISE="
+    endpoint = "messages/events"
+    partitionKey = "deviceId"
+    serialization = new sainput.IotHubInputSerialization {
+      type = "Json"
+      encoding = "UTF8"
+    }
+  }
+}

@@ -1,0 +1,118 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsinputeventhub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::InputEventHub"
+const apiVersion = "2020-03-01"
+
+/// How the events on the hub are encoded. `Avro` is self-describing and takes no
+/// further settings.
+typealias EventHubInputSerializationType = "Json"|"Csv"|"Avro"
+
+/// How Stream Analytics parses each event.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class EventHubInputSerialization extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    type: EventHubInputSerializationType
+
+    /// The only value ARM accepts is "UTF8". Required for Json and Csv.
+    @azure.FieldHint { }
+    encoding: ("UTF8")?
+
+    /// Csv only. Common values: "," (comma), "\t" (tab), "|" (pipe), " " (space).
+    @azure.FieldHint { }
+    fieldDelimiter: String?
+}
+
+open class InputEventHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: InputEventHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: InputEventHubResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Event Hubs stream input on a Stream Analytics job.
+///
+/// `name` is the alias the job's query reads from — `FROM [<name>]`.
+///
+/// The credential is write-only. ARM accepts `sharedAccessPolicyKey` on every PUT
+/// and PATCH but strips it from every response, so its value is not part of
+/// resource state and drift in it cannot be detected. Nothing validates it at
+/// create time either: Stream Analytics checks a datasource only when the job
+/// starts, or through the separate Test operation.
+///
+/// This is ARM's `Microsoft.ServiceBus/EventHub` datasource — the shared-access-key
+/// form. Its managed-identity sibling (`Microsoft.EventHub/EventHub`, "EventHubV2")
+/// is a different datasource and would be a different resource type.
+///
+/// `serviceBusNamespace` is the Event Hubs namespace name, not a Service Bus
+/// namespace: Event Hubs inherited the field name from Service Bus.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class InputEventHub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    /// The Event Hubs namespace name.
+    @azure.FieldHint { required = true }
+    serviceBusNamespace: (String|formae.Resolvable)
+
+    @azure.FieldHint { required = true }
+    eventHubName: (String|formae.Resolvable)
+
+    /// A shared access policy on the namespace or the hub. It needs Listen. Every
+    /// Event Hubs namespace ships with `RootManageSharedAccessKey`.
+    @azure.FieldHint { required = true }
+    sharedAccessPolicyName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. The primary or secondary key of that
+    /// shared access policy.
+    @azure.FieldHint { required = true; writeOnly = true }
+    sharedAccessPolicyKey: (formae.Value|String)
+
+    /// Consumer group to read through. Omitting it uses the hub's implicit
+    /// `$Default` group — which is fine for one reader, but two inputs sharing a
+    /// consumer group interfere with each other.
+    @azure.FieldHint { }
+    consumerGroupName: (String|formae.Resolvable)?
+
+    @azure.FieldHint { required = true }
+    serialization: EventHubInputSerialization
+
+    /// Column in the input data to partition the stream by.
+    @azure.FieldHint { }
+    partitionKey: String?
+
+    hidden parent = this
+
+    hidden res: InputEventHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

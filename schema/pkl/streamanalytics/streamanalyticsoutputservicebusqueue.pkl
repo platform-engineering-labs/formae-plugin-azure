@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsoutputservicebusqueue
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::OutputServiceBusQueue"
+const apiVersion = "2020-03-01"
+
+/// How the written messages are encoded. `Avro` takes no further settings.
+typealias ServiceBusQueueOutputSerializationType = "Json"|"Csv"|"Avro"
+
+/// How Stream Analytics writes each message body.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ServiceBusQueueOutputSerialization extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    type: ServiceBusQueueOutputSerializationType
+
+    /// The only value ARM accepts is "UTF8". Required for Json and Csv.
+    @azure.FieldHint { }
+    encoding: ("UTF8")?
+
+    /// Csv only. Common values: "," (comma), "\t" (tab), "|" (pipe), " " (space).
+    @azure.FieldHint { }
+    fieldDelimiter: String?
+
+    /// Json only. `LineSeparated` writes one JSON object per line;
+    /// `Array` wraps the batch in a JSON array.
+    @azure.FieldHint { }
+    format: ("Array"|"LineSeparated")?
+}
+
+open class OutputServiceBusQueueResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OutputServiceBusQueueResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OutputServiceBusQueueResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Service Bus queue output on a Stream Analytics job.
+///
+/// `name` is the alias the job's query writes to — `INTO [<name>]`.
+///
+/// The credential is write-only. ARM accepts `sharedAccessPolicyKey` on every PUT
+/// and PATCH but strips it from every response, so its value is not part of
+/// resource state and drift in it cannot be detected. Nothing validates it at
+/// create time either: Stream Analytics checks a datasource only when the job
+/// starts, or through the separate Test operation.
+///
+/// `systemPropertyColumns` (mapping query columns onto Service Bus system
+/// properties such as MessageId or SessionId) is not modelled: the API types it as
+/// a free-form object whose shape changed between API versions, so there is no
+/// stable schema for it and no way to verify what ARM echoes back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class OutputServiceBusQueue extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    /// The Service Bus namespace name.
+    @azure.FieldHint { required = true }
+    serviceBusNamespace: (String|formae.Resolvable)
+
+    @azure.FieldHint { required = true }
+    queueName: (String|formae.Resolvable)
+
+    /// A shared access policy on the namespace or the queue. It needs Send. Every
+    /// Service Bus namespace ships with `RootManageSharedAccessKey`.
+    @azure.FieldHint { required = true }
+    sharedAccessPolicyName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. The primary or secondary key of that
+    /// shared access policy.
+    @azure.FieldHint { required = true; writeOnly = true }
+    sharedAccessPolicyKey: (formae.Value|String)
+
+    /// Columns from the query's SELECT list to attach to each message as custom
+    /// user properties instead of writing them into the body.
+    @azure.FieldHint { }
+    propertyColumns: Listing<String>?
+
+    @azure.FieldHint { required = true }
+    serialization: ServiceBusQueueOutputSerialization
+
+    hidden parent = this
+
+    hidden res: OutputServiceBusQueueResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

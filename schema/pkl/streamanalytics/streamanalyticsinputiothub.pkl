@@ -1,0 +1,116 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsinputiothub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::InputIotHub"
+const apiVersion = "2020-03-01"
+
+/// How the device messages are encoded. `Avro` is self-describing and takes no
+/// further settings.
+typealias IotHubInputSerializationType = "Json"|"Csv"|"Avro"
+
+/// How Stream Analytics parses each message.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class IotHubInputSerialization extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    type: IotHubInputSerializationType
+
+    /// The only value ARM accepts is "UTF8". Required for Json and Csv.
+    @azure.FieldHint { }
+    encoding: ("UTF8")?
+
+    /// Csv only. Common values: "," (comma), "\t" (tab), "|" (pipe), " " (space).
+    @azure.FieldHint { }
+    fieldDelimiter: String?
+}
+
+open class InputIotHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: InputIotHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: InputIotHubResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An IoT Hub stream input on a Stream Analytics job.
+///
+/// `name` is the alias the job's query reads from — `FROM [<name>]`.
+///
+/// The credential is write-only. ARM accepts `sharedAccessPolicyKey` on every PUT
+/// and PATCH but strips it from every response, so its value is not part of
+/// resource state and drift in it cannot be detected. Nothing validates it at
+/// create time either: Stream Analytics checks a datasource only when the job
+/// starts, or through the separate Test operation.
+///
+/// `iotHubNamespace` is ARM's own field name for the IoT hub itself — its name or
+/// its hostname. There is no IoT Hub namespace resource; the field name is a
+/// leftover from the Event Hubs datasource it was copied from.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class InputIotHub extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    /// The IoT hub's name (or its hostname).
+    @azure.FieldHint { required = true }
+    iotHubNamespace: (String|formae.Resolvable)
+
+    /// A shared access policy on the hub carrying at least "service connect".
+    /// `iothubowner` is the built-in policy that has it.
+    @azure.FieldHint { required = true }
+    sharedAccessPolicyName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. The primary or secondary key of that
+    /// shared access policy.
+    @azure.FieldHint { required = true; writeOnly = true }
+    sharedAccessPolicyKey: (formae.Value|String)
+
+    /// Which built-in hub endpoint to read: "messages/events" for telemetry,
+    /// "messages/operationsMonitoringEvents" for operations monitoring.
+    @azure.FieldHint { }
+    endpoint: String?
+
+    /// Consumer group on the hub's built-in endpoint. Omitting it uses the hub's
+    /// implicit `$Default` group.
+    @azure.FieldHint { }
+    consumerGroupName: (String|formae.Resolvable)?
+
+    @azure.FieldHint { required = true }
+    serialization: IotHubInputSerialization
+
+    /// Column in the input data to partition the stream by.
+    @azure.FieldHint { }
+    partitionKey: String?
+
+    hidden parent = this
+
+    hidden res: InputIotHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

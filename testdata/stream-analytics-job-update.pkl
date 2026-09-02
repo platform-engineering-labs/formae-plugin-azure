@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/streamanalytics/streamanalyticsjob.pkl" as sajob
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "asa-job-test-rg"
+  name = "formae-plugin-sdk-test-asajob-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Provisioned stopped and left that way: Start/Stop is a separate ARM verb pair,
+  // and a running job bills streaming units per hour. The query references aliases
+  // that do not exist yet; ARM does not compile the query until the job starts.
+  new sajob.StreamingJob {
+    label = "plugin-sdk-test-stream-analytics-job"
+    name = "fpsdt-asa-job-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new sajob.StreamingJobSKU { name = "Standard" }
+    jobType = "Cloud"
+    compatibilityLevel = "1.2"
+    dataLocale = "en-US"
+    // Update: widen the late-arrival window. An in-place PATCH — sku, location,
+    // jobType and transformation are all createOnly.
+    eventsLateArrivalMaxDelayInSeconds = 10
+    eventsOutOfOrderMaxDelayInSeconds = 0
+    eventsOutOfOrderPolicy = "Adjust"
+    outputErrorPolicy = "Stop"
+    transformation = new sajob.JobTransformation {
+      name = "Transformation"
+      query = "SELECT * INTO [asaoutput] FROM [asainput]"
+      streamingUnits = 3
+    }
+  }
+}
