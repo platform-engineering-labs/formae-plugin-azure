@@ -1,0 +1,106 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.alertsmanagement.alertprocessingruleactiongroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::AlertsManagement::AlertProcessingRuleActionGroup"
+const apiVersion = "2021-08-08"
+
+/// One filter an alert must match for the rule to apply. Every condition in the
+/// list has to match.
+class AlertProcessingRuleCondition {
+    /// The alert attribute the condition tests.
+    @azure.FieldHint { required = true }
+    field: ("AlertContext"|"AlertRuleId"|"AlertRuleName"|"Description"|"MonitorCondition"|"MonitorService"|"Severity"|"SignalType"|"TargetResource"|"TargetResourceGroup"|"TargetResourceType")
+
+    @azure.FieldHint { required = true }
+    operator: ("Equals"|"NotEquals"|"Contains"|"DoesNotContain")
+
+    /// Values to match. `Equals` matches any of them, `NotEquals` none of them.
+    @azure.FieldHint { required = true }
+    values: Listing<String>
+}
+
+open class AlertProcessingRuleActionGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AlertProcessingRuleActionGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AlertProcessingRuleActionGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An alert processing rule that ADDS action groups to every alert matching its
+/// scopes and conditions — the way to attach one notification path to a whole
+/// subscription or resource group without editing each alert rule.
+///
+/// The ARM type is `Microsoft.AlertsManagement/actionRules`: "alert processing rule"
+/// is the product name, and the API kept the older path. Its sibling
+/// `AZURE::AlertsManagement::AlertProcessingRuleSuppression` is the same ARM type
+/// with a RemoveAllActionGroups action instead, which is why the two are modelled as
+/// separate resource types rather than one with a mode switch — a rule carries
+/// exactly one of the two actions, and discovery of either type filters the shared
+/// listing by action type.
+///
+/// Alert processing rules are global: `location` is the literal "Global".
+///
+/// Free — the rule itself carries no charge.
+///
+/// Scope: ARM also allows a schedule on this flavour. It is modelled only on the
+/// suppression type, where a maintenance window is the point, and is not read back
+/// here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class AlertProcessingRuleActionGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always "Global" for alert processing rules.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String(length >= 1)
+
+    /// ARM ids the rule applies to: a subscription, a resource group, or individual
+    /// resources.
+    @azure.FieldHint { required = true }
+    scopes: Listing<String|formae.Resolvable>
+
+    /// ARM ids of the action groups to add.
+    @azure.FieldHint { required = true }
+    actionGroupIds: Listing<String|formae.Resolvable>
+
+    @azure.FieldHint { }
+    conditions: Listing<AlertProcessingRuleCondition>?
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AlertProcessingRuleActionGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,44 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/monitor/monitorworkspace.pkl" as amw
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "amw-test-rg"
+  name = "formae-plugin-sdk-test-amw-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Microsoft.Monitor/accounts, NOT Microsoft.Insights — the managed Prometheus
+  // metrics store, unrelated to the Log Analytics workspace of the same name.
+  // Billed per ingested and queried sample, and nothing writes to it during the
+  // run, so it costs nothing. Creating it also creates a data collection endpoint
+  // and rule in a service-managed resource group; both come back read-only.
+  new amw.MonitorWorkspace {
+    label = "plugin-sdk-test-monitor-workspace"
+    name = "fpsdt-amw-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    publicNetworkAccess = "Enabled"
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}
