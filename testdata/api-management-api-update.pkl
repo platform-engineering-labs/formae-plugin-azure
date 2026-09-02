@@ -1,0 +1,57 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementapi.pkl" as apimapi
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-api-test-rg"
+  name = "formae-plugin-sdk-test-apimapi-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-api-test-service"
+  name = "fpsdt-apimapi-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Update: rename and redescribe, both in-place PATCHes. The path is left
+  // alone deliberately - changing it moves every URL the API serves.
+  new apimapi.Api {
+    label = "plugin-sdk-test-apim-api"
+    name = "conformance-api"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance API v2"
+    path = "conformance"
+    protocols = new Listing { "https" }
+    serviceUrl = "https://echo.platform.engineering"
+    description = "Explicitly declared API - renamed by the update phase"
+    subscriptionRequired = true
+  }
+}

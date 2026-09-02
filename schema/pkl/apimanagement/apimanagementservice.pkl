@@ -1,0 +1,155 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementservice
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Service"
+const apiVersion = "2021-08-01"
+
+/// Pricing tier of the API Management instance.
+///
+/// `Consumption` is the only tier that provisions quickly — minutes rather than
+/// the 30 to 45 minutes every dedicated tier takes, because the dedicated tiers
+/// stand up a per-tenant compute unit. It is also the only tier a conformance
+/// run can use: a create that takes longer than the lifetime of the CI
+/// credential cannot be waited on.
+///
+/// Consumption is serverless and shared, which costs you: no virtual-network
+/// integration, no additional locations, no custom hostname with your own
+/// certificate, no self-hosted gateways, and no developer portal.
+typealias ServiceSkuName = "Consumption"|"Developer"|"Basic"|"Standard"|"Premium"
+
+/// The kind of managed identity to attach.
+///
+/// Modelled as a scalar rather than an ARM-shaped `identity` block on purpose:
+/// ARM answers with principalId and tenantId alongside the type, and a
+/// service-populated field inside a nested class reads back as drift rather
+/// than as a provider default. The two ids are surfaced as read-only top-level
+/// properties instead.
+typealias ServiceIdentityType = "None"|"SystemAssigned"
+
+open class ServiceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ServiceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ServiceResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: ServiceResolvable = (this) {
+        property = "resourceGroupName"
+    }
+    /// Public gateway URL, e.g. https://<name>.azure-api.net.
+    hidden gatewayUrl: ServiceResolvable = (this) {
+        property = "gatewayUrl"
+    }
+}
+
+/// An Azure API Management service — the gateway, and the container for every
+/// API, product, policy, schema and subscription in this namespace.
+///
+/// Service names are globally unique: they own `<name>.azure-api.net`. A delete
+/// leaves the name soft-deleted for 48 hours, and re-creating the same name
+/// inside that window fails unless the soft-deleted service is purged or
+/// restored, so a name derived from a run id rather than a fixed one is the
+/// only safe choice in a test.
+///
+/// Custom properties (the per-instance TLS and cipher toggles) are deliberately
+/// not modelled: ARM materializes the whole set with defaults on any PATCH that
+/// omits them, so a partial declaration silently resets the rest.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Service extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 50 && matches(Regex("^[a-zA-Z](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Administrator email. ARM requires it on create and it is where service
+    /// notifications go.
+    @azure.FieldHint { required = true }
+    publisherEmail: String(length >= 1 && length <= 100)
+
+    /// Organisation name shown in the developer portal.
+    @azure.FieldHint { required = true }
+    publisherName: String(length >= 1 && length <= 100)
+
+    /// Required rather than defaulted: the tier decides both what the instance
+    /// can do and how long it takes to create, and silently defaulting it would
+    /// hand someone a 45-minute create they did not ask for.
+    @azure.FieldHint { required = true; createOnly = true }
+    skuName: ServiceSkuName
+
+    /// Units of the chosen tier. Must be 0 for Consumption, which has no units
+    /// to scale, and at least 1 for every dedicated tier.
+    @azure.FieldHint { hasProviderDefault = true }
+    skuCapacity: Int(this >= 0 && this <= 12)?
+
+    /// From-address for service notifications. ARM substitutes its own
+    /// no-reply address when this is omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    notificationSenderEmail: String(length <= 100)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    /// Only `None` is available on Consumption; the other two require a tier
+    /// that can be injected into a virtual network.
+    @azure.FieldHint { hasProviderDefault = true }
+    virtualNetworkType: ("None"|"External"|"Internal")?
+
+    /// Only user-assigned-free identity kinds are modelled: a user-assigned
+    /// identity list comes back from ARM as a map, and rendering a map into a
+    /// Listing gives no stable order to compare against.
+    @azure.FieldHint { }
+    identityType: ServiceIdentityType?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    /// Public gateway URL, e.g. https://<name>.azure-api.net.
+    @azure.FieldHint { hasProviderDefault = true }
+    gatewayUrl: String?
+
+    /// Developer portal URL. Null on Consumption, which has no portal.
+    @azure.FieldHint { hasProviderDefault = true }
+    developerPortalUrl: String?
+
+    /// Management plane URL for the direct-management REST API.
+    @azure.FieldHint { hasProviderDefault = true }
+    managementApiUrl: String?
+
+    /// Object id of the system-assigned identity, when one is attached.
+    @azure.FieldHint { hasProviderDefault = true }
+    principalId: String?
+
+    /// Tenant of the system-assigned identity, when one is attached.
+    @azure.FieldHint { hasProviderDefault = true }
+    tenantId: String?
+
+    hidden parent = this
+
+    hidden res: ServiceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

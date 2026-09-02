@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapipolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiPolicy"
+const apiVersion = "2021-08-01"
+
+open class ApiPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiPolicyResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// The policy attached to one API — applied to every operation on that API,
+/// after the service policy and before the operation policy.
+///
+/// ARM models a policy as a singleton child named `policy`, so this resource
+/// carries no `name` field: one policy per API.
+///
+/// ARM does not store the document verbatim. It reparses the XML and
+/// re-serializes it, so indentation, line endings and attribute order all come
+/// back changed, and `rawxml` comes back as `xml`. The provider therefore
+/// reports the document you declared whenever it is semantically the same as
+/// the one ARM holds, and reports ARM's own rendering only when the two
+/// genuinely differ.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Api"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "apiName" }
+    )
+}
+open class ApiPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the API this policy belongs to — its ARM name, not its
+    /// display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    /// The policy document. An API policy usually opens each section with
+    /// `<base />` so the service policy still runs.
+    @azure.FieldHint { required = true }
+    value: String(length >= 1)
+
+    /// See `AZURE::ApiManagement::Policy` for what the two formats mean and why
+    /// `xml` is the lower-friction choice.
+    @azure.FieldHint { hasProviderDefault = true }
+    format: ("xml"|"rawxml")?
+
+    hidden parent = this
+
+    hidden res: ApiPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

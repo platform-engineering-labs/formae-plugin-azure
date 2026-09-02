@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementauthorizationserver.pkl" as apimas
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-as-test-rg"
+  name = "formae-plugin-sdk-test-apimas-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-as-test-service"
+  name = "fpsdt-apimas-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Update: rename, widen the default scope and redescribe. The grant type
+  // and the endpoints are left alone - changing the flow is what makes a
+  // different server, not an update to this one.
+  new apimas.AuthorizationServer {
+    label = "plugin-sdk-test-apim-authorization-server"
+    name = "conformance-oauth"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance OAuth server v2"
+    authorizationEndpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    clientRegistrationEndpoint = "https://docs.platform.engineering/register"
+    clientId = "conformance-client"
+    grantTypes = new Listing { "implicit" }
+    defaultScope = "openid profile"
+    description = "OAuth 2.0 server registration, redescribed by the update phase"
+  }
+}

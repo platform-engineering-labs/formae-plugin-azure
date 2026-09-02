@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapioperationpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiOperationPolicy"
+const apiVersion = "2021-08-01"
+
+open class ApiOperationPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiOperationPolicyResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// The policy attached to one operation — the innermost scope, applied after
+/// the service, product and API policies.
+///
+/// ARM models a policy as a singleton child named `policy`, so this resource
+/// carries no `name` field: one policy per operation.
+///
+/// ARM does not store the document verbatim. It reparses the XML and
+/// re-serializes it, so indentation, line endings and attribute order all come
+/// back changed, and `rawxml` comes back as `xml`. The provider therefore
+/// reports the document you declared whenever it is semantically the same as
+/// the one ARM holds, and reports ARM's own rendering only when the two
+/// genuinely differ.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::ApiOperation"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "apiName" listParameter = "apiName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "operationName" }
+    )
+}
+open class ApiOperationPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the API the operation belongs to.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    /// Identifier of the operation this policy belongs to.
+    @azure.FieldHint { required = true; createOnly = true }
+    operationName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// The policy document. An operation policy usually opens each section with
+    /// `<base />` so the API and service policies still run.
+    @azure.FieldHint { required = true }
+    value: String(length >= 1)
+
+    /// See `AZURE::ApiManagement::Policy` for what the two formats mean and why
+    /// `xml` is the lower-friction choice.
+    @azure.FieldHint { hasProviderDefault = true }
+    format: ("xml"|"rawxml")?
+
+    hidden parent = this
+
+    hidden res: ApiOperationPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
