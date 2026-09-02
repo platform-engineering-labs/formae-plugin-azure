@@ -1,0 +1,112 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicworkflow
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::Workflow"
+const apiVersion = "2019-05-01"
+
+/// The two states a caller can put a workflow in. ARM also reports `Completed`,
+/// `Suspended`, `Deleted` and `NotSpecified`, but none of those is settable, so
+/// they are not offered here.
+typealias WorkflowState = "Enabled"|"Disabled"
+
+open class WorkflowResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WorkflowResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WorkflowResolvable = (this) {
+        property = "name"
+    }
+    /// Base URL a caller uses to reach the workflow's request triggers
+    /// (read-only).
+    hidden accessEndpoint: WorkflowResolvable = (this) {
+        property = "accessEndpoint"
+    }
+}
+
+/// A Logic Apps (Consumption) workflow — one trigger plus the actions it runs.
+///
+/// Billing is per action execution: a workflow whose only trigger is a
+/// recurrence set far in the future, or which is created `Disabled`, costs
+/// nothing to hold.
+///
+/// TRIGGERS AND ACTIONS ARE NOT SEPARATE RESOURCES. They are elements inside
+/// `definition`, and ARM exposes no create or delete verb for either — the
+/// `workflowTriggers` API is read-only (get / list / reset / run). Terraform's
+/// `azurerm_logic_app_trigger_*` and `azurerm_logic_app_action_*` resources work
+/// by patching this parent's definition; there is nothing here for them to map
+/// onto.
+///
+/// `definition` is the Workflow Definition Language document — arbitrarily
+/// nested JSON that no PKL class can usefully describe — so it is carried as a
+/// JSON string, the same way `AZURE::DataFactory::Pipeline` carries its activity
+/// list. It is additionally declared `writeOnly`, because ARM does not store the
+/// document verbatim: it injects `$schema`, `contentVersion` and an empty
+/// `parameters` block, normalises `outputs`, and rewrites recurrence schedules
+/// into its own canonical form. Comparing that echo against what was authored
+/// would report drift on a workflow nobody touched. Changing it in a forma still
+/// pushes the new document; drift introduced elsewhere is not detected.
+///
+/// `parameters`, `accessControl` and `endpointsConfiguration` are not modelled
+/// for the same reason and are not read back: a workflow authored in the portal
+/// reads without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Workflow extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-_.()]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The Workflow Definition Language document, as compact JSON with sorted
+    /// keys — e.g.
+    /// `{"triggers":{"tick":{"type":"Recurrence","recurrence":{"frequency":"Day","interval":1}}},"actions":{}}`.
+    /// Write-only; see the note above.
+    @azure.FieldHint { required = true; writeOnly = true }
+    definition: (formae.Value|String)
+
+    /// `Disabled` keeps the workflow's triggers from firing at all, which is how
+    /// a workflow is held at zero cost.
+    @azure.FieldHint { hasProviderDefault = true }
+    state: WorkflowState?
+
+    /// ARM ID of an `AZURE::Logic::IntegrationAccount` this workflow draws its
+    /// B2B artifacts (schemas, maps, partners, agreements) from.
+    @azure.FieldHint { }
+    integrationAccountId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    /// Base URL for the workflow's request triggers. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    accessEndpoint: String?
+
+    hidden parent = this
+
+    hidden res: WorkflowResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
