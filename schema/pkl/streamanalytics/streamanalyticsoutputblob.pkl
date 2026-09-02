@@ -1,0 +1,122 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsoutputblob
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::OutputBlob"
+const apiVersion = "2020-03-01"
+
+/// How the written events are encoded. `Avro` takes no further settings.
+typealias BlobOutputSerializationType = "Json"|"Csv"|"Avro"
+
+/// How Stream Analytics writes each event.
+class BlobOutputSerialization {
+    @azure.FieldHint { required = true }
+    type: BlobOutputSerializationType
+
+    /// The only value ARM accepts is "UTF8". Required for Json and Csv.
+    @azure.FieldHint { }
+    encoding: ("UTF8")?
+
+    /// Csv only. Common values: "," (comma), "\t" (tab), "|" (pipe), " " (space).
+    @azure.FieldHint { }
+    fieldDelimiter: String?
+
+    /// Json only. `LineSeparated` writes one JSON object per line;
+    /// `Array` wraps the batch in a JSON array.
+    @azure.FieldHint { }
+    format: ("Array"|"LineSeparated")?
+}
+
+open class OutputBlobResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OutputBlobResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OutputBlobResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A blob storage output on a Stream Analytics job.
+///
+/// `name` is the alias the job's query writes to — `INTO [<name>]`.
+///
+/// The credential is write-only. ARM accepts `storageAccountKey` on every PUT and
+/// PATCH but strips it from every response, so its value is not part of resource
+/// state and drift in it cannot be detected. Nothing validates it at create time
+/// either: Stream Analytics checks a datasource only when the job starts, or
+/// through the separate Test operation.
+///
+/// ARM models the storage account as a one-element `storageAccounts` array; this
+/// schema flattens it, because the array is single-valued in practice and a nested
+/// list would bury the credential inside a nested class where write-only semantics
+/// do not apply.
+///
+/// `authenticationMode` is not modelled: this type always authenticates with the
+/// account key.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class OutputBlob extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    @azure.FieldHint { required = true }
+    storageAccountName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. An access key for the storage account.
+    @azure.FieldHint { required = true; writeOnly = true }
+    storageAccountKey: (formae.Value|String)
+
+    @azure.FieldHint { required = true }
+    container: (String|formae.Resolvable)
+
+    /// Blob path pattern, not a regular expression: `{date}` and `{time}` are the
+    /// substitutions.
+    ///
+    /// ARM also accepts an empty pattern but does not reliably echo one back, so
+    /// this schema requires a non-empty value rather than risk a phantom drift on
+    /// every sync.
+    @azure.FieldHint { required = true }
+    pathPattern: String(length >= 1)
+
+    /// Substituted for `{date}` in pathPattern, e.g. "yyyy/MM/dd".
+    @azure.FieldHint { }
+    dateFormat: String?
+
+    /// Substituted for `{time}` in pathPattern, e.g. "HH".
+    @azure.FieldHint { }
+    timeFormat: String?
+
+    @azure.FieldHint { required = true }
+    serialization: BlobOutputSerialization
+
+    hidden parent = this
+
+    hidden res: OutputBlobResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

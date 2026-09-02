@@ -1,0 +1,159 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsjob
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::StreamingJob"
+const apiVersion = "2020-03-01"
+
+/// `Standard` is the only SKU Azure Stream Analytics offers for a cloud job.
+typealias JobSKUName = "Standard"
+
+/// `Cloud` runs in Azure; `Edge` deploys to IoT Edge devices and needs an IoT Hub
+/// deployment to actually run anywhere.
+typealias JobType = "Cloud"|"Edge"
+
+/// Runtime behaviour version. `1.2` is the current one and the default for jobs
+/// created through the portal; `1.0` is kept for jobs whose queries depend on the
+/// older semantics.
+typealias CompatibilityLevel = "1.0"|"1.2"
+
+/// What to do with events that arrive out of order beyond the tolerance window:
+/// `Adjust` rewrites their timestamp to the window edge, `Drop` discards them.
+typealias EventsOutOfOrderPolicy = "Adjust"|"Drop"
+
+/// What to do with an event the output cannot accept (missing column, wrong type,
+/// oversized value): `Drop` skips it, `Stop` halts the job.
+typealias OutputErrorPolicy = "Drop"|"Stop"
+
+class StreamingJobSKU {
+    @azure.FieldHint { required = true }
+    name: JobSKUName
+}
+
+/// The job's query, plus the streaming units it runs on.
+///
+/// ARM models this as a child resource (`streamingjobs/<job>/transformations/…`)
+/// but refuses to create a job without one, only accepts it inside the job's own
+/// PUT body, and rejects a PATCH that carries it. So it is a create-only field of
+/// the job here rather than its own formae resource type. Changing the query
+/// therefore replaces the job.
+///
+/// All three fields are required because ARM always returns all three: an omitted
+/// one would come back populated by the service and read as drift.
+class JobTransformation {
+    /// ARM's own name for the transformation resource. Conventionally
+    /// "Transformation".
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 63)
+
+    /// Stream Analytics Query Language. A minimal job is
+    /// `SELECT * INTO [outputAlias] FROM [inputAlias]`; the aliases are the
+    /// `name` of the Input*/Output* resources attached to this job.
+    @azure.FieldHint { required = true }
+    query: String(length >= 1)
+
+    /// Streaming units. Valid values are 1, 3, 6 and multiples of 6 up to the
+    /// regional quota. Streaming units bill per hour only while the job is
+    /// running.
+    @azure.FieldHint { required = true }
+    streamingUnits: Int(this >= 1)
+}
+
+open class StreamingJobResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: StreamingJobResolvable = (this) {
+        property = "id"
+    }
+    hidden name: StreamingJobResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: StreamingJobResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Stream Analytics job: a query plus the inputs and outputs it reads and
+/// writes. Inputs, outputs and functions are separate resource types that reference
+/// this one.
+///
+/// The job is provisioned STOPPED and left that way. Start and Stop are separate
+/// ARM verbs rather than a property — a running job cannot be reconciled into a
+/// stopped one by a PATCH — and a running job bills streaming units per hour, so
+/// execution state is deliberately outside this resource. Start the job out of band
+/// once its inputs and outputs exist.
+///
+/// Not modelled: managed identity, a dedicated cluster, an external job storage
+/// account, and `outputStartMode`/`outputStartTime` (which only mean anything for a
+/// job being started). ARM's read-only status fields — jobId, jobState,
+/// provisioningState, createdDate, lastOutputEventTime — are not surfaced either.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class StreamingJob extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: StreamingJobSKU
+
+    /// createOnly: ARM cannot convert a cloud job into an edge job in place.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    jobType: JobType?
+
+    /// createOnly: see JobTransformation. Editing the query replaces the job.
+    @azure.FieldHint { required = true; createOnly = true }
+    transformation: JobTransformation
+
+    @azure.FieldHint { hasProviderDefault = true }
+    compatibilityLevel: CompatibilityLevel?
+
+    /// A .NET culture name, e.g. "en-US". Governs how the query parses and
+    /// formats numbers and dates.
+    @azure.FieldHint { hasProviderDefault = true }
+    dataLocale: String?
+
+    /// How long, in seconds, to hold the window open for late events. `-1` waits
+    /// indefinitely; the service default is 5.
+    @azure.FieldHint { hasProviderDefault = true }
+    eventsLateArrivalMaxDelayInSeconds: Int(this >= -1 && this <= 1814399)?
+
+    /// How far, in seconds, out-of-order events may be reordered before the
+    /// out-of-order policy applies.
+    @azure.FieldHint { hasProviderDefault = true }
+    eventsOutOfOrderMaxDelayInSeconds: Int(this >= 0 && this <= 599)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    eventsOutOfOrderPolicy: EventsOutOfOrderPolicy?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    outputErrorPolicy: OutputErrorPolicy?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: StreamingJobResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
