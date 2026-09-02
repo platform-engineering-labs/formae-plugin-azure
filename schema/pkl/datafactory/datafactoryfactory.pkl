@@ -22,6 +22,14 @@ typealias RepoConfigurationKind = "FactoryGitHubConfiguration"|"FactoryVSTSConfi
 /// Managed service identity of the factory.
 ///
 /// Declaring this block is optional — see the note on `identity` below.
+/// The `@azure.SubResourceHint` is not decoration: `formae.SubResource.render()`
+/// looks the hint up to get `outputKeyTransformation`, and dies with
+/// "Cannot find property `outputKeyTransformation` in object of type `Null`"
+/// when a class extends `formae.SubResource` without one. A forma that declares
+/// this block fails to evaluate at all — nothing reaches the plugin.
+@azure.SubResourceHint {
+    apiVersion = module.apiVersion
+}
 class Identity extends formae.SubResource {
     /// Identity type.
     @azure.FieldHint { required = true }
@@ -40,6 +48,9 @@ class Identity extends formae.SubResource {
 /// through the factory UI and would read back as drift on every sync. Bring-your-own
 /// GitHub OAuth app credentials (`clientId` / `clientSecret`) are not modelled
 /// either — the secret half is never returned by ARM.
+@azure.SubResourceHint {
+    apiVersion = module.apiVersion
+}
 class RepoConfiguration extends formae.SubResource {
     /// Which provider this is. Chooses the ARM discriminator.
     @azure.FieldHint { required = true }

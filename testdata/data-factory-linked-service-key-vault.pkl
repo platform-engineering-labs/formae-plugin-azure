@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedservicekeyvault.pkl" as lskv
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adflskv-test-rg"
+  name = "formae-plugin-sdk-test-adflskv-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adflskv-test-factory"
+  name = "fpsdt-adflskv-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // Free: creating a linked service is a metadata write.
+  //
+  // No Key Vault is created. Creating a linked service does not test the
+  // connection — that is a separate data-plane call behind the authoring UI's
+  // "Test connection" button — so `baseUrl` only has to be a well-formed vault
+  // URI. Standing up a real vault would be worse than useless here: vaults carry
+  // soft delete, so a killed run leaves a purgeable tombstone that blocks reuse
+  // of the name, which is exactly the residue conformance runs must not create.
+  new lskv.LinkedServiceKeyVault {
+    label = "plugin-sdk-test-adf-ls-key-vault"
+    name = "conformance-kv"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    baseUrl = "https://fpsdt-kv-\(vars.testRunID).vault.azure.net/"
+    description = "conformance key vault reference"
+    annotations = new Listing { "conformance" }
+  }
+}
