@@ -1,0 +1,165 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapidiagnostic
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiDiagnostic"
+const apiVersion = "2021-08-01"
+
+/// The only two diagnostic ids ARM recognises. A diagnostic is a singleton per
+/// destination kind, not a free-form entity: `applicationinsights` drives the
+/// Application Insights integration, `azuremonitor` the Azure Monitor one.
+///
+/// The id must match the kind of logger `loggerId` names, and only
+/// `applicationinsights` is available on the Consumption tier — the tier
+/// comparison marks "Azure Monitor and Log Analytics request logs"
+/// unavailable there.
+typealias ApiDiagnosticName = "applicationinsights"|"azuremonitor"
+
+/// How verbose a trace has to be to reach the logger.
+typealias ApiDiagnosticVerbosity = "verbose"|"information"|"error"
+
+/// How much traffic is sampled.
+///
+/// ARM materialises this block with its own defaults — fixed-rate at 100% — on
+/// any write that omits it, so both fields carry `hasProviderDefault`.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ApiDiagnosticSampling extends formae.SubResource {
+    /// Only fixed-rate sampling exists in this API version.
+    @azure.FieldHint { hasProviderDefault = true }
+    samplingType: ("fixed")?
+
+    /// Percentage of calls sampled, 0 to 100.
+    @azure.FieldHint { hasProviderDefault = true }
+    percentage: Number(this >= 0 && this <= 100)?
+}
+
+/// What to record about one HTTP message.
+///
+/// ARM's `body.bytes` is flattened to `bodyBytes` rather than modelled as a
+/// fourth level of nesting. ARM's `dataMasking` block is deliberately not
+/// modelled at all: the service populates it with its own entries (it masks the
+/// subscription-key and Authorization headers by default) and there is no
+/// ordering guaranteed on the way back, so any declaration of it reads as drift.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ApiDiagnosticHttpMessage extends formae.SubResource {
+    /// Headers to record. ARM records none by default.
+    @azure.FieldHint { }
+    headers: Listing<String>?
+
+    /// How many bytes of the body to record, 0 to 8192. Unset records none.
+    @azure.FieldHint { }
+    bodyBytes: Int(this >= 0 && this <= 8192)?
+}
+
+/// What to record on one side of the gateway.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class ApiDiagnosticPipeline extends formae.SubResource {
+    @azure.FieldHint { }
+    request: ApiDiagnosticHttpMessage?
+
+    @azure.FieldHint { }
+    response: ApiDiagnosticHttpMessage?
+}
+
+open class ApiDiagnosticResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiDiagnosticResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiDiagnosticResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The per-API diagnostic — what the gateway records about calls to ONE API,
+/// overriding the service-wide `AZURE::ApiManagement::Diagnostic` for that API.
+///
+/// A diagnostic is what actually turns logging on: the
+/// `AZURE::ApiManagement::Logger` it names is only a destination. The logger has
+/// to exist first, and its kind has to match this diagnostic's `name`.
+///
+/// `frontend` describes the caller-facing side of the gateway and `backend` the
+/// side facing the API's own service.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Api"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "apiName" }
+    )
+}
+open class ApiDiagnostic extends formae.Resource {
+
+    /// One of the two ids ARM recognises. See `ApiDiagnosticName`.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: ApiDiagnosticName
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the API this diagnostic belongs to — its ARM name, not its
+    /// display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    /// ARM id of the `AZURE::ApiManagement::Logger` this diagnostic writes to.
+    /// The logger must already exist.
+    @azure.FieldHint { required = true }
+    loggerId: String(length >= 1)|formae.Resolvable
+
+    /// Record every failed call regardless of the sampling rate. `allErrors` is
+    /// the only value ARM accepts, and leaving it unset means sampling applies
+    /// to errors too.
+    @azure.FieldHint { }
+    alwaysLog: ("allErrors")?
+
+    /// Which correlation headers the gateway reads and injects. ARM picks its
+    /// own when this is omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    httpCorrelationProtocol: ("None"|"Legacy"|"W3C")?
+
+    /// Whether the caller's IP is recorded.
+    @azure.FieldHint { hasProviderDefault = true }
+    logClientIp: Boolean?
+
+    /// How an operation is named in the telemetry: `Name` gives
+    /// `API;rev=N - OPERATION`, `Url` gives `VERB URL`.
+    @azure.FieldHint { hasProviderDefault = true }
+    operationNameFormat: ("Name"|"Url")?
+
+    /// Severity floor for traces emitted by `trace` policies.
+    @azure.FieldHint { hasProviderDefault = true }
+    verbosity: ApiDiagnosticVerbosity?
+
+    @azure.FieldHint { }
+    sampling: ApiDiagnosticSampling?
+
+    /// The caller-facing side of the gateway.
+    @azure.FieldHint { }
+    frontend: ApiDiagnosticPipeline?
+
+    /// The side facing the API's own service.
+    @azure.FieldHint { }
+    backend: ApiDiagnosticPipeline?
+
+    hidden parent = this
+
+    hidden res: ApiDiagnosticResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
