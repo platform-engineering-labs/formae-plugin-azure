@@ -13,7 +13,7 @@ const type = "AZURE::Network::LocalNetworkGateway"
 const apiVersion = "2023-05-01"
 
 /// BGP configuration of the on-premises device.
-class BgpSettings {
+class BgpSettings extends formae.SubResource {
     /// The on-premises device's autonomous system number.
     @azure.FieldHint { required = true }
     asn: Int

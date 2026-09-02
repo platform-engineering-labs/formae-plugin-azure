@@ -16,7 +16,7 @@ const apiVersion = "2024-03-01"
 /// `Classic` only applies to VMs with unmanaged disks.
 typealias AvailabilitySetSkuType = "Aligned"|"Classic"
 
-class AvailabilitySetSku {
+class AvailabilitySetSku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: AvailabilitySetSkuType
 }

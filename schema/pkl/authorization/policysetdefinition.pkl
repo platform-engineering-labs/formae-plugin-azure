@@ -13,7 +13,7 @@ const type = "AZURE::Authorization::PolicySetDefinition"
 const apiVersion = "2021-06-01"
 
 /// One policy definition included in the initiative.
-class PolicyDefinitionReference {
+class PolicyDefinitionReference extends formae.SubResource {
     /// ARM ID of the definition to include — custom or built-in.
     @azure.FieldHint { required = true }
     policyDefinitionId: (String|formae.Resolvable)
@@ -31,7 +31,7 @@ class PolicyDefinitionReference {
 
 /// A named grouping of inclusions, used to organise a large initiative and to
 /// report compliance per group.
-class PolicyDefinitionGroup {
+class PolicyDefinitionGroup extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: String
 

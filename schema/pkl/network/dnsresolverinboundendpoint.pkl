@@ -14,7 +14,7 @@ const apiVersion = "2023-07-01-preview"
 
 /// Where the endpoint's listener IP comes from. The subnet must be delegated to
 /// `Microsoft.Network/dnsResolvers` and hold nothing else.
-class IPConfiguration {
+class IPConfiguration extends formae.SubResource {
     @azure.FieldHint { required = true }
     subnetId: (String|formae.Resolvable)
 
