@@ -38,7 +38,7 @@
 # Deletion is asynchronous and slow for some types (an Application Gateway or a
 # Cosmos account is ~10 min), hence the wait budget rather than a fixed sleep.
 
-set -euo pipefail
+set -eEuo pipefail
 
 # Report where an unexpected failure happened.
 #
@@ -52,7 +52,16 @@ set -euo pipefail
 # $LINENO and $BASH_COMMAND in an ERR trap name the exact command that failed,
 # which turns the next occurrence into a one-line diagnosis instead of a guess.
 # Set CLEAN_DEBUG=1 for a full `set -x` trace on top of it.
-trap 'rc=$?; echo "::error::clean-environment.sh failed at line ${LINENO} (exit ${rc}): ${BASH_COMMAND}" >&2' ERR
+#
+# `set -E` (errtrace) above is what makes that work. Without it an ERR trap is
+# NOT inherited by shell functions, so a failure inside list_groups was reported
+# against the CALLER - `clean-environment.sh failed at line 189 (exit 1):
+# GROUPS=$(list_groups)` - which names the command substitution rather than the
+# command that actually failed. Three fixes (#146, #147, #149) were aimed at
+# line 189 on the strength of that message; the real failure was always further
+# in. With -E the trap fires at the inner line and names it.
+err_trap='rc=$?; echo "::error::clean-environment.sh failed at line ${LINENO} (exit ${rc}): ${BASH_COMMAND}" >&2'
+trap "${err_trap}" ERR
 
 # An if-block, not `[[ ... ]] && set -x`, for the reason this file already
 # documents further down: under `set -e` that construct takes the exit status of
@@ -86,6 +95,24 @@ echo ""
 # projection - is dropped instead of being passed to `az group delete`. Deleting is
 # destructive, so it only ever acts on a name it has re-verified itself.
 list_groups() {
+    # `set +e` for the WHOLE body, not just around `az group list`.
+    #
+    # Every caller consumes this through `GROUPS=$(list_groups)`. Under `set -e`
+    # ANY failing command in here aborts the function before its `return 0` can
+    # run, the substitution then exits non-zero, and that kills the script - which
+    # is the pre-cleanup/nightly/reaper failure that has resisted three fixes. The
+    # previous version only disarmed `set -e` around the `az group list` call, so
+    # every other command in this function was still able to abort it. Listing
+    # groups is read-only, so nothing in here needs to be fatal; the function
+    # reports "no groups" by printing nothing, and that is a valid answer.
+    #
+    # The ERR trap goes with it. `set -E` above makes the trap fire inside
+    # functions, which is what finally located this bug - but a tolerated failure
+    # in here is not an error, and letting it reach the trap prints a GitHub
+    # `::error::` annotation on a run that then succeeds. The `note:` line below
+    # already reports it.
+    set +e
+    trap - ERR
     local raw rc=0 err
     err=$(mktemp)
     # `set +e` around the call on purpose. A CLEAN_DEBUG=1 trace showed
@@ -95,10 +122,8 @@ list_groups() {
     # killed the script under `set -e` before a single group was swept, which is
     # the silent failure seen in pre-cleanup, the nightly cleanup job and the
     # reaper. The output is usable, so the status must not be fatal.
-    set +e
     raw=$(az group list -o json 2>"${err}")
     rc=$?
-    set -e
     if [[ ${rc} -ne 0 ]]; then
         echo "  note: 'az group list' exited ${rc}; continuing with the output it produced" >&2
         sed 's/^/    az: /' "${err}" >&2 || true
@@ -109,6 +134,8 @@ list_groups() {
     # is consumed by a `GROUPS=$(list_groups)` command substitution, where a
     # non-zero exit kills the whole script under `set -e`.
     if [[ -z "${raw}" ]]; then
+        set -e
+        trap "${err_trap}" ERR
         return 0
     fi
     printf '%s' "${raw}" \
@@ -117,6 +144,8 @@ list_groups() {
     # Explicit: "no matching groups" is a normal result, not a failure. Every
     # caller assigns this through a command substitution, so any non-zero status
     # leaking out of here aborts the script before a single group is swept.
+    set -e
+    trap "${err_trap}" ERR
     return 0
 }
 
