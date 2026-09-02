@@ -32,7 +32,7 @@ typealias EventsOutOfOrderPolicy = "Adjust"|"Drop"
 /// oversized value): `Drop` skips it, `Stop` halts the job.
 typealias OutputErrorPolicy = "Drop"|"Stop"
 
-class StreamingJobSKU {
+class StreamingJobSKU extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: JobSKUName
 }
@@ -47,7 +47,7 @@ class StreamingJobSKU {
 ///
 /// All three fields are required because ARM always returns all three: an omitted
 /// one would come back populated by the service and read as drift.
-class JobTransformation {
+class JobTransformation extends formae.SubResource {
     /// ARM's own name for the transformation resource. Conventionally
     /// "Transformation".
     @azure.FieldHint { required = true }

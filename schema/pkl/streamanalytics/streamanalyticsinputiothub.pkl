@@ -17,7 +17,7 @@ const apiVersion = "2020-03-01"
 typealias IotHubInputSerializationType = "Json"|"Csv"|"Avro"
 
 /// How Stream Analytics parses each message.
-class IotHubInputSerialization {
+class IotHubInputSerialization extends formae.SubResource {
     @azure.FieldHint { required = true }
     type: IotHubInputSerializationType
 

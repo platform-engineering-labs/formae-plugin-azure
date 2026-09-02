@@ -17,7 +17,7 @@ const apiVersion = "2020-03-01"
 typealias FunctionDataType = "any"|"bigint"|"datetime"|"float"|"nvarchar(max)"|"bit"|"record"|"array"
 
 /// One positional parameter of the function.
-class FunctionArgument {
+class FunctionArgument extends formae.SubResource {
     @azure.FieldHint { required = true }
     dataType: FunctionDataType
 
