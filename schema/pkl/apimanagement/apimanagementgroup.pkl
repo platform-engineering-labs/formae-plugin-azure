@@ -1,0 +1,94 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Group"
+const apiVersion = "2021-08-01"
+
+/// Where the group's membership comes from.
+///
+/// `custom` is a group whose members are assigned in API Management itself and
+/// is the only kind this resource can usefully create. `external` mirrors a
+/// directory group and needs `externalId`. `system` is reserved for the three
+/// built-ins (`administrators`, `developers`, `guests`) — ARM creates those with
+/// the service and rejects an attempt to create another.
+typealias GroupType = "custom"|"system"|"external"
+
+open class GroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A developer group — the unit product visibility is granted to.
+///
+/// Groups exist so a product can be made visible to some developers and not
+/// others: the grant itself is `AZURE::ApiManagement::ProductGroup`, and
+/// membership is `AZURE::ApiManagement::GroupUser`.
+///
+/// NOT AVAILABLE ON THE CONSUMPTION TIER. Groups are part of the developer
+/// portal feature set, and the tier comparison marks the developer portal
+/// unavailable on Consumption "including related functionality such as users,
+/// groups, issues, applications, and email templates and notifications"
+/// (learn.microsoft.com/azure/api-management/api-management-features). A
+/// Consumption instance has no group store at all, so neither this resource nor
+/// the three built-ins exist there.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Group extends formae.Resource {
+
+    /// Group identifier, unique within the service. This is the ARM name, not
+    /// the display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Name shown in the portal.
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 300)
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Kind of group. ARM defaults a new group to `custom`.
+    @azure.FieldHint { hasProviderDefault = true }
+    groupType: GroupType?
+
+    /// Identifier of the directory group this mirrors, e.g.
+    /// `aad://contoso.onmicrosoft.com/groups/<object id>`. Required when
+    /// `groupType` is `external` and rejected otherwise.
+    @azure.FieldHint { }
+    externalId: (String|formae.Resolvable)?
+
+    hidden parent = this
+
+    hidden res: GroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
