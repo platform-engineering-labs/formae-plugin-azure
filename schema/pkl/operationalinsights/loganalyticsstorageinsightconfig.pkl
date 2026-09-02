@@ -1,0 +1,90 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.loganalyticsstorageinsightconfig
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::StorageInsightConfig"
+const apiVersion = "2020-08-01"
+
+open class StorageInsightConfigResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: StorageInsightConfigResolvable = (this) {
+        property = "id"
+    }
+    hidden name: StorageInsightConfigResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Points a workspace at a storage account that Azure diagnostics agents are
+/// already writing to, so the workspace ingests those blobs and tables instead of
+/// receiving the data directly from an agent. This is how the WAD/LAD diagnostics
+/// extension gets its output into Log Analytics.
+///
+/// The config itself is free; what it reads bills the workspace's normal ingestion
+/// rate, plus the storage account's own read transactions.
+///
+/// `storageAccountKey` is write-only by ARM's own design: it is required on every
+/// write and never returned from Get, so drift in it cannot be detected — changing
+/// it in a forma still pushes the new value. Wrap it with
+/// `formae.value(...).opaque` to keep it out of stored state.
+///
+/// ARM's nested `storageAccount` block is flattened here into
+/// `storageAccountId` and `storageAccountKey`, and the service's own health
+/// verdict on the connection (`status`) is not modelled: it is a read-only
+/// judgement, not configuration.
+///
+/// The API is fully synchronous — no operation ever reports as in progress.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class StorageInsightConfig extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// ARM ID of the storage account to read from.
+    @azure.FieldHint { required = true }
+    storageAccountId: (String|formae.Resolvable)
+
+    /// An access key for that storage account. Write-only — see the note above.
+    @azure.FieldHint { required = true; writeOnly = true }
+    storageAccountKey: (formae.Value|String)
+
+    /// Blob containers to read. At least one of `containers` or `tables` must be
+    /// set, or the config reads nothing.
+    @azure.FieldHint { }
+    containers: Listing<String>?
+
+    /// Storage tables to read. At least one of `containers` or `tables` must be
+    /// set, or the config reads nothing.
+    @azure.FieldHint { }
+    tables: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: StorageInsightConfigResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/loganalyticstable.pkl" as latable
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lat-test-rg"
+  name = "formae-plugin-sdk-test-lat-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// 30-day retention is what the PerGB2018 base price includes; the 1 GB daily cap
+// bounds ingestion. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "lat-test-law"
+  name = "fpsdt-lat-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  workspaceRes
+
+  // `Heartbeat` is a built-in table every workspace has, which is what makes it
+  // usable here: this type adopts an existing table, it cannot create one.
+  //
+  // Retention beyond the 30 days included in the base price is billed per GB
+  // retained, and Heartbeat stays empty because no agent reports to this
+  // workspace, so 90 days costs nothing here.
+  new latable.Table {
+    label = "plugin-sdk-test-log-analytics-table"
+    name = "Heartbeat"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    retentionInDays = 90
+  }
+}

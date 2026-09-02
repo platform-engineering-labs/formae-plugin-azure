@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/loganalyticscluster.pkl" as lacluster
+import "vars.pkl"
+
+// WARNING - THIS FIXTURE IS EXPENSIVE AND SLOW, AND IS EXPECTED TO BE ON THE
+// PR SKIP LIST.
+//
+// A Log Analytics dedicated cluster:
+//   - reserves 500 GB/day of ingestion capacity, BILLED WHETHER OR NOT IT IS
+//     USED. 500 is the smallest value this API version's enum accepts.
+//   - takes 1-3 HOURS to provision. Microsoft documents that the cluster must
+//     finish provisioning before a workspace can be linked to it. That is far
+//     past the ~45 minutes a CI job has before the OIDC client assertion
+//     expires and the run dies with AADSTS700024.
+//
+// It is kept here so the type has a fixture at all, and so a nightly or manual
+// run with a raised FORMAE_TEST_TIMEOUT can exercise it deliberately. Do not
+// add it to conformance-matrix.txt.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lac-test-rg"
+  name = "formae-plugin-sdk-test-lac-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new lacluster.Cluster {
+    label = "plugin-sdk-test-log-analytics-cluster"
+    name = "fpsdt-lac-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new lacluster.ClusterSKU {
+      capacity = 500
+    }
+    // Bill the reservation rather than each linked workspace. This and the SKU
+    // capacity are the only properties ARM's PATCH body can reach.
+    billingType = "Cluster"
+    tags {
+      new azure.Tag { key = "purpose"; value = "conformance" }
+    }
+  }
+}

@@ -1,0 +1,82 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.loganalyticsdatasourcewindowsevent
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::DataSourceWindowsEvent"
+const apiVersion = "2020-08-01"
+
+open class DataSourceWindowsEventResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataSourceWindowsEventResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataSourceWindowsEventResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Tells the Log Analytics agents reporting to a workspace to collect one Windows
+/// event log, at the severities listed.
+///
+/// The data source is free; the rows it produces bill the workspace's normal
+/// ingestion rate, so an `Information`-level collection on a chatty log is where
+/// the cost is.
+///
+/// ARM models every data source as one resource type
+/// (`workspaces/<ws>/dataSources/<name>`) with a `kind` discriminator over an
+/// untyped `properties` blob. There is one formae type per kind because each
+/// kind's blob is a different schema; `kind` itself is fixed by the type and is
+/// therefore not a field.
+///
+/// This is the *legacy* Log Analytics agent's configuration surface. The Azure
+/// Monitor agent is configured instead through
+/// AZURE::Insights::DataCollectionRule, which is the resource to reach for on
+/// anything new.
+///
+/// The API is fully synchronous — no operation ever reports as in progress.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DataSourceWindowsEvent extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// The Windows event log to collect, by its channel name — `Application`,
+    /// `System`, `Setup`, or any custom channel the agent can read.
+    @azure.FieldHint { required = true }
+    eventLogName: String
+
+    /// Severities to collect. ARM stores these as a list of single-key objects;
+    /// this is the flattened form.
+    @azure.FieldHint { required = true }
+    eventTypes: Listing<("Error"|"Warning"|"Information")>
+
+    hidden parent = this
+
+    hidden res: DataSourceWindowsEventResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
