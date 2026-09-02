@@ -1,0 +1,135 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementbackend
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Backend"
+const apiVersion = "2021-08-01"
+
+/// How the gateway talks to the backend. `http` covers REST and anything else
+/// that is not a SOAP envelope.
+typealias BackendProtocol = "http"|"soap"
+
+/// TLS validation the gateway performs against the backend's certificate.
+///
+/// Both flags default to true, and both exist to be turned OFF: a backend
+/// presenting a self-signed certificate needs `validateCertificateChain =
+/// false`, and one whose certificate does not name the host needs
+/// `validateCertificateName = false`.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class BackendTls extends formae.SubResource {
+    @azure.FieldHint { hasProviderDefault = true }
+    validateCertificateChain: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    validateCertificateName: Boolean?
+}
+
+/// What the gateway presents to the backend to authenticate itself.
+///
+/// `authorizationScheme` and `authorizationParameter` build one Authorization
+/// header — for example scheme `Basic` with a base64 parameter, or scheme
+/// `Bearer` with a token. `certificateIds` names client certificates already
+/// uploaded as `AZURE::ApiManagement::Certificate`.
+///
+/// ARM's `header` and `query` maps — extra headers and query parameters sent to
+/// the backend — are deliberately not modelled: they are maps of string to LIST
+/// of string, and there is no ordering ARM guarantees on the way back, so any
+/// declaration of them would read as drift.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class BackendCredentials extends formae.SubResource {
+    @azure.FieldHint { }
+    authorizationScheme: String?
+
+    /// The value after the scheme in the Authorization header. Write-only: ARM
+    /// stores it and does not return it.
+    @azure.FieldHint { writeOnly = true }
+    authorizationParameter: (formae.Value|String)?
+
+    /// ARM ids of client certificates the gateway may present, each an
+    /// `AZURE::ApiManagement::Certificate`.
+    @azure.FieldHint { }
+    certificateIds: Listing<String|formae.Resolvable>?
+}
+
+open class BackendResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackendResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackendResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A backend — a named destination an API or a policy can forward to.
+///
+/// Naming a backend instead of putting a URL on the API is what lets several
+/// APIs share one destination, and what lets a `set-backend-service` policy
+/// switch destination per request. `resourceId` additionally points the backend
+/// at an Azure resource (a Logic App, Function App or API App), which is how
+/// the gateway learns that resource's key.
+///
+/// ARM's service-fabric backend properties are not modelled: they describe a
+/// Service Fabric cluster, which this plugin has no resource type for.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Backend extends formae.Resource {
+
+    /// Backend identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Runtime URL the gateway forwards to.
+    @azure.FieldHint { required = true }
+    url: String(length >= 1 && length <= 2000)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    protocol: BackendProtocol
+
+    /// Name shown in the portal.
+    @azure.FieldHint { }
+    title: String(length <= 300)?
+
+    @azure.FieldHint { }
+    description: String(length <= 2000)?
+
+    /// ARM id of the Azure resource behind this backend — a Logic App, Function
+    /// App or API App. Optional: a plain HTTP backend needs only `url`.
+    @azure.FieldHint { }
+    resourceId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    tls: BackendTls?
+
+    @azure.FieldHint { }
+    credentials: BackendCredentials?
+
+    hidden parent = this
+
+    hidden res: BackendResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

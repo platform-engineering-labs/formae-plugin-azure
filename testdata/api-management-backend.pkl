@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementbackend.pkl" as apimbackend
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-backend-test-rg"
+  name = "formae-plugin-sdk-test-apimbackend-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing. Backends ARE
+// available on Consumption.
+local svc = new apim.Service {
+  label = "apim-backend-test-service"
+  name = "fpsdt-apimbackend-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // A plain HTTP backend. No `credentials` block: an Authorization header needs
+  // both a scheme and a parameter, and the parameter is write-only, so
+  // declaring one here would add a secret to the fixture for no coverage the
+  // mocked integration test does not already give.
+  //
+  // The two TLS flags default to true and are declared false to prove the
+  // provider actually sends them — that is the whole reason they exist, and a
+  // backend behind a self-signed certificate needs exactly this.
+  new apimbackend.Backend {
+    label = "plugin-sdk-test-apim-backend"
+    name = "conformance-backend"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    url = "https://echo.platform.engineering"
+    protocol = "http"
+    title = "Conformance Backend"
+    description = "Backend used by the formae Azure plugin conformance suite."
+    tls {
+      validateCertificateChain = false
+      validateCertificateName = false
+    }
+  }
+}
