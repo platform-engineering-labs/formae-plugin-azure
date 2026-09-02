@@ -1,0 +1,89 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementapi.pkl" as apimapi
+import "@azure/apimanagement/apimanagementapipolicy.pkl" as apimapipol
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-apipol-test-rg"
+  name = "formae-plugin-sdk-test-apimapipol-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-apipol-test-service"
+  name = "fpsdt-apimapipol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// Declared explicitly rather than imported: an import makes ARM synthesize one
+// operation per path in the document, and those then look like unmanaged
+// children of this API.
+local api = new apimapi.Api {
+  label = "apim-apipol-test-api"
+  name = "conformance-api"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  displayName = "Conformance API"
+  path = "conformance"
+  protocols = new Listing { "https" }
+  serviceUrl = "https://echo.platform.engineering"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+  api
+
+  // The document is written the way an author would write it. ARM does not
+  // store it verbatim: it reparses the XML and re-serializes it, so the
+  // indentation, the line endings and the attribute order all come back
+  // changed. The provider compares the two canonically and reports the
+  // document declared here, so that reformatting is not read as drift.
+  //
+  // Each section opens with <base /> so the service-wide policy still runs.
+  new apimapipol.ApiPolicy {
+    label = "plugin-sdk-test-apim-api-policy"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    apiName = api.res.name
+    format = "xml"
+    value = """
+      <policies>
+        <inbound>
+          <base />
+        </inbound>
+        <backend>
+          <base />
+        </backend>
+        <outbound>
+          <base />
+        </outbound>
+        <on-error>
+          <base />
+        </on-error>
+      </policies>
+      """
+  }
+}

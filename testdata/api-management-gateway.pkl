@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementgateway.pkl" as apimgw
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-gw-test-rg"
+  name = "formae-plugin-sdk-test-apimgw-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-gw-test-service"
+  name = "fpsdt-apimgw-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // NOT SUPPORTED ON THE CONSUMPTION TIER. A self-hosted gateway needs
+  // Developer or Premium, and on Consumption ARM rejects the create outright.
+  // The service above stays on Consumption on purpose - every dedicated tier
+  // takes 30 to 45 minutes to provision, which outlives the CI credential - so
+  // this fixture needs a skip-list entry rather than a different SKU.
+  //
+  // The gateway's keys are never declared or read back: they are live
+  // credentials, and ARM returns them only from a separate list-keys call.
+  new apimgw.Gateway {
+    label = "plugin-sdk-test-apim-gateway"
+    name = "conformance-gateway"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    locationDataName = "conformance-dc"
+    locationDataCity = "Karlsruhe"
+    locationDataCountryOrRegion = "Germany"
+    description = "Self-hosted gateway registration"
+  }
+}

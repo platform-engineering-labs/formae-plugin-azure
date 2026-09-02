@@ -100,7 +100,7 @@ open class Api extends formae.Resource {
     /// ARM id of the `AZURE::ApiManagement::ApiVersionSet` this API is a
     /// version of. The version set must already exist.
     @azure.FieldHint { }
-    apiVersionSetId: String|formae.Resolvable?
+    apiVersionSetId: (String|formae.Resolvable)?
 
     /// Whether this revision is the one the gateway currently serves. ARM makes
     /// the first revision current.

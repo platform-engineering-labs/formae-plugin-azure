@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementpolicy.pkl" as apimpol
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-pol-test-rg"
+  name = "formae-plugin-sdk-test-apimpol-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-pol-test-service"
+  name = "fpsdt-apimpol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // The document is written the way an author would write it. ARM does not
+  // store it verbatim: it reparses the XML and re-serializes it, so the
+  // indentation, the line endings and the attribute order all come back
+  // changed. The provider compares the two canonically and reports the
+  // document declared here, so that reformatting is not read as drift.
+  //
+  // A policy is a singleton child whose ARM name is always "policy", so this
+  // resource carries no name of its own.
+  new apimpol.Policy {
+    label = "plugin-sdk-test-apim-policy"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    format = "xml"
+    value = """
+      <policies>
+        <inbound>
+          <base />
+        </inbound>
+        <backend>
+          <base />
+        </backend>
+        <outbound>
+          <base />
+        </outbound>
+        <on-error>
+          <base />
+        </on-error>
+      </policies>
+      """
+  }
+}
