@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.automation.automationaccount
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Automation::Account"
+const apiVersion = "2024-10-23"
+
+open class AutomationAccountResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutomationAccountResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutomationAccountResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: AutomationAccountResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Automation account — the container for runbooks, schedules, job
+/// schedules, variables, credentials and modules.
+///
+/// The account's agent/webhook registration keys are NOT surfaced as properties:
+/// ARM returns them only from a separate Keys call, so exposing them would
+/// persist live credentials in resource state.
+///
+/// Deliberately not modelled: the managed identity block, customer-managed-key
+/// encryption, publicNetworkAccess and disableLocalAuth. Each is a field ARM
+/// populates itself in at least some API versions, and a provider-populated
+/// optional reads back as drift on every sync unless the schema declares it as a
+/// provider default — a change worth making with live evidence rather than
+/// guessed at. The account's own key rotation and hybrid-worker onboarding URL
+/// are read-only service state and are dropped for the same reason.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class AutomationAccount extends formae.Resource {
+
+    /// Automation account names are 6-50 characters, must start with a letter and
+    /// end with a letter or digit, and are unique within a resource group.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 6 && length <= 50 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// `Free` or `Basic`. Free is quota-limited to a handful of accounts per
+    /// subscription but includes 500 job minutes a month at no cost; Basic bills
+    /// per job minute and per watcher.
+    ///
+    /// Required rather than optional-with-a-provider-default on purpose: ARM
+    /// always answers Get with a sku block, so an omitted skuName would read back
+    /// as drift. Making the choice explicit costs one line in a forma and keeps
+    /// the field fully comparable.
+    @azure.FieldHint { required = true }
+    skuName: ("Free"|"Basic")
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AutomationAccountResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

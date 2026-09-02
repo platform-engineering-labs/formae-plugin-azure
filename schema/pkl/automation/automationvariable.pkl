@@ -1,0 +1,87 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.automation.automationvariable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Automation::Variable"
+const apiVersion = "2024-10-23"
+
+open class AutomationVariableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutomationVariableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutomationVariableResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A variable asset in an Azure Automation account — a named value runbooks read
+/// (and can write) at execution time.
+///
+/// `value` is WRITE-ONLY, for both halves of the encryption switch. When
+/// `isEncrypted` is true ARM never returns the value at all, so a read that
+/// expected it would report drift on every sync — the same asymmetry a
+/// connection string has. When `isEncrypted` is false ARM does echo it back, but
+/// making one case comparable and the other not would leave the schema's meaning
+/// dependent on a sibling field, so the value is never read back either way and a
+/// changed value in a forma is simply pushed.
+///
+/// A runbook can also assign to a variable at runtime (Set-AutomationVariable),
+/// which is a second reason not to compare the value: the service is a legitimate
+/// co-writer of it.
+///
+/// ARM stores the value as JSON, so a string value is conventionally written with
+/// its own quotes embedded — `value = "\"hello\""` — if the runbook is to read it
+/// back as a string.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Automation::Account"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "automationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AutomationVariable extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    automationAccountName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// Whether the value is stored encrypted. ARM will not flip this on an
+    /// existing variable, so a change replaces it.
+    ///
+    /// Required rather than optional-with-a-provider-default: ARM always answers
+    /// Get with the flag, so an omitted value would read back as drift. An
+    /// encrypted variable can only be read by a runbook, never through ARM.
+    @azure.FieldHint { required = true; createOnly = true }
+    isEncrypted: Boolean
+
+    /// The variable's value. Write-only — see the note above.
+    @azure.FieldHint { writeOnly = true }
+    value: (formae.Value|String)?
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    hidden parent = this
+
+    hidden res: AutomationVariableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
