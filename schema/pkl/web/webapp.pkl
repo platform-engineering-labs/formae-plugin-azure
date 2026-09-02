@@ -39,7 +39,7 @@ typealias PublicNetworkAccess = "Enabled"|"Disabled"
 typealias IdentityType = "SystemAssigned"|"UserAssigned"|"SystemAssigned, UserAssigned"|"None"
 
 /// Managed service identity for the app.
-class WebAppIdentity {
+class WebAppIdentity extends formae.SubResource {
     /// Identity type.
     @azure.FieldHint { }
     type: IdentityType
@@ -51,7 +51,7 @@ class WebAppIdentity {
 }
 
 /// An app setting. Values are write-only — see `WebApp.appSettings`.
-class AppSetting {
+class AppSetting extends formae.SubResource {
     @azure.FieldHint { }
     name: String(length >= 1)
 
@@ -68,7 +68,7 @@ class AppSetting {
 /// of a nested class — only on top-level resource fields. Set the ones that apply
 /// to your runtime explicitly; a forma that omits them will show drift once Azure
 /// fills in its own default.
-class SiteConfig {
+class SiteConfig extends formae.SubResource {
     /// Linux runtime stack, e.g. `PYTHON|3.12`, `NODE|20-lts`, `DOTNETCORE|8.0`,
     /// or `DOCKER|<image>`. Linux plans only (`ServicePlan.reserved = true`).
     @azure.FieldHint { }

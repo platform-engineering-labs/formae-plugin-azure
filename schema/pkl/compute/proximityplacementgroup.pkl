@@ -19,7 +19,7 @@ typealias ProximityPlacementGroupType = "Standard"|"Ultra"
 /// Declaring the VM sizes up front lets Azure pick a data centre that can host
 /// all of them; without it a later VM create can fail with
 /// `OverconstrainedAllocationRequest`.
-class ProximityPlacementGroupIntent {
+class ProximityPlacementGroupIntent extends formae.SubResource {
     @azure.FieldHint { required = true }
     vmSizes: Listing<String>
 }

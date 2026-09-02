@@ -27,7 +27,7 @@ open class NamespaceResolvable extends formae.Resolvable {
 typealias NamespaceSKUName = "Basic"|"Standard"|"Premium"
 
 /// SKU configuration for Event Hubs Namespace
-class NamespaceSKU {
+class NamespaceSKU extends formae.SubResource {
     /// SKU name (Basic, Standard, Premium)
     name: NamespaceSKUName
 

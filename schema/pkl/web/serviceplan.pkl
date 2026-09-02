@@ -35,7 +35,7 @@ typealias ServicePlanKind = "app"|"linux"|"elastic"|"functionapp"|"windows"|"xen
 /// fields of a nested class — only on top-level resource fields. Set both
 /// explicitly until nested provider defaults are supported, or a forma that omits
 /// them will show drift on `sku.tier` / `sku.capacity`.
-class ServicePlanSKU {
+class ServicePlanSKU extends formae.SubResource {
     /// SKU name, e.g. `F1`, `B1`, `S1`, `P1v3`, `EP1`, `Y1`.
     @azure.FieldHint { }
     name: String(length >= 1)
