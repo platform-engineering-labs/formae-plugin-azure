@@ -930,6 +930,22 @@
       "disposition": "pending"
     },
     {
+      "key": "network/networkmanagerconnectivityconfiguration.pkl#ConnectivityGroupItem.isGlobal",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/networkmanagerconnectivityconfiguration.pkl#ConnectivityGroupItem.useHubGateway",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/networkmanagerconnectivityconfiguration.pkl#NetworkManagerConnectivityConfiguration.deleteExistingPeering",
+      "disposition": "pending"
+    },
+    {
+      "key": "network/networkmanagerconnectivityconfiguration.pkl#NetworkManagerConnectivityConfiguration.isGlobal",
+      "disposition": "pending"
+    },
+    {
       "key": "network/privatednsvnetlink.pkl#PrivateDnsZoneVirtualNetworkLink.registrationEnabled",
       "disposition": "pending"
     },
