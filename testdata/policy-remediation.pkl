@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/authorization/policydefinition.pkl" as policydefinition
+import "@azure/authorization/policyassignment.pkl" as policyassignment
+import "@azure/policyinsights/policyremediation.pkl" as policyremediation
+import "vars.pkl"
+
+// A remediation needs an assignment to remediate, and an assignment needs a
+// definition, so the fixture builds all three, all scoped to this group.
+local rg = new resourcegroup.ResourceGroup {
+  label = "rem-test-rg"
+  name = "formae-plugin-sdk-test-rem-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local subscriptionScope = "/subscriptions/\(vars.subscriptionId)"
+local rgScope = "\(subscriptionScope)/resourceGroups/formae-plugin-sdk-test-rem-rg-\(vars.testRunID)"
+
+// The effect is `audit` ON PURPOSE. A remediation only ever DEPLOYS anything for an
+// assignment whose effect is deployIfNotExists or modify, and such an assignment
+// also needs a managed identity with RBAC to make the change. Against an audit
+// assignment ARM still creates and completes the task, having touched nothing —
+// which is exactly the CRUD surface this fixture is here to exercise, with no risk
+// of the test mutating anything in the subscription.
+local definition = new policydefinition.PolicyDefinition {
+  label = "rem-test-policy-definition"
+  name = "formae-plugin-sdk-test-rem-pd-\(vars.testRunID)"
+  displayName = "formae plugin sdk test audit \(vars.testRunID)"
+  description = "conformance test policy definition"
+  mode = "Indexed"
+  policyRule = #"{"if":{"field":"location","notEquals":"eastus"},"then":{"effect":"audit"}}"#
+}
+
+local assignment = new policyassignment.PolicyAssignment {
+  label = "rem-test-policy-assignment"
+  name = "formae-plugin-sdk-test-rem-pa-\(vars.testRunID)"
+  scope = rgScope
+  policyDefinitionId = definition.res.id
+  displayName = "formae plugin sdk test assignment \(vars.testRunID)"
+  description = "conformance test policy assignment"
+  enforcementMode = "DoNotEnforce"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  definition
+
+  assignment
+
+  // ExistingNonCompliant rather than ReEvaluateCompliance: re-evaluation takes
+  // minutes, and ARM will not delete a remediation while it is still evaluating.
+  new policyremediation.PolicyRemediation {
+    label = "plugin-sdk-test-policy-remediation"
+    name = "formae-plugin-sdk-test-rem-\(vars.testRunID)"
+    scope = rgScope
+    policyAssignmentId = assignment.res.id
+    resourceDiscoveryMode = "ExistingNonCompliant"
+    parallelDeployments = 10
+    resourceCount = 100
+    failureThresholdPercentage = 0.5
+    filterLocations {
+      "eastus"
+    }
+  }
+}
