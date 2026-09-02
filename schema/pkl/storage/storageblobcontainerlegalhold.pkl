@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storageblobcontainerlegalhold
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::BlobContainerLegalHold"
+const apiVersion = "2024-01-01"
+
+open class BlobContainerLegalHoldResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BlobContainerLegalHoldResolvable = (this) {
+        property = "id"
+    }
+    /// True while the container carries at least one legal-hold tag.
+    hidden hasLegalHold: BlobContainerLegalHoldResolvable = (this) {
+        property = "hasLegalHold"
+    }
+}
+
+/// Legal hold on a blob container: while any tag is present, no blob in the
+/// container can be deleted or overwritten.
+///
+/// ARM has no resource here at all, only two verbs — `setLegalHold` adds tags and
+/// `clearLegalHold` removes them — and no `Get`: the current tag set is read off
+/// the parent container's `legalHold` block. The identifier is therefore
+/// synthesised as `<container ARM ID>/legalHolds/default`, one legal hold per
+/// container.
+///
+/// Tags are normalised to lower case by the service, so declare them lower case or
+/// every read will look like drift.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::BlobContainer"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "containerName" },
+        new formae.ListProperty { parentProperty = "storageAccountName" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BlobContainerLegalHold extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the storage account holding the container.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Name of the parent blob container.
+    @azure.FieldHint { required = true; createOnly = true }
+    containerName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// The hold tags. Each is 3 to 23 alphanumeric characters and is lower-cased by
+    /// the service. Not `azure.Tag` key/value pairs — ARM takes bare strings here.
+    @azure.FieldHint { required = true }
+    legalHoldTags: Listing<String(length >= 3 && length <= 23 && matches(Regex("[a-z0-9]+")))>(!isEmpty)
+
+    /// Allow new blocks to be appended to append and block blobs while the hold is
+    /// in force.
+    @azure.FieldHint { }
+    allowProtectedAppendWritesAll: Boolean?
+
+    hidden parent = this
+
+    hidden res: BlobContainerLegalHoldResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

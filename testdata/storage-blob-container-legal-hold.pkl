@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/blobcontainer.pkl"
+import "@azure/storage/storageblobcontainerlegalhold.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lh-test-rg"
+  name = "formae-plugin-sdk-test-lh-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "lh-test-sa"
+  name = "fpsdtlh\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local container = new blobcontainer.BlobContainer {
+  label = "lh-test-container"
+  name = "plugin-sdk-test-lh-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = sa.res.name
+  publicAccess = "None"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  container
+
+  // ARM has no resource for a legal hold, only setLegalHold and clearLegalHold,
+  // so this resource has no name and its identifier is synthesised from the
+  // container's ARM ID: one legal hold per container.
+  new storageblobcontainerlegalhold.BlobContainerLegalHold {
+    label = "plugin-sdk-test-lh"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    containerName = container.res.name
+    // Tags must be declared lower case: the service normalises them, so a mixed-case
+    // declaration would read back as drift on every reconcile.
+    legalHoldTags = new Listing { "case1"; "audit" }
+  }
+}
