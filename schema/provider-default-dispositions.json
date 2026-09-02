@@ -790,6 +790,26 @@
       "disposition": "pending"
     },
     {
+      "key": "logic/logicintegrationaccountassembly.pkl#IntegrationAccountAssembly.assemblyCulture",
+      "disposition": "pending"
+    },
+    {
+      "key": "logic/logicintegrationaccountassembly.pkl#IntegrationAccountAssembly.assemblyPublicKeyToken",
+      "disposition": "pending"
+    },
+    {
+      "key": "logic/logicintegrationaccountassembly.pkl#IntegrationAccountAssembly.assemblyVersion",
+      "disposition": "pending"
+    },
+    {
+      "key": "logic/logicworkflow.pkl#Workflow.accessEndpoint",
+      "disposition": "pending"
+    },
+    {
+      "key": "logic/logicworkflow.pkl#Workflow.state",
+      "disposition": "pending"
+    },
+    {
       "key": "managedidentity/userassignedidentity.pkl#UserAssignedIdentity.tenantId",
       "disposition": "pending"
     },
