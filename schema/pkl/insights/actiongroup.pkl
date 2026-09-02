@@ -13,7 +13,7 @@ const type = "AZURE::Insights::ActionGroup"
 const apiVersion = "2023-01-01"
 
 /// Someone to email when an alert fires.
-class EmailReceiver {
+class EmailReceiver extends formae.SubResource {
     /// Unique within the action group.
     @azure.FieldHint { required = true }
     name: String(length >= 1)

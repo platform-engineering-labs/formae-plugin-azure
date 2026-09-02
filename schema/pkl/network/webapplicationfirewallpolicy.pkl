@@ -75,7 +75,7 @@ class MatchVariable {
 }
 
 /// A single match condition inside a custom rule.
-class MatchCondition {
+class MatchCondition extends formae.SubResource {
     /// Variables to match against.
     matchVariables: Listing<MatchVariable>
 

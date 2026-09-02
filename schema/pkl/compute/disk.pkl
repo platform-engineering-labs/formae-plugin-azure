@@ -19,7 +19,7 @@ typealias DiskStorageAccountType = "Standard_LRS"|"Premium_LRS"|"StandardSSD_LRS
 /// other options reference a snapshot, image, or existing disk.
 typealias DiskCreateOption = "Empty"|"Attach"|"FromImage"|"Import"|"Copy"|"Restore"|"Upload"|"CopyStart"
 
-class DiskCreationData {
+class DiskCreationData extends formae.SubResource {
     @azure.FieldHint { required = true; createOnly = true }
     createOption: DiskCreateOption
 
@@ -28,7 +28,7 @@ class DiskCreationData {
     sourceResourceId: (String|formae.Resolvable)?
 }
 
-class DiskSku {
+class DiskSku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: DiskStorageAccountType
 }
