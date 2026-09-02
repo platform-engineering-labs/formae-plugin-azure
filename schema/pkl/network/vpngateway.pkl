@@ -20,6 +20,7 @@ typealias VpnConnectionProtocol = "IKEv1"|"IKEv2"
 /// Only the two values a caller owns are modelled: the gateway's peering
 /// addresses are allocated by Azure out of the hub's address prefix, so they are
 /// read back and discarded rather than compared.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class VpnGatewayBgpSettings extends formae.SubResource {
     /// The gateway's autonomous system number. Azure assigns 65515 when the
     /// gateway is created without one; it cannot be changed afterwards.
@@ -36,6 +37,7 @@ class VpnGatewayBgpSettings extends formae.SubResource {
 /// Only the fields a caller owns are modelled. Azure fills in one
 /// `vpnLinkConnections` entry per link on the remote site, plus the connection
 /// status and byte counters; those are read back and discarded.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class VpnGatewayConnection extends formae.SubResource {
     /// Name of the connection, unique within the gateway.
     @azure.FieldHint { required = true }

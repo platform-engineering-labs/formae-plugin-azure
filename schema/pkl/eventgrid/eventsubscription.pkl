@@ -13,6 +13,7 @@ const type = "AZURE::EventGrid::EventSubscription"
 const apiVersion = "2022-06-15"
 
 /// Where matching events are delivered: a Storage queue.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class StorageQueueDestination extends formae.SubResource {
     /// ARM ID of the storage account holding the queue.
     @azure.FieldHint { required = true }
@@ -23,6 +24,7 @@ class StorageQueueDestination extends formae.SubResource {
 }
 
 /// Narrows which events are delivered. Omit to receive everything the topic emits.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class Filter extends formae.SubResource {
     /// Only deliver events whose subject starts with this prefix.
     @azure.FieldHint { hasProviderDefault = true }

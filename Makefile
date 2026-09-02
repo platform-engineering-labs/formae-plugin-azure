@@ -74,6 +74,28 @@ add-license:
 verify-schema:
 	$(GO) run github.com/platform-engineering-labs/formae/pkg/plugin/testutil/cmd/verify-schema --namespace $(PLUGIN_NAMESPACE) ./schema/pkl
 
+## verify-fixtures: Render every testdata forma
+## Catches schema faults that only appear when a forma is actually rendered.
+## verify-schema, test-unit, go vet, golangci-lint and `pkl eval formae-plugin.pkl`
+## all evaluate the schema WITHOUT rendering a forma, so none of them exercises
+## formae.SubResource.render(). PR #144 shipped a schema change that left 113 of 371
+## fixtures unrenderable with every one of those checks green; only evaluating a
+## fixture caught it. Needs the same two env vars the conformance harness sets.
+## Depends on build: schema/pkl/VERSION is generated and gitignored, and a
+## fixture cannot resolve the schema without it.
+verify-fixtures: build
+	@pkl project resolve testdata >/dev/null
+	@fail=0; total=0; \
+	for f in testdata/*.pkl; do \
+		total=$$((total+1)); \
+		if ! out=$$(FORMAE_TEST_RUN_ID=verify AZURE_SUBSCRIPTION_ID=00000000-0000-0000-0000-000000000000 \
+			pkl eval --format json --project-dir testdata "$$f" 2>&1 >/dev/null); then \
+			echo "FAIL $$f"; echo "$$out" | head -5; fail=$$((fail+1)); \
+		fi; \
+	done; \
+	echo "rendered $$total fixture(s), $$fail failed"; \
+	test $$fail -eq 0
+
 ## gen-pkl: Resolve all PKL project dependencies
 gen-pkl:
 	pkl project resolve schema/pkl
