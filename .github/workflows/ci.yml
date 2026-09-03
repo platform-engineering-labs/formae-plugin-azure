@@ -103,6 +103,13 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Clean up test resources
+        # KEEP UNTIL pre-cleanup IS GREEN, then remove in this PR.
+        # clean-environment.sh has aborted at `GROUPS=$(list_groups)` through
+        # three attempted fixes (#147, #149). The set -x trace is the only thing
+        # that has produced a real diagnosis, and it was removed too early last
+        # time - before the fix was confirmed - which cost another round trip.
+        env:
+          CLEAN_DEBUG: "1"
         run: ./scripts/ci/clean-environment.sh
 
   # Conformance runs the full CRUD + discovery lifecycle against real Azure

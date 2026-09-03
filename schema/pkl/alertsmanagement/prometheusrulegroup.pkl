@@ -1,0 +1,134 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.alertsmanagement.prometheusrulegroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::AlertsManagement::PrometheusRuleGroup"
+const apiVersion = "2023-03-01"
+
+/// One rule in the group: either a RECORDING rule, which precomputes an expression
+/// into a new series named by `record`, or an ALERTING rule, which fires an alert
+/// named by `alert`. Exactly one of the two must be set.
+///
+/// `enabled` is required rather than optional on purpose: `hasProviderDefault` is
+/// honoured only on top-level resource properties, so a flag the service defaulted
+/// to true inside `rules[]` would read back as "not expected and not a provider
+/// default" on every sync.
+class PrometheusRule {
+    /// Name of the recorded series. Mutually exclusive with `alert`.
+    @azure.FieldHint { }
+    `record`: String?
+
+    /// Name of the alert. Mutually exclusive with `record`.
+    @azure.FieldHint { }
+    alert: String?
+
+    /// The PromQL to evaluate.
+    @azure.FieldHint { required = true }
+    expression: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    enabled: Boolean
+
+    /// How long the expression must hold before the alert fires, as an ISO-8601
+    /// duration. Alerting rules only.
+    @azure.FieldHint { }
+    `for`: String?
+
+    /// 0 (critical) through 4 (verbose). Alerting rules only.
+    @azure.FieldHint { }
+    severity: Int(this >= 0 && this <= 4)?
+
+    /// Labels attached to the recorded series or the fired alert.
+    @azure.FieldHint { }
+    labels: Mapping<String, String>?
+
+    /// Annotations carried on the fired alert. Alerting rules only.
+    @azure.FieldHint { }
+    annotations: Mapping<String, String>?
+}
+
+open class PrometheusRuleGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PrometheusRuleGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: PrometheusRuleGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A managed Prometheus rule group — the recording and alerting rules Azure Monitor
+/// evaluates against an Azure Monitor workspace's metrics.
+///
+/// `scopes` must name at least one `AZURE::Monitor::MonitorWorkspace`; that is the
+/// metrics store the rules are evaluated against. An AKS cluster may be added as a
+/// second scope, in which case `clusterName` names it.
+///
+/// The client is pinned to api-version 2023-03-01: the SDK module's own default for
+/// this type is the 2021-07-22-preview contract.
+///
+/// Billed per rule evaluated per minute; a group with a handful of rules for the
+/// length of a test run costs fractions of a cent.
+///
+/// Scope: ARM's per-rule `actions` (action groups to notify) and
+/// `resolveConfiguration` (auto-resolve behaviour) are not modelled, and are not read
+/// back either — surfacing state the schema cannot express would show as drift
+/// forever.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class PrometheusRuleGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    /// ARM ids the rules evaluate against — at least one Azure Monitor workspace,
+    /// e.g. `scopes = new Listing { amw.res.id }`.
+    @azure.FieldHint { required = true }
+    scopes: Listing<String|formae.Resolvable>
+
+    @azure.FieldHint { required = true }
+    rules: Listing<PrometheusRule>
+
+    /// AKS cluster the rules apply to, when one is among the scopes.
+    @azure.FieldHint { }
+    clusterName: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    /// Evaluation period as an ISO-8601 duration, between PT1M and PT15M.
+    @azure.FieldHint { hasProviderDefault = true }
+    interval: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: PrometheusRuleGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

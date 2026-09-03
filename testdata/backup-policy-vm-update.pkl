@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/recoveryservices/backuppolicyvm.pkl" as bpvm
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/recoveryservices/recoveryservicesvault.pkl" as rsv
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vmpol-test-rg"
+  name = "formae-plugin-sdk-test-vmpol-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The policy needs its own vault. Soft delete stays off so the teardown does not
+// have to wait out a retention window.
+local vault = new rsv.Vault {
+  label = "vmpol-test-vault"
+  name = "fpsdt-vmpol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  skuName = "Standard"
+  softDeleteState = "Disabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  vault
+
+  new bpvm.BackupPolicyVM {
+    label = "plugin-sdk-test-backup-policy-vm"
+    name = "fpsdt-vmpol-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    vaultName = vault.res.name
+    timeZone = "UTC"
+    // Update: run half an hour earlier, keep points twice as long, and add a
+    // weekly tier. All three ride one CreateOrUpdate - a backup policy has no
+    // PATCH.
+    instantRpRetentionRangeInDays = 3
+    backupSchedule = new bpvm.BackupSchedule {
+      frequency = "Daily"
+      times = new Listing { "22:30" }
+    }
+    dailyRetention = new bpvm.DailyRetention {
+      count = 14
+    }
+    weeklyRetention = new bpvm.WeeklyRetention {
+      count = 4
+      daysOfWeek = new Listing { "Sunday" }
+    }
+  }
+}
