@@ -5,15 +5,11 @@
 package resources
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
@@ -111,55 +107,6 @@ func formaeTagsToAzureTags(properties []byte) map[string]*string {
 // operationErrorCode maps provider errors to Formae operation error codes.
 func operationErrorCode(err error) resource.OperationErrorCode {
 	return prov.OperationErrorCode(err)
-}
-
-// Bounds for retryOnDeleteResidue. Vars rather than consts so its test can shrink
-// the window instead of sleeping through it.
-var (
-	deleteResidueMaxWait  = 90 * time.Second
-	deleteResidueInterval = 10 * time.Second
-)
-
-// retryOnDeleteResidue re-runs create while ARM still reports a resource that
-// has already been deleted.
-//
-// Some Azure services acknowledge a delete before their own index has caught up,
-// so a create against the same name comes back 409 for a while afterwards. The
-// conformance harness hits this every run in the OOB-delete phase, which deletes
-// out of band and immediately re-applies:
-//
-//	[create] Conflict | A jobSchedule with same id already exists.
-//	[OOB Del] Re-apply command should complete successfully
-//
-// This is not a caller error and not something a longer phase timeout fixes -
-// the create fails fast, it does not hang. Retrying it is the only thing that
-// can succeed.
-//
-// Only 409 is retried, and only for a bounded window: a 409 that is genuinely a
-// name collision keeps failing and is returned once the window closes, with the
-// last error intact so the reason still reaches the caller.
-func retryOnDeleteResidue(ctx context.Context, attempt func() error) error {
-	deadline := time.Now().Add(deleteResidueMaxWait)
-	for {
-		err := attempt()
-		if err == nil {
-			return nil
-		}
-
-		var respErr *azcore.ResponseError
-		if !errors.As(err, &respErr) || respErr.StatusCode != http.StatusConflict {
-			return err
-		}
-		if !time.Now().Before(deadline) {
-			return err
-		}
-
-		select {
-		case <-ctx.Done():
-			return err
-		case <-time.After(deleteResidueInterval):
-		}
-	}
 }
 
 // stringPtr returns a pointer to a string. Useful for Azure SDK calls.

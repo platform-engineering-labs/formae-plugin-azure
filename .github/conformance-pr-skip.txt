@@ -336,3 +336,28 @@ avd-scaling-plan
 # APIM children that need a service still get one; only the service's own CRUD
 # fixture is skipped.
 api-management-service
+
+# AZURE::Automation::JobSchedule cannot survive the harness's OOB-delete phase,
+# because a jobScheduleId is not reusable once deleted.
+#
+# ARM uses the jobScheduleId as both the URL segment and the resource name, so
+# the id is caller-supplied and pinned in the fixture rather than allocated by
+# Azure. The phase order makes that fatal:
+#
+#   Step 13  replace     - creates 8b1d4f60-..., deletes base 3f7c9e1a-...
+#   Step 16  destroy     - removes 8b1d4f60-...
+#   Step 19  re-apply    - re-applies the BASE fixture, i.e. 3f7c9e1a-... again
+#
+#   [create] Conflict | A jobSchedule with same id already exists.
+#
+# Azure still refuses the base id minutes after it was deleted. Confirmed over
+# three consecutive runs, and a bounded retry on the create did not help: with
+# 90s of retrying, four separate create attempts all came back 409 and the phase
+# ended at 354s on a command timeout instead of a fast failure. That retry has
+# been reverted - it turned a quick, legible failure into a slow one and fixed
+# nothing.
+#
+# Not a plugin defect. Create, Verify, Extract, Sync, Update, Replace and Destroy
+# all pass; only the re-apply of a deleted id fails, and no provisioner can make
+# Azure accept it. Un-skip if the harness ever recreates with a fresh identity.
+automation-job-schedule
