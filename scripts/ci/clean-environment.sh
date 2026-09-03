@@ -84,6 +84,14 @@ if ! az account show &> /dev/null; then
 fi
 
 echo "Using subscription: $(az account show --query name -o tsv)"
+
+# Needed to build the ARM URL for the APIM purge below. Empty would silently
+# produce an unroutable URL, so fail loudly here instead.
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+if [[ -z "${SUBSCRIPTION_ID}" ]]; then
+    echo "Could not determine the subscription id. Skipping cleanup."
+    exit 0
+fi
 echo ""
 
 # list_groups - names of every resource group matching TEST_PREFIX, one per line.
@@ -384,20 +392,27 @@ fi
 # quota is reached quickly once deleted ones stop being reclaimed. Key Vaults have
 # been purged here since the beginning; APIM was simply missed.
 #
-# `--no-wait`, after getting this wrong once.
+# Purged with `az rest`, after getting this wrong twice.
 #
-# The first version of this block purged synchronously, on the reasoning that a
-# queued purge would not free quota in time to help the run that follows. Measured:
-# each synchronous purge takes ~1.3 min, so clearing a 16-service backlog held
-# pre-cleanup for over 17 minutes with nothing else to do - and at steady state
-# every run leaves ~28 soft-deleted services behind, which would be ~36 min of
+# The first version purged synchronously with `az apim deletedservice purge`.
+# Measured: ~1.3 min each, so clearing a 16-service backlog held pre-cleanup for
+# over 17 minutes, and at steady state every run leaves ~28 behind - ~36 min of
 # purging in EVERY sweep.
 #
-# The original worry does not survive contact with the timings either: the matrix
-# takes hours, so a purge queued at the start of pre-cleanup completes long before
-# the APIM fixtures need the quota. Failures are tolerated - a purge that cannot
-# proceed shows up as the quota error on a later create, and must not abort the
-# sweep.
+# The second version added `--no-wait` to that command. THAT FLAG DOES NOT EXIST:
+#
+#     ERROR: unrecognized arguments: --no-wait
+#
+# so every purge failed, the loop reported "queued purge for 0", and soft-deleted
+# services accumulated unchecked until they exhausted the 20-service Consumption
+# cap. The failure was invisible because a purge that cannot proceed is tolerated
+# here by design, and because the count it prints was the count of successes.
+#
+# `az rest` sends the DELETE and returns on ARM's 202 without the CLI's polling
+# loop: ~20s per service rather than ~1.3 min, with no dependency on which flags
+# this month's `az apim` happens to accept. Failures stay tolerated - a purge that
+# cannot proceed shows up as the quota error on a later create, and must not abort
+# the sweep - but the count below now distinguishes them.
 echo ""
 echo "Purging soft-deleted API Management services with prefix 'fpsdt-'..."
 DELETED_APIMS=$(az apim deletedservice list --query "[?starts_with(name, 'fpsdt-')].{n:name,l:location}" -o tsv 2>/dev/null || true)
@@ -405,6 +420,7 @@ if [[ -z "${DELETED_APIMS}" ]]; then
     echo "  none"
 else
     apim_purged=0
+    apim_failed=0
     while IFS=$'\t' read -r APIM_NAME APIM_LOC; do
         [[ -z "${APIM_NAME}" ]] && continue
         # Re-check the prefix LOCALLY, exactly as list_groups does and for the same
@@ -416,13 +432,17 @@ else
             echo "    skipping ${APIM_NAME} - does not match the test prefix"
             continue
         fi
-        if az apim deletedservice purge --service-name "${APIM_NAME}" --location "${APIM_LOC}" --no-wait > /dev/null 2>&1; then
+        APIM_LOC_SLUG=$(printf '%s' "${APIM_LOC}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+        if az rest --method delete --url \
+            "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.ApiManagement/locations/${APIM_LOC_SLUG}/deletedservices/${APIM_NAME}?api-version=2022-08-01" \
+            > /dev/null 2>&1; then
             apim_purged=$((apim_purged + 1))
         else
-            echo "    could not purge ${APIM_NAME} (${APIM_LOC})"
+            apim_failed=$((apim_failed + 1))
+            echo "    could not purge ${APIM_NAME} (${APIM_LOC_SLUG})"
         fi
     done <<< "${DELETED_APIMS}"
-    echo "  queued purge for ${apim_purged} soft-deleted APIM service(s)"
+    echo "  purged ${apim_purged} soft-deleted APIM service(s), ${apim_failed} failed"
 fi
 
 # Verdict. Same `set +e` guard as the other call sites - a non-zero list here
