@@ -37,6 +37,7 @@ typealias PublicNetworkAccess = "Enabled"|"Disabled"
 /// Azure echoes `tier` back matching `name` whether or not the create body set it,
 /// and the conformance framework does not honour `hasProviderDefault` on fields of a
 /// nested class — only on top-level resource fields. Set both explicitly.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class StaticSiteSKU extends formae.SubResource {
     /// `Free` or `Standard`.
     @azure.FieldHint { }
@@ -49,6 +50,7 @@ class StaticSiteSKU extends formae.SubResource {
 
 /// Build configuration handed to the generated GitHub Actions / Azure Pipelines
 /// workflow. Write-only — see `StaticSite.buildProperties`.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class StaticSiteBuildProperties extends formae.SubResource {
     /// Path to the app source within the repository, e.g. `/`.
     @azure.FieldHint { }

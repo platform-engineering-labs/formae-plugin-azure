@@ -21,6 +21,7 @@ typealias PublicIPPrefixSkuTier = "Regional"|"Global"
 
 typealias IPVersion = "IPv4"|"IPv6"
 
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class PublicIPPrefixSku extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: PublicIPPrefixSkuName
@@ -31,6 +32,7 @@ class PublicIPPrefixSku extends formae.SubResource {
 
 /// An IP tag restricts what the allocated addresses may be used for
 /// (e.g. `ipTagType = "FirstPartyUsage"`, `tag = "/Sql"`).
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class IPTag extends formae.SubResource {
     @azure.FieldHint { required = true }
     ipTagType: String
