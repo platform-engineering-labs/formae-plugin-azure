@@ -300,3 +300,16 @@ api-management-named-value
 api-management-openid-connect-provider
 api-management-product-api
 api-management-product-policy
+
+# AZURE::DesktopVirtualization::ScalingPlan needs an RBAC grant this
+# subscription does not have. ARM rejects the create with:
+#   "unable to access host pool with name 'fpsdt-avd-sp-hp-...', please make
+#    sure that you have given the Azure Virtual Desktop service permissions to
+#    access your resource"
+# The Azure Virtual Desktop service principal must hold a role with
+# hostpools/read + hostpools/sessionHosts write on the scope - Microsoft's
+# "Desktop Virtualization Power On Off Contributor". This is a one-time grant
+# on the conformance subscription, not a plugin defect: the fixture wires
+# hostPoolArmPath correctly and the host pool itself creates fine.
+# Un-skip once the role assignment exists.
+avd-scaling-plan
