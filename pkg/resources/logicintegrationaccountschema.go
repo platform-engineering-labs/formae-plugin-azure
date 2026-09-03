@@ -77,13 +77,26 @@ func (p *logicIntegrationAccountSchemaProps) parse(payload json.RawMessage, fall
 	return nil
 }
 
+// logicSchemaContentType is the media type ARM expects for a schema. Omitting it
+// fails the create with
+//
+//	The 'contentType' property of schema 'conformance-order-schema' of type 'Xml'
+//	must be set to 'application/xml'.
+//
+// SchemaType has only Xml and NotSpecified, and an integration-account schema is
+// an XSD either way, so this does not vary with the type the way the sibling
+// logicMapContentType does for Liquid. There is nothing for a caller to choose,
+// so the schema deliberately exposes no field for it.
+const logicSchemaContentType = "application/xml"
+
 // params builds the request body shared by create and update.
 func (s *LogicIntegrationAccountSchema) params(props logicIntegrationAccountSchemaProps) armlogic.IntegrationAccountSchema {
 	return armlogic.IntegrationAccountSchema{
 		Properties: &armlogic.IntegrationAccountSchemaProperties{
-			SchemaType: to.Ptr(armlogic.SchemaType(props.SchemaType)),
-			Content:    to.Ptr(props.Content),
-			FileName:   props.FileName,
+			SchemaType:  to.Ptr(armlogic.SchemaType(props.SchemaType)),
+			ContentType: to.Ptr(logicSchemaContentType),
+			Content:     to.Ptr(props.Content),
+			FileName:    props.FileName,
 		},
 	}
 }
