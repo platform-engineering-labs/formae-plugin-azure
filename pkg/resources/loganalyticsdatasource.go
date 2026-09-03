@@ -44,10 +44,22 @@ func logAnalyticsDataSourceIDParts(resourceID string) (rgName, workspaceName, da
 }
 
 // logAnalyticsDataSourceKindFilter is the OData filter that narrows
-// ListByWorkspace to a single kind. The SDK's own example uses this exact form
-// (`kind='WindowsEvent'`), not the `kind eq '...'` spelling.
+// ListByWorkspace to a single kind. The filter is NOT optional: called without
+// one, ARM answers 400 with
+//
+//	Must specify a valid kind filter. For example, $filter=kind eq 'windowsPerformanceCounter'
+//
+// and it rejects the `kind='WindowsEvent'` spelling the same way. That spelling
+// comes from the SDK's generated example file, which is built from a swagger
+// sample and never executed; the SDK's *live* test - the one that does run
+// against Azure - uses `kind eq 'WindowsEvent'`, which is also what the REST
+// reference documents. Follow the live test.
+//
+// The value here is the query value alone. The SDK does `reqQP.Set("$filter",
+// filter)`, so including a `$filter=` prefix would URL-encode a second one into
+// the query string.
 func logAnalyticsDataSourceKindFilter(kind armoperationalinsights.DataSourceKind) string {
-	return fmt.Sprintf("kind='%s'", string(kind))
+	return fmt.Sprintf("kind eq '%s'", string(kind))
 }
 
 // logAnalyticsDataSourceBlob coerces the SDK's untyped `Properties any` into a

@@ -284,7 +284,10 @@ func TestLogAnalyticsDataSourceWindowsEvent_CRUD(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, []string{testDataSourceWindowsEventNativeID}, got.NativeIDs)
-		require.Equal(t, "kind='WindowsEvent'", sentFilter)
+		// ARM rejects the `kind='WindowsEvent'` spelling with a 400 that reads
+		// "Must specify a valid kind filter". This assertion is what let that
+		// bug ship green: it pinned the broken form. Only `kind eq '...'` works.
+		require.Equal(t, "kind eq 'WindowsEvent'", sentFilter)
 	})
 
 	t.Run("List_without_workspace_is_empty", func(t *testing.T) {

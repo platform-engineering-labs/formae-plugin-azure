@@ -207,7 +207,7 @@ func TestLogAnalyticsDataSourceWindowsPerfCounter_CRUD(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, []string{testDataSourceWindowsPerfCounterNativeID}, got.NativeIDs)
-		require.Equal(t, "kind='WindowsPerformanceCounter'", sentFilter)
+		require.Equal(t, "kind eq 'WindowsPerformanceCounter'", sentFilter)
 	})
 
 	t.Run("List_without_resource_group_is_empty", func(t *testing.T) {
