@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/nativeid"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
 
@@ -31,6 +32,7 @@ func (p *azureProvisioner) Create(ctx context.Context, request *resource.CreateR
 	if result == nil || result.ProgressResult == nil {
 		return nil, fmt.Errorf("create returned nil progress result")
 	}
+	logFailure(ctx, "create", "", result.ProgressResult)
 	return result, nil
 }
 
@@ -58,6 +60,7 @@ func (p *azureProvisioner) Update(ctx context.Context, request *resource.UpdateR
 	if result == nil || result.ProgressResult == nil {
 		return nil, fmt.Errorf("update returned nil progress result")
 	}
+	logFailure(ctx, "update", request.NativeID, result.ProgressResult)
 	return result, nil
 }
 
@@ -77,6 +80,7 @@ func (p *azureProvisioner) Delete(ctx context.Context, request *resource.DeleteR
 	if result == nil || result.ProgressResult == nil {
 		return nil, fmt.Errorf("delete returned nil progress result")
 	}
+	logFailure(ctx, "delete", request.NativeID, result.ProgressResult)
 	return result, nil
 }
 
@@ -89,6 +93,7 @@ func (p *azureProvisioner) Status(ctx context.Context, request *resource.StatusR
 	if result == nil || result.ProgressResult == nil {
 		return nil, fmt.Errorf("status returned nil progress result")
 	}
+	logFailure(ctx, "status", "", result.ProgressResult)
 	return result, nil
 }
 
@@ -96,6 +101,47 @@ func (p *azureProvisioner) List(ctx context.Context, request *resource.ListReque
 	return p.inner.List(ctx, request)
 }
 
+// logFailure records why an operation failed, at Error level, in the plugin's own
+// log.
+//
+// Without this a failed operation is close to undiagnosable from CI. The
+// conformance harness prints only
+//
+//	[Create] Apply command should complete successfully: command reached terminal
+//	state: Failed
+//
+// and the agent log shows the state transition to Failed but not the reason. The
+// reason IS carried - every provisioner sets ProgressResult.StatusMessage, and the
+// mocked "Azure error maps to failure with a reason" tests assert it - it simply
+// had nowhere visible to go. During wave 3 that cost roughly fifteen live failures
+// their diagnosis: the only way to see an ARM error was to reproduce the fixture
+// by hand.
+//
+// Logging here rather than in each provisioner is deliberate: every resource is
+// wrapped, so one call site covers all of them and cannot be forgotten by the next
+// resource added.
+func logFailure(ctx context.Context, op string, nativeID string, pr *resource.ProgressResult) {
+	if pr == nil || pr.OperationStatus != resource.OperationStatusFailure {
+		return
+	}
+	id := nativeID
+	if id == "" {
+		id = pr.NativeID
+	}
+	plugin.LoggerFromContext(ctx).Error("azure operation failed",
+		"operation", op,
+		"nativeID", id,
+		"errorCode", pr.ErrorCode,
+		"reason", pr.StatusMessage)
+}
+
+// The four *Failure helpers all set StatusMessage from the error.
+//
+// They previously set only ErrorCode and discarded err.Error(), which is trap 6
+// living in the shared wrapper: an ARM refusal reached core as a bare code with no
+// text, so a failed operation logged a transition to Failed with nothing to say
+// why. Every resource routes its Go-error path through here, so dropping the
+// message here dropped it for all of them at once.
 func createFailure(err error) (*resource.CreateResult, error) {
 	code, ok := AzureErrorCode(err)
 	if !ok {
@@ -105,6 +151,7 @@ func createFailure(err error) (*resource.CreateResult, error) {
 		Operation:       resource.OperationCreate,
 		OperationStatus: resource.OperationStatusFailure,
 		ErrorCode:       code,
+		StatusMessage:   err.Error(),
 	}}, nil
 }
 
@@ -118,6 +165,7 @@ func updateFailure(nativeID string, err error) (*resource.UpdateResult, error) {
 		OperationStatus: resource.OperationStatusFailure,
 		NativeID:        nativeID,
 		ErrorCode:       code,
+		StatusMessage:   err.Error(),
 	}}, nil
 }
 
@@ -131,6 +179,7 @@ func deleteFailure(nativeID string, err error) (*resource.DeleteResult, error) {
 		OperationStatus: resource.OperationStatusFailure,
 		NativeID:        nativeID,
 		ErrorCode:       code,
+		StatusMessage:   err.Error(),
 	}}, nil
 }
 
@@ -142,6 +191,7 @@ func statusFailure(requestID string, err error) (*resource.StatusResult, error) 
 	return &resource.StatusResult{ProgressResult: &resource.ProgressResult{
 		OperationStatus: resource.OperationStatusFailure,
 		RequestID:       requestID,
+		StatusMessage:   err.Error(),
 		ErrorCode:       code,
 	}}, nil
 }
