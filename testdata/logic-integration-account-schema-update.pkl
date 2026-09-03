@@ -25,7 +25,7 @@ local iaccount = new logicaccount.IntegrationAccount {
   name = "fpsdt-logicsch-\(vars.testRunID)"
   location = "eastus2"
   resourceGroupName = rg.res.name
-  skuName = "Free"
+  skuName = "Basic"
 }
 
 forma {

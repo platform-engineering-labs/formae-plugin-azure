@@ -26,7 +26,7 @@ local iaccount = new logicaccount.IntegrationAccount {
   name = "fpsdt-logicagr-\(vars.testRunID)"
   location = "centralus"
   resourceGroupName = rg.res.name
-  skuName = "Free"
+  skuName = "Basic"
 }
 
 // The locals are hostTradingPartner / guestTradingPartner, NOT hostPartner /

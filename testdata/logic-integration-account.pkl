@@ -35,7 +35,7 @@ forma {
     name = "fpsdt-logicia-\(vars.testRunID)"
     location = "eastus"
     resourceGroupName = rg.res.name
-    skuName = "Free"
+    skuName = "Basic"
     tags = new Listing {
       new azure.Tag { key = "purpose"; value = "conformance" }
     }

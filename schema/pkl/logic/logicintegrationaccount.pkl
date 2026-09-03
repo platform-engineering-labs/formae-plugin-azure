@@ -39,6 +39,19 @@ open class IntegrationAccountResolvable extends formae.Resolvable {
 ///
 /// COST: use `Free`. It is the only tier that is not billed per hour, and a
 /// subscription may hold only one Free account per region — two formae stacks
+/// share a region.
+///
+/// CONFORMANCE FIXTURES MUST NOT USE `Free`. The CRUD lifecycle creates a second,
+/// out-of-band integration account in the SAME region as the one the forma
+/// declares, so a Free fixture needs two Free accounts in one region and ARM
+/// refuses the second with
+///
+///   RESPONSE 409: EnabledRegionalFreeSkuIntegrationAccountsQuotaExceeded
+///
+/// Spreading fixtures across regions does not help, because the collision is
+/// within a single fixture. Wave 3's fixtures use `Basic`: it bills per hour, but
+/// a fixture holds one for a few minutes, so the cost is negligible and the
+/// quota constraint disappears.
 /// that each declare one in the same region cannot both apply.
 ///
 /// The account's shared access keys are NOT surfaced as properties: ARM returns

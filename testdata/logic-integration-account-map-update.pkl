@@ -25,7 +25,7 @@ local iaccount = new logicaccount.IntegrationAccount {
   name = "fpsdt-logicmap-\(vars.testRunID)"
   location = "westus"
   resourceGroupName = rg.res.name
-  skuName = "Free"
+  skuName = "Basic"
 }
 
 forma {

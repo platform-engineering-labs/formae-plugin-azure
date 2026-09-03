@@ -26,7 +26,7 @@ forma {
 
   rg
 
-  // Update: tags only. `skuName` is deliberately left at `Free` — the two paid
+  // Update: tags only. `skuName` is deliberately unchanged - the two paid
   // tiers bill per hour, so exercising a SKU change would put a Standard
   // account on the shared subscription for the length of the run.
   new logicaccount.IntegrationAccount {
@@ -34,7 +34,7 @@ forma {
     name = "fpsdt-logicia-\(vars.testRunID)"
     location = "eastus"
     resourceGroupName = rg.res.name
-    skuName = "Free"
+    skuName = "Basic"
     tags = new Listing {
       new azure.Tag { key = "purpose"; value = "conformance" }
       new azure.Tag { key = "phase"; value = "update" }
