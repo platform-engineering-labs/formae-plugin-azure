@@ -1,0 +1,106 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.alertsmanagement.alertprocessingrulesuppression
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+import "alertprocessingruleactiongroup.pkl" as actiongrouprule
+
+const type = "AZURE::AlertsManagement::AlertProcessingRuleSuppression"
+const apiVersion = "2021-08-08"
+
+/// When the suppression is in effect. Both bounds are ISO-8601 date-times WITHOUT a
+/// timezone suffix, e.g. "2030-01-01T00:00:00"; `timeZone` is what gives them a
+/// zone.
+class AlertProcessingRuleSchedule {
+    @azure.FieldHint { }
+    effectiveFrom: String?
+
+    @azure.FieldHint { }
+    effectiveUntil: String?
+
+    /// A Windows time zone name, e.g. "UTC", "Pacific Standard Time".
+    @azure.FieldHint { }
+    timeZone: String?
+}
+
+open class AlertProcessingRuleSuppressionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AlertProcessingRuleSuppressionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AlertProcessingRuleSuppressionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An alert processing rule that SUPPRESSES notifications — it removes every action
+/// group from each alert matching its scopes and conditions, so the alert is still
+/// raised but nobody is paged. The usual reason is a maintenance window, which is
+/// what `schedule` expresses.
+///
+/// The ARM type is `Microsoft.AlertsManagement/actionRules`, shared with
+/// `AZURE::AlertsManagement::AlertProcessingRuleActionGroup`; a rule carries exactly
+/// one of the two actions, and discovery of either type filters the shared listing
+/// by action type.
+///
+/// Alert processing rules are global: `location` is the literal "Global".
+///
+/// Free — the rule itself carries no charge.
+///
+/// Scope: ARM's recurring schedules (daily, weekly and monthly recurrence blocks)
+/// are a polymorphic union that is not modelled, and not read back either, so a rule
+/// authored elsewhere with recurrences reads with only its effective window visible.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class AlertProcessingRuleSuppression extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Always "Global" for alert processing rules.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: String(length >= 1)
+
+    /// ARM ids the rule applies to: a subscription, a resource group, or individual
+    /// resources.
+    @azure.FieldHint { required = true }
+    scopes: Listing<String|formae.Resolvable>
+
+    @azure.FieldHint { }
+    conditions: Listing<actiongrouprule.AlertProcessingRuleCondition>?
+
+    /// Maintenance window the suppression applies in. Omit it and the suppression is
+    /// always in effect.
+    @azure.FieldHint { }
+    schedule: AlertProcessingRuleSchedule?
+
+    @azure.FieldHint { }
+    description: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AlertProcessingRuleSuppressionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

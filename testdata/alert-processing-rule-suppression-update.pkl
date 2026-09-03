@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/alertsmanagement/alertprocessingruleactiongroup.pkl" as aprag
+import "@azure/alertsmanagement/alertprocessingrulesuppression.pkl" as aprsup
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apr-sup-test-rg"
+  name = "formae-plugin-sdk-test-apr-sup-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Same ARM type as the action-group flavour (Microsoft.AlertsManagement/
+  // actionRules) with a RemoveAllActionGroups action instead. Scoped to the test
+  // resource group, conditioned on Sev4, and its maintenance window is years away,
+  // so it can never silence a real alert on the shared subscription. Free, and
+  // location is the literal "Global".
+  //
+  // The schedule bounds are ISO-8601 date-times WITHOUT a timezone suffix - ARM
+  // rejects a trailing Z - and timeZone is what gives them a zone.
+  new aprsup.AlertProcessingRuleSuppression {
+    label = "plugin-sdk-test-apr-suppression"
+    name = "fpsdt-apr-sup-rule-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "Global"
+    scopes = new Listing { rg.res.id }
+    description = "conformance test: suppress notifications during a longer maintenance window"
+    enabled = true
+    conditions {
+      new aprag.AlertProcessingRuleCondition {
+        field = "Severity"
+        operator = "Equals"
+        values { "Sev4" }
+      }
+    }
+    schedule = new aprsup.AlertProcessingRuleSchedule {
+      effectiveFrom = "2030-01-01T00:00:00"
+      effectiveUntil = "2030-01-03T00:00:00"
+      timeZone = "UTC"
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/management/managementgroup.pkl" as managementgroup
+import "@azure/management/managementgroupsubscriptionassociation.pkl" as association
+import "vars.pkl"
+
+// TENANT-SCOPED, SO THIS FIXTURE IS ON .github/conformance-pr-skip.txt — see
+// management-group.pkl for the AuthorizationFailed this returns on the conformance
+// subscription, and for the command that runs it deliberately.
+//
+// IT ALSO MOVES THE SUBSCRIPTION IT IS RUN AGAINST. There is only one subscription
+// available to the fixture, so [Create] re-parents it under the test group and
+// [Destroy] hands it back to the TENANT ROOT group — which is not necessarily where
+// it started. Only run this against a subscription whose placement is disposable.
+//
+// Two groups exist so the -replace variant can move the subscription from one to
+// the other: both of the association's fields are createOnly, so the only lifecycle
+// beyond create and destroy is a replace.
+local groupA = new managementgroup.ManagementGroup {
+  label = "mgsa-test-group-a"
+  name = "formae-plugin-sdk-test-mgsa-a-\(vars.testRunID)"
+  displayName = "formae plugin sdk test group A \(vars.testRunID)"
+}
+
+local groupB = new managementgroup.ManagementGroup {
+  label = "mgsa-test-group-b"
+  name = "formae-plugin-sdk-test-mgsa-b-\(vars.testRunID)"
+  displayName = "formae plugin sdk test group B \(vars.testRunID)"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  groupA
+
+  groupB
+
+  new association.ManagementGroupSubscriptionAssociation {
+    label = "plugin-sdk-test-mg-subscription-association"
+    managementGroupId = groupB.res.id
+    subscriptionId = vars.subscriptionId
+  }
+}

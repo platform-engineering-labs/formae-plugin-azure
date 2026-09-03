@@ -1,0 +1,183 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.autoscalesetting
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::AutoscaleSetting"
+const apiVersion = "2022-10-01"
+
+/// Instance-count bounds for a profile. ARM carries all three as STRINGS, not
+/// numbers, and echoes them back that way.
+class ScaleCapacity {
+    @azure.FieldHint { required = true }
+    minimum: String(matches(Regex("^[0-9]+$")))
+
+    @azure.FieldHint { required = true }
+    maximum: String(matches(Regex("^[0-9]+$")))
+
+    /// Instance count used when the metric cannot be evaluated.
+    @azure.FieldHint { required = true }
+    default: String(matches(Regex("^[0-9]+$")))
+}
+
+/// The metric test that fires a scale action.
+///
+/// Every field is required, and that is deliberate. `hasProviderDefault` is honoured
+/// only on top-level resource properties — the SDK does not recurse into a plain
+/// nested class — so an omitted field the service then fills in would read back as
+/// "not expected and not a provider default" on every sync. Making them all required
+/// means everything sent is echoed and everything echoed was sent.
+class MetricTrigger {
+    /// e.g. "ConnectionQuotaUtilization", "Percentage CPU".
+    @azure.FieldHint { required = true }
+    metricName: String(length >= 1)
+
+    /// ARM id of the resource the metric is read from. Normally the same resource
+    /// `targetResourceUri` names.
+    @azure.FieldHint { required = true }
+    metricResourceUri: String(length >= 1)|formae.Resolvable
+
+    /// Sampling granularity as an ISO-8601 duration, between PT1M and PT12H.
+    @azure.FieldHint { required = true }
+    timeGrain: String(length >= 1)
+
+    /// How samples from multiple instances are combined.
+    @azure.FieldHint { required = true }
+    statistic: ("Average"|"Min"|"Max"|"Sum"|"Count")
+
+    /// How far back each evaluation looks, between PT5M and PT12H.
+    @azure.FieldHint { required = true }
+    timeWindow: String(length >= 1)
+
+    /// How the samples are combined over `timeWindow`.
+    @azure.FieldHint { required = true }
+    timeAggregation: ("Average"|"Minimum"|"Maximum"|"Total"|"Count"|"Last")
+
+    @azure.FieldHint { required = true }
+    operator: ("Equals"|"NotEquals"|"GreaterThan"|"GreaterThanOrEqual"|"LessThan"|"LessThanOrEqual")
+
+    @azure.FieldHint { required = true }
+    threshold: Number
+}
+
+/// What happens when the trigger fires.
+class ScaleAction {
+    @azure.FieldHint { required = true }
+    direction: ("None"|"Increase"|"Decrease")
+
+    @azure.FieldHint { required = true }
+    type: ("ChangeCount"|"PercentChangeCount"|"ExactCount"|"ServiceAllowedNextValue")
+
+    /// Instance delta (or target count for ExactCount). A STRING in ARM.
+    @azure.FieldHint { required = true }
+    value: String(matches(Regex("^[0-9]+$")))
+
+    /// How long to wait after a scale action before acting again, ISO-8601.
+    @azure.FieldHint { required = true }
+    cooldown: String(length >= 1)
+}
+
+class ScaleRule {
+    @azure.FieldHint { required = true }
+    metricTrigger: MetricTrigger
+
+    @azure.FieldHint { required = true }
+    scaleAction: ScaleAction
+}
+
+/// One set of scaling parameters. A profile with neither `fixedDate` nor
+/// `recurrence` is the always-on default profile; those two scheduling shapes are
+/// not modelled (see the class note on the resource).
+class AutoscaleProfile {
+    @azure.FieldHint { required = true }
+    name: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    capacity: ScaleCapacity
+
+    /// At most 10 rules per profile.
+    @azure.FieldHint { required = true }
+    rules: Listing<ScaleRule>
+}
+
+open class AutoscaleSettingResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutoscaleSettingResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutoscaleSettingResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Monitor autoscale setting — grows and shrinks a scalable resource in
+/// response to its own metrics.
+///
+/// `targetResourceUri` must name a resource Azure knows how to scale (a virtual
+/// machine scale set, an App Service plan, a Web PubSub or SignalR instance, ...).
+/// ARM validates it and rejects anything else with
+/// `InvalidArgument: The property 'resourceId' has an invalid value.`
+///
+/// Free: autoscale carries no charge of its own, only the instances it starts.
+///
+/// Scope: only the always-on default profile shape is modelled. ARM's `fixedDate`
+/// and `recurrence` profile schedules, the scale-rule `dimensions` filter, and the
+/// email/webhook `notifications` block are not expressible here and are not read
+/// back either — surfacing state the schema cannot express would show as drift
+/// forever.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class AutoscaleSetting extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    /// ARM id of the resource to scale, e.g. `targetResourceUri = wps.res.id`.
+    @azure.FieldHint { required = true; createOnly = true }
+    targetResourceUri: String(length >= 1)|formae.Resolvable
+
+    /// A maximum of 20 profiles. With one profile and no schedule it applies always.
+    @azure.FieldHint { required = true }
+    profiles: Listing<AutoscaleProfile>
+
+    /// Whether the setting actually scales. ARM defaults it to false.
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    /// Predictive autoscale, which only applies to virtual machine scale sets.
+    @azure.FieldHint { hasProviderDefault = true }
+    predictiveAutoscaleMode: ("Disabled"|"ForecastOnly"|"Enabled")?
+
+    /// Region of the target resource. Filled in by the service from
+    /// `targetResourceUri`.
+    @azure.FieldHint { hasProviderDefault = true }
+    targetResourceLocation: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AutoscaleSettingResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
