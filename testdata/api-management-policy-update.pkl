@@ -50,20 +50,15 @@ forma {
     value = """
       <policies>
         <inbound>
-          <base />
           <set-header name="x-formae-conformance" exists-action="override">
             <value>updated</value>
           </set-header>
         </inbound>
         <backend>
-          <base />
+          <forward-request />
         </backend>
-        <outbound>
-          <base />
-        </outbound>
-        <on-error>
-          <base />
-        </on-error>
+        <outbound />
+        <on-error />
       </policies>
       """
   }

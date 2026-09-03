@@ -53,20 +53,20 @@ forma {
     resourceGroupName = rg.res.name
     serviceName = svc.res.name
     format = "xml"
+    // The global policy has no parent scope, so `<base />` is illegal here:
+    //   Error in element 'base' on line 3, column 6: Element <base/> is not
+    //   allowed in global context
+    // `<base />` belongs in the product, API and operation policies, which do
+    // inherit. This is APIM's own stock global policy instead - an empty inbound,
+    // outbound and on-error, and a backend that forwards.
     value = """
       <policies>
-        <inbound>
-          <base />
-        </inbound>
+        <inbound />
         <backend>
-          <base />
+          <forward-request />
         </backend>
-        <outbound>
-          <base />
-        </outbound>
-        <on-error>
-          <base />
-        </on-error>
+        <outbound />
+        <on-error />
       </policies>
       """
   }
