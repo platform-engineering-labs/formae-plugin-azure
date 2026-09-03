@@ -10,6 +10,18 @@ formae agent.
 
 ## [Unreleased]
 
+### Removed
+
+- `schema/provider-default-dispositions.json` and its `TestProviderDefaultDispositionsManifest`
+  guard. The manifest required a recorded disposition for every
+  `hasProviderDefault` annotation, classified as `pending`, `keep`, `co-owned` or
+  `referenced-output`. In practice all 426 rows were `pending` and none carried a
+  pin, so it recorded no audit decision that the annotation itself did not already
+  state, while requiring every schema change to touch a second single-owner file.
+  The `hasProviderDefault` annotations are unchanged and continue to drive
+  provider-default tolerance in the conformance runner; only the ledger and its
+  test are gone.
+
 ## [0.1.12]
 
 ### Changed
