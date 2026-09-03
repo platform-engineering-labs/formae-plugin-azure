@@ -53,12 +53,32 @@ type LogAnalyticsStorageInsightConfig struct {
 // logAnalyticsStorageInsightConfigProps mirrors
 // schema/pkl/operationalinsights/loganalyticsstorageinsightconfig.pkl. ARM's
 // nested storageAccount block is flattened into its two fields.
+// storageInsightAccountKey unwraps storageAccountKey, which may arrive either as a
+// bare string or as the object form produced by `formae.value(...).opaque`.
+func storageInsightAccountKey(props logAnalyticsStorageInsightConfigProps) string {
+	key, _ := opaqueString(props.StorageAccountKey)
+	return key
+}
+
 type logAnalyticsStorageInsightConfigProps struct {
-	Name              string   `json:"name"`
-	ResourceGroupName string   `json:"resourceGroupName"`
-	WorkspaceName     string   `json:"workspaceName"`
-	StorageAccountID  string   `json:"storageAccountId"`
-	StorageAccountKey string   `json:"storageAccountKey"`
+	Name              string `json:"name"`
+	ResourceGroupName string `json:"resourceGroupName"`
+	WorkspaceName     string `json:"workspaceName"`
+	StorageAccountID  string `json:"storageAccountId"`
+	// Typed `any`, not `string`, and read through opaqueString below.
+	//
+	// A write-only secret is declared in a forma as
+	// `formae.value("...").opaque`, which renders as an OBJECT, not a string. A
+	// `string` field here therefore fails before any ARM call with
+	//
+	//   failed to parse resource properties: json: cannot unmarshal object into
+	//   Go struct field logAnalyticsStorageInsightConfigProps.storageAccountKey
+	//   of type string
+	//
+	// which is what the live run hit. `app-service-certificate` already had the
+	// answer for its pfx blob and password: keep the raw value and unwrap it with
+	// opaqueString, which accepts either a bare string or the opaque wrapper.
+	StorageAccountKey any      `json:"storageAccountKey"`
 	Containers        []string `json:"containers"`
 	Tables            []string `json:"tables"`
 }
@@ -109,7 +129,7 @@ func logAnalyticsStorageInsightConfigParams(props logAnalyticsStorageInsightConf
 	insightProps := &armoperationalinsights.StorageInsightProperties{
 		StorageAccount: &armoperationalinsights.StorageAccount{
 			ID:  to.Ptr(props.StorageAccountID),
-			Key: to.Ptr(props.StorageAccountKey),
+			Key: to.Ptr(storageInsightAccountKey(props)),
 		},
 	}
 	if containers := stringPointers(props.Containers); containers != nil {
@@ -136,7 +156,7 @@ func (s *LogAnalyticsStorageInsightConfig) parseProps(payload json.RawMessage, l
 	if props.StorageAccountID == "" {
 		return props, "", fmt.Errorf("storageAccountId is required")
 	}
-	if props.StorageAccountKey == "" {
+	if storageInsightAccountKey(props) == "" {
 		return props, "", fmt.Errorf("storageAccountKey is required")
 	}
 	if len(props.Containers) == 0 && len(props.Tables) == 0 {

@@ -222,3 +222,37 @@ api-management-product-group
 # is nothing a diff can fix.
 storage-queue-service-properties
 storage-blob-container-immutability-policy
+
+# Azure permits only ONE Network Manager per overlapping scope, and on this
+# subscription the only available scope IS the subscription. Confirmed live on
+# 2026-09-03:
+#
+#   RESPONSE 400: BadRequest
+#   "Cannot have two Network Managers applied to the same object overlapping
+#    scope accesses. Scope id: /subscriptions/<sub>"
+#
+# Every Network Manager fixture declares a manager scoped to the subscription, and
+# the CRUD lifecycle additionally creates an out-of-band manager at the same scope
+# for its discovery and OOB phases. So these fixtures conflict with each other AND
+# with their own out-of-band manager - the second create at that scope always
+# fails, whatever the plugin does.
+#
+# Management group scope is what would separate them, and it is unavailable here:
+# no principal on this subscription holds a role above subscription scope
+# (`az account management-group list` returns AuthorizationFailed), which is why
+# group 10 was scoped to subscriptions only in the first place. The constraint that
+# made the group buildable is the same one that makes it untestable in parallel.
+#
+# Handlers, schemas and mocked integration tests are complete for all eight types,
+# and `network-manager-static-member` additionally reached [Update] before failing,
+# so the code paths do work against ARM. Remove these lines if the subscription
+# ever gains management-group scope, or if the harness learns to serialise fixtures
+# that declare an exclusive scope.
+network-manager
+network-manager-network-group
+network-manager-static-member
+network-manager-subscription-connection
+network-manager-connectivity-configuration
+network-manager-security-admin-configuration
+network-manager-admin-rule-collection
+network-manager-admin-rule

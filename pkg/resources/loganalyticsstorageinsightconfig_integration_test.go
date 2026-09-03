@@ -287,3 +287,43 @@ func TestLogAnalyticsStorageInsightConfig_CRUD(t *testing.T) {
 		require.NotEmpty(t, got.ProgressResult.StatusMessage)
 	})
 }
+
+// A write-only secret is declared in a forma as `formae.value("...").opaque`,
+// which renders as an OBJECT rather than a string. The props struct originally
+// typed storageAccountKey as `string`, so the live fixture failed before any ARM
+// call with "cannot unmarshal object into Go struct field ... of type string" -
+// and the test above never caught it because it passes a bare string.
+//
+// Both shapes have to work: a bare string, and the opaque wrapper under any of the
+// keys opaqueString accepts.
+func TestLogAnalyticsStorageInsightConfigAcceptsAnOpaqueKey(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  any
+	}{
+		{"bare string", "c3VwZXItc2VjcmV0LWtleQ=="},
+		{"opaque $value", map[string]any{"$value": "c3VwZXItc2VjcmV0LWtleQ=="}},
+		{"opaque value", map[string]any{"value": "c3VwZXItc2VjcmV0LWtleQ=="}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]any{
+				"name":              "si-1",
+				"resourceGroupName": "rg-1",
+				"workspaceName":     "ws1",
+				"storageAccountId":  testStorageInsightAccount,
+				"storageAccountKey": tc.key,
+			})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+
+			var props logAnalyticsStorageInsightConfigProps
+			if err := json.Unmarshal(raw, &props); err != nil {
+				t.Fatalf("desired properties should parse, got: %v", err)
+			}
+			if got := storageInsightAccountKey(props); got != "c3VwZXItc2VjcmV0LWtleQ==" {
+				t.Errorf("storageAccountKey not unwrapped: got %q", got)
+			}
+		})
+	}
+}
