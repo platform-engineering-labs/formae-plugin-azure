@@ -94,7 +94,7 @@ echo ""
 # projection - is dropped instead of being passed to `az group delete`. Deleting is
 # destructive, so it only ever acts on a name it has re-verified itself.
 list_groups() {
-    local raw err
+    local raw err names reported parsed=0 matched=0 name
     err=$(mktemp)
     # `|| true` goes INSIDE the substitution.
     #
@@ -115,16 +115,56 @@ list_groups() {
         sed 's/^/    az: /' "${err}" >&2 || true
     fi
     rm -f "${err}"
-    # An if-block, not `[[ ... ]] && return 0`: when raw is non-empty that
-    # construct evaluates to the failed test's status, and this function's status
-    # is consumed by a `GROUPS=$(list_groups)` command substitution, where a
-    # non-zero exit kills the whole script under `set -e`.
     if [[ -z "${raw}" ]]; then
+        echo "  note: 'az group list' produced no output" >&2
         return 0
     fi
-    printf '%s' "${raw}" \
-        | jq -r --arg p "${TEST_PREFIX}" '.[]? | select(.name != null) | select(.name | startswith($p)) | .name' 2>/dev/null \
-        | grep -E "^${TEST_PREFIX}[A-Za-z0-9._-]*$" || true
+
+    # How many groups did ARM actually report? Used below to prove the parse
+    # succeeded rather than assuming it.
+    reported=$(printf '%s' "${raw}" | jq -r 'length' 2>/dev/null || true)
+
+    # jq's stderr is deliberately NOT discarded any more. The previous version
+    # had `2>/dev/null` here and `|| true` on a `grep` prefix filter, so every
+    # possible failure in this pipeline was swallowed - and one duly was: a CI
+    # run parsed 204 groups down to the single token `1001`, which then passed a
+    # `grep -E "^${TEST_PREFIX}..."` filter it cannot possibly match. The script
+    # went on to "delete" a resource group named 1001, got ResourceGroupNotFound,
+    # counted it as "already gone", and then sat in wait_gone for two full
+    # 25-minute budgets while all 204 real groups survived untouched.
+    names=$(printf '%s' "${raw}" | jq -r '.[]? | select(.name != null) | .name')
+
+    # Prefix filtering is done in bash, NOT with grep.
+    #
+    # `grep` is the one link in the old pipeline that provably misbehaved: no
+    # regex anchored on TEST_PREFIX can return `1001`. A bash prefix test needs no
+    # external binary, cannot be shadowed by a wrapper on PATH, and is exact.
+    while IFS= read -r name; do
+        [[ -z "${name}" ]] && continue
+        parsed=$((parsed + 1))
+        if [[ "${name}" == "${TEST_PREFIX}"* ]]; then
+            matched=$((matched + 1))
+            printf '%s\n' "${name}"
+        fi
+    done <<< "${names}"
+
+    # Prove the parse rather than trusting it. If ARM reported N groups and we
+    # extracted a different number of names, the JSON was not parsed - and
+    # "extracted no test groups" would otherwise be indistinguishable from
+    # "there are no test groups", which is how a sweep silently does nothing and
+    # a leak goes unnoticed. PARSE_FAILED makes the run fail loudly at the
+    # verdict instead of exiting 0 on a subscription full of leaked groups.
+    if [[ "${reported}" =~ ^[0-9]+$ ]] && [[ ${parsed} -ne ${reported} ]]; then
+        echo "::error::clean-environment.sh: parsed ${parsed} group name(s) from an 'az group list' body that reports ${reported} group(s) - refusing to treat this as an empty subscription" >&2
+        echo "    first 200 bytes of the body: ${raw:0:200}" >&2
+        echo "    names extracted: ${names:0:200}" >&2
+        echo failed > "${PARSE_FAIL_FLAG}"
+        return 0
+    fi
+
+    if [[ "${CLEAN_DEBUG:-0}" == "1" ]]; then
+        echo "  debug: az reported ${reported:-?} group(s), parsed ${parsed}, matched prefix ${matched}" >&2
+    fi
     # Explicit: "no matching groups" is a normal result, not a failure. Every
     # caller assigns this through a command substitution, so any non-zero status
     # leaking out of here aborts the script before a single group is swept.
@@ -198,6 +238,15 @@ wait_gone() {
 
 REFUSED=0
 
+# Raised by list_groups when it cannot trust its own parse of `az group list`.
+#
+# This is a FILE, not a variable, and deliberately so: every caller invokes
+# list_groups through a `GROUPS=$(list_groups)` command substitution, which runs
+# it in a subshell, so a variable assignment inside the function is discarded the
+# moment it returns. A flag file is the only channel that survives.
+PARSE_FAIL_FLAG=$(mktemp)
+trap 'rm -f "${PARSE_FAIL_FLAG}"' EXIT
+
 # Pass 1 - whatever is there now.
 #
 # `set +e` around the substitution, not just inside list_groups.
@@ -263,6 +312,12 @@ set +e
 SURVIVORS=$(list_groups)
 set -e
 echo ""
+if [[ -s "${PARSE_FAIL_FLAG}" ]]; then
+    echo "clean-environment.sh: could not parse the resource-group list; nothing was swept."
+    echo "Treat this as a failed sweep, not a clean subscription."
+    exit 1
+fi
+
 if [[ -z "${SURVIVORS}" ]] && [[ ${REFUSED} -eq 0 ]]; then
     echo "clean-environment.sh: clean - no test resource groups remain"
     exit 0
