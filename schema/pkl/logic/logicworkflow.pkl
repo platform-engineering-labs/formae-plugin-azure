@@ -68,21 +68,21 @@ open class WorkflowResolvable extends formae.Resolvable {
 }
 open class Workflow extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 80 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-_.()]*$")))
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     location: azure.Location
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
     /// The Workflow Definition Language document, as compact JSON with sorted
     /// keys — e.g.
     /// `{"triggers":{"tick":{"type":"Recurrence","recurrence":{"frequency":"Day","interval":1}}},"actions":{}}`.
     /// Write-only; see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    definition: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    definition: (formae.Value|String)?
 
     /// `Disabled` keeps the workflow's triggers from firing at all, which is how
     /// a workflow is held at zero cost.

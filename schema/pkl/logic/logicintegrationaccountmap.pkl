@@ -51,21 +51,21 @@ open class IntegrationAccountMapResolvable extends formae.Resolvable {
 }
 open class IntegrationAccountMap extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 80)
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     mapType: MapType
 
     /// The stylesheet or template itself. Write-only; see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    content: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
 
     /// Name of the integration account schema that describes this map's
     /// parameters. Only meaningful for an XSLT map that takes parameters.

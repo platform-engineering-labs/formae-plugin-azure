@@ -45,20 +45,20 @@ open class LinkedServiceAzureTableStorageResolvable extends formae.Resolvable {
 }
 open class LinkedServiceAzureTableStorage extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
 
     /// Storage connection string, e.g.
     /// `DefaultEndpointsProtocol=https;AccountName=acct;EndpointSuffix=core.windows.net`.
     /// Write-only — see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    connectionString: (formae.Value|String|formae.SecretValue)
+    @azure.FieldHint { ; writeOnly = true}
+    connectionString: (formae.Value|String|formae.SecretValue)?
 
     @azure.FieldHint { }
     description: String(length <= 1024)?

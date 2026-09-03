@@ -23,10 +23,10 @@ typealias AgreementType = "AS2"|"X12"|"Edifact"
 /// create with an opaque 400.
 @azure.SubResourceHint { apiVersion = module.apiVersion }
 class BusinessIdentity extends formae.SubResource {
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     qualifier: String(length >= 1)
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     value: String(length >= 1)
 }
 
@@ -82,42 +82,42 @@ open class IntegrationAccountAgreementResolvable extends formae.Resolvable {
 }
 open class IntegrationAccountAgreement extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 80)
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     agreementType: AgreementType
 
     /// Name of the partner acting as host. Must already exist in the same
     /// integration account.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     hostPartner: String(length >= 1 && length <= 80)|formae.Resolvable
 
     /// Name of the partner acting as guest. Must already exist in the same
     /// integration account.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     guestPartner: String(length >= 1 && length <= 80)|formae.Resolvable
 
     /// Identity the host partner is recognised by. Must match one of that
     /// partner's own business identities exactly.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     hostIdentity: BusinessIdentity
 
     /// Identity the guest partner is recognised by. Must match one of that
     /// partner's own business identities exactly.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     guestIdentity: BusinessIdentity
 
     /// Protocol settings for `agreementType`, as compact JSON with sorted keys.
     /// Write-only; see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    content: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
 
     hidden parent = this
 

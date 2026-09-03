@@ -54,22 +54,22 @@ open class StorageInsightConfigResolvable extends formae.Resolvable {
 }
 open class StorageInsightConfig extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 260)
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
 
     /// ARM ID of the storage account to read from.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     storageAccountId: (String|formae.Resolvable)
 
     /// An access key for that storage account. Write-only — see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    storageAccountKey: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    storageAccountKey: (formae.Value|String)?
 
     /// Blob containers to read. At least one of `containers` or `tables` must be
     /// set, or the config reads nothing.

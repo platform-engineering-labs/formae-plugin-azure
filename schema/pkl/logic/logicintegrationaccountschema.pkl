@@ -55,21 +55,21 @@ open class IntegrationAccountSchemaResolvable extends formae.Resolvable {
 }
 open class IntegrationAccountSchema extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 80)
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     schemaType: SchemaType
 
     /// The XSD itself. Write-only; see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    content: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
 
     /// File name recorded against the schema, e.g. `"order.xsd"`. Cosmetic — ARM
     /// stores it verbatim and never derives it.

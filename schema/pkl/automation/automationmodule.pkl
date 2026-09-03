@@ -54,13 +54,13 @@ open class AutomationModule extends formae.Resource {
 
     /// Must match the module name inside the package: ARM refuses a mismatch, and
     /// runbooks import by this name.
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 128)
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     automationAccountName: String(length >= 6 && length <= 50)|formae.Resolvable
 
     /// HTTPS URI of the module package — a PowerShell Gallery `.nupkg` or a `.zip`
@@ -68,8 +68,8 @@ open class AutomationModule extends formae.Resource {
     /// reachable from Azure and anonymous (or carry its own SAS token).
     ///
     /// Write-only: ARM never returns it. See the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    contentLinkUri: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    contentLinkUri: (formae.Value|String)?
 
     /// Optional version string recorded alongside the content link. It does not
     /// select a version — the URI does that.

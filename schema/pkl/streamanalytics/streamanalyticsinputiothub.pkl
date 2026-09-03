@@ -19,7 +19,7 @@ typealias IotHubInputSerializationType = "Json"|"Csv"|"Avro"
 /// How Stream Analytics parses each message.
 @azure.SubResourceHint { apiVersion = module.apiVersion }
 class IotHubInputSerialization extends formae.SubResource {
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     type: IotHubInputSerializationType
 
     /// The only value ARM accepts is "UTF8". Required for Json and Csv.
@@ -67,28 +67,28 @@ open class InputIotHubResolvable extends formae.Resolvable {
 }
 open class InputIotHub extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     jobName: (String|formae.Resolvable)
 
     /// The IoT hub's name (or its hostname).
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     iotHubNamespace: (String|formae.Resolvable)
 
     /// A shared access policy on the hub carrying at least "service connect".
     /// `iothubowner` is the built-in policy that has it.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     sharedAccessPolicyName: (String|formae.Resolvable)
 
     /// Write-only — see the note above. The primary or secondary key of that
     /// shared access policy.
-    @azure.FieldHint { required = true; writeOnly = true }
-    sharedAccessPolicyKey: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    sharedAccessPolicyKey: (formae.Value|String)?
 
     /// Which built-in hub endpoint to read: "messages/events" for telemetry,
     /// "messages/operationsMonitoringEvents" for operations monitoring.

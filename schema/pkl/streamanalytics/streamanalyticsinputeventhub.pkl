@@ -19,7 +19,7 @@ typealias EventHubInputSerializationType = "Json"|"Csv"|"Avro"
 /// How Stream Analytics parses each event.
 @azure.SubResourceHint { apiVersion = module.apiVersion }
 class EventHubInputSerialization extends formae.SubResource {
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     type: EventHubInputSerializationType
 
     /// The only value ARM accepts is "UTF8". Required for Json and Csv.
@@ -70,31 +70,31 @@ open class InputEventHubResolvable extends formae.Resolvable {
 }
 open class InputEventHub extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     jobName: (String|formae.Resolvable)
 
     /// The Event Hubs namespace name.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     serviceBusNamespace: (String|formae.Resolvable)
 
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     eventHubName: (String|formae.Resolvable)
 
     /// A shared access policy on the namespace or the hub. It needs Listen. Every
     /// Event Hubs namespace ships with `RootManageSharedAccessKey`.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     sharedAccessPolicyName: (String|formae.Resolvable)
 
     /// Write-only — see the note above. The primary or secondary key of that
     /// shared access policy.
-    @azure.FieldHint { required = true; writeOnly = true }
-    sharedAccessPolicyKey: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    sharedAccessPolicyKey: (formae.Value|String)?
 
     /// Consumer group to read through. Omitting it uses the hub's implicit
     /// `$Default` group — which is fine for one reader, but two inputs sharing a

@@ -55,23 +55,23 @@ open class IntegrationAccountAssembly extends formae.Resource {
 
     /// Name of the ARM child resource. Independent of `assemblyName`, which is
     /// the .NET identity recorded inside it.
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 80)
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
 
     /// The .NET assembly's simple name, e.g. `"OrderTransforms"`. ARM requires
     /// it and does not derive it.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint {  }
     assemblyName: String(length >= 1)
 
     /// Base64 of the `.dll` bytes. Write-only; see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    content: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
 
     @azure.FieldHint { hasProviderDefault = true }
     assemblyVersion: String?

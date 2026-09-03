@@ -49,18 +49,18 @@ open class LinkedServiceAzureSqlDatabaseResolvable extends formae.Resolvable {
 }
 open class LinkedServiceAzureSqlDatabase extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
 
     /// ADO.NET connection string for the database. Write-only — see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    connectionString: (formae.Value|String|formae.SecretValue)
+    @azure.FieldHint { ; writeOnly = true}
+    connectionString: (formae.Value|String|formae.SecretValue)?
 
     /// Client ID of a service principal to authenticate with instead of the
     /// factory's managed identity. Its secret half is not modelled: store it in a
