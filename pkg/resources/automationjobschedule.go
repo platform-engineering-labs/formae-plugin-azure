@@ -150,8 +150,17 @@ func (j *AutomationJobSchedule) Create(ctx context.Context, request *resource.Cr
 		createProps.Parameters = jobParams
 	}
 
-	result, err := j.api.Create(ctx, props.ResourceGroupName, props.AutomationAccountName, name,
-		armautomation.JobScheduleCreateParameters{Properties: createProps}, nil)
+	// Automation acknowledges a jobSchedule delete before its index catches up, so
+	// a create against the same GUID keeps returning 409 for a short while after.
+	// The name here is a caller-supplied GUID rather than one ARM allocates, so the
+	// re-apply in the OOB-delete phase always lands on the name just removed.
+	var result armautomation.JobScheduleClientCreateResponse
+	err := retryOnDeleteResidue(ctx, func() error {
+		var attemptErr error
+		result, attemptErr = j.api.Create(ctx, props.ResourceGroupName, props.AutomationAccountName, name,
+			armautomation.JobScheduleCreateParameters{Properties: createProps}, nil)
+		return attemptErr
+	})
 	if err != nil {
 		return &resource.CreateResult{
 			ProgressResult: &resource.ProgressResult{
