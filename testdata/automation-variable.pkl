@@ -17,13 +17,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "aavar-test-rg"
   name = "formae-plugin-sdk-test-aavar-rg-\(vars.testRunID)"
-  location = "eastus"
+  location = "centralus"
 }
 
 local acct = new automationaccount.AutomationAccount {
   label = "aavar-test-account"
   name = "fpsdt-aavar-\(vars.testRunID)"
-  location = "eastus"
+  location = "centralus"
   resourceGroupName = rg.res.name
   skuName = "Basic"
 }

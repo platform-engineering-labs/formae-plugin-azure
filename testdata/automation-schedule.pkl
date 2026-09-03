@@ -17,13 +17,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "aasc-test-rg"
   name = "formae-plugin-sdk-test-aasc-rg-\(vars.testRunID)"
-  location = "eastus"
+  location = "westus"
 }
 
 local acct = new automationaccount.AutomationAccount {
   label = "aasc-test-account"
   name = "fpsdt-aasc-\(vars.testRunID)"
-  location = "eastus"
+  location = "westus"
   resourceGroupName = rg.res.name
   skuName = "Basic"
 }
@@ -52,7 +52,7 @@ forma {
     frequency = "Hour"
     interval = 1
     startTime = scheduleStart
-    timeZone = "UTC"
+    timeZone = "Etc/UTC"
     isEnabled = true
     description = "Conformance schedule"
   }

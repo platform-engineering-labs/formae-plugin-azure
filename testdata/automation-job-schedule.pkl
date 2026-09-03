@@ -19,13 +19,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "aajs-test-rg"
   name = "formae-plugin-sdk-test-aajs-rg-\(vars.testRunID)"
-  location = "eastus"
+  location = "westus2"
 }
 
 local acct = new automationaccount.AutomationAccount {
   label = "aajs-test-account"
   name = "fpsdt-aajs-\(vars.testRunID)"
-  location = "eastus"
+  location = "westus2"
   resourceGroupName = rg.res.name
   skuName = "Basic"
 }
@@ -38,7 +38,7 @@ local acct = new automationaccount.AutomationAccount {
 local runbook = new automationrunbook.AutomationRunbook {
   label = "aajs-test-runbook"
   name = "fpsdt-jsrunbook-\(vars.testRunID)"
-  location = "eastus"
+  location = "westus2"
   resourceGroupName = rg.res.name
   automationAccountName = acct.res.name
   runbookType = "PowerShell"
@@ -57,7 +57,7 @@ local schedule = new automationschedule.AutomationSchedule {
   // Far-future whole minute: ARM rejects a start that is not at least five
   // minutes out and truncates to the minute. See automation-schedule.pkl.
   startTime = "2030-01-01T00:00:00Z"
-  timeZone = "UTC"
+  timeZone = "Etc/UTC"
   isEnabled = true
 }
 

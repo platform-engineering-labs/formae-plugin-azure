@@ -17,13 +17,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "aarb-test-rg"
   name = "formae-plugin-sdk-test-aarb-rg-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
 }
 
 local acct = new automationaccount.AutomationAccount {
   label = "aarb-test-account"
   name = "fpsdt-aarb-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   skuName = "Basic"
 }
@@ -44,7 +44,7 @@ forma {
   new automationrunbook.AutomationRunbook {
     label = "plugin-sdk-test-automation-runbook"
     name = "fpsdt-runbook-\(vars.testRunID)"
-    location = "eastus"
+    location = "eastus2"
     resourceGroupName = rg.res.name
     automationAccountName = acct.res.name
     runbookType = "PowerShell"
