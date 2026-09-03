@@ -82,6 +82,16 @@ func (p *logicIntegrationAccountAssemblyProps) parse(payload json.RawMessage, fa
 	return nil
 }
 
+// logicAssemblyContentType is the only value ARM accepts for an assembly.
+// Omitting it fails the create with
+//
+//	The 'contentType' property of assembly 'conformance-assembly' must be set to
+//	'application/octet-stream'.
+//
+// An assembly is always a .dll, so there is nothing for a caller to choose here
+// and the schema deliberately exposes no field for it.
+const logicAssemblyContentType = "application/octet-stream"
+
 // params builds the request body shared by create and update.
 //
 // Content is typed `any` in the SDK because the same field carries a structured
@@ -92,6 +102,7 @@ func (a *LogicIntegrationAccountAssembly) params(props logicIntegrationAccountAs
 		Properties: &armlogic.AssemblyProperties{
 			AssemblyName:           to.Ptr(props.AssemblyName),
 			Content:                props.Content,
+			ContentType:            to.Ptr(logicAssemblyContentType),
 			AssemblyVersion:        props.AssemblyVersion,
 			AssemblyCulture:        props.AssemblyCulture,
 			AssemblyPublicKeyToken: props.AssemblyPublicKeyToken,

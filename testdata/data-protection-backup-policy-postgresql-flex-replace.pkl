@@ -48,7 +48,7 @@ forma {
   // Replace: retain for six months instead of three.
   new bp.BackupPolicyPostgreSqlFlexibleServer {
     label = "plugin-sdk-test-bp-pg"
-    name = "fpsdt-bppg-pol-\(vars.testRunID)"
+    name = "fpsdt-bppg-pol2-\(vars.testRunID)"
     resourceGroupName = rg.res.name
     vaultName = backupVault.res.name
     backupRules = new Listing {

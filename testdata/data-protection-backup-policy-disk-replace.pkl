@@ -49,7 +49,7 @@ forma {
   // field is createOnly and a changed retention plans as a replace.
   new bp.BackupPolicyDisk {
     label = "plugin-sdk-test-bp-disk"
-    name = "fpsdt-bpdisk-pol-\(vars.testRunID)"
+    name = "fpsdt-bpdisk-pol2-\(vars.testRunID)"
     resourceGroupName = rg.res.name
     vaultName = backupVault.res.name
     backupRules = new Listing {

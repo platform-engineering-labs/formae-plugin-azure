@@ -48,7 +48,7 @@ forma {
   // window from 30 to 60 days — a full PUT, since the policy API has no PATCH.
   new bp.BackupPolicyBlobStorage {
     label = "plugin-sdk-test-bp-blob"
-    name = "fpsdt-bpblob-pol-\(vars.testRunID)"
+    name = "fpsdt-bpblob-pol2-\(vars.testRunID)"
     resourceGroupName = rg.res.name
     vaultName = backupVault.res.name
     retentionRules = new Listing {

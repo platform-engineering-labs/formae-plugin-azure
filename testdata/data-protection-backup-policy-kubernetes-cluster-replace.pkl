@@ -48,7 +48,7 @@ forma {
   // Replace: keep operational-tier snapshots for 14 days instead of 7.
   new bp.BackupPolicyKubernetesCluster {
     label = "plugin-sdk-test-bp-aks"
-    name = "fpsdt-bpaks-pol-\(vars.testRunID)"
+    name = "fpsdt-bpaks-pol2-\(vars.testRunID)"
     resourceGroupName = rg.res.name
     vaultName = backupVault.res.name
     backupRules = new Listing {
