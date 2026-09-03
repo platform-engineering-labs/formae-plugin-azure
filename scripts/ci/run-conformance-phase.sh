@@ -135,6 +135,35 @@ case "$RESOURCE" in
     # Key Vault delete has to clear soft-delete before the recreate.
     set_timeouts 10 30
     ;;
+  data-factory-data-flow|data-factory-linked-service-sql-database|data-factory-linked-service-table-storage|log-analytics-datasource-*)
+    # Discovery, not provisioning, is what runs long here. All five failed the
+    # discovery phase with
+    #
+    #   [Discover] resource not discovered: timeout after 5m0s
+    #   (7 discovery trigger attempt(s))
+    #
+    # on 2026-09-03, while structurally identical siblings passed - same
+    # listParam, same ARM type discriminator, same discoverable flag, and in the
+    # Data Factory case the same shared List helper. The agent log shows the
+    # discovery cycle being paused and resumed repeatedly for user changesets, so
+    # the resource is created and simply has not been imported inside the 5 minute
+    # default. Raising the per-command budget is the intended knob rather than a
+    # code change; if these still time out at 15 min, the cause is not timing and
+    # this arm should come back out.
+    set_timeouts 15 40
+    ;;
+  api-management-service)
+    # The service itself, not its children: a Consumption instance provisions in
+    # ~3 min but DELETE takes far longer, and the CRUD lifecycle deletes twice -
+    # once for Destroy and once for the out-of-band delete phase. The job ran
+    # 10m23s and still failed on
+    #
+    #   [OOB Del] timeout waiting for resource ... removed from inventory
+    #
+    # The 28 APIM child fixtures each stand up their own service too, but they
+    # pass inside the default budget; only the parent's own lifecycle needs this.
+    set_timeouts 30 75
+    ;;
   redis-cache)
     # Out of the matrix because a Basic C0 create is ~20 min and the lifecycle
     # does several; at 30 min the job still ran 60 min before failing on the

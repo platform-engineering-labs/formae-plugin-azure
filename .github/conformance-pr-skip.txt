@@ -200,3 +200,25 @@ api-management-group-user
 api-management-user
 api-management-subscription
 api-management-product-group
+
+# Both of these are singleton / verb-shaped resources whose Read keeps succeeding
+# after an out-of-band delete, so the CRUD lifecycle's OOB-delete phase can never
+# observe them disappear. Same structural reason as log-analytics-table above, and
+# confirmed live on 2026-09-03:
+#
+#   [OOB Del] Resource should be removed from inventory after OOB delete + sync:
+#             timeout waiting for resource ...
+#
+# storage-queue-service-properties is the per-account queue-service singleton named
+# `default`: there is no create and no delete, only SetServiceProperties, and
+# "delete" means resetting it to empty - after which Read still returns the
+# singleton. storage-blob-container-immutability-policy is verb-shaped in the same
+# way (CreateOrUpdateImmutabilityPolicy / DeleteImmutabilityPolicy with an If-Match
+# ETag) and its state is read off the parent container, which survives.
+#
+# Handlers, schemas and mocked integration tests are complete for both, and every
+# phase before OOB-delete passes. This is a shape mismatch between a singleton and
+# a lifecycle that assumes create/destroy symmetry, not a plugin defect - so there
+# is nothing a diff can fix.
+storage-queue-service-properties
+storage-blob-container-immutability-policy
