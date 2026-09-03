@@ -14,7 +14,8 @@ const apiVersion = "2021-08-08"
 
 /// One filter an alert must match for the rule to apply. Every condition in the
 /// list has to match.
-class AlertProcessingRuleCondition {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class AlertProcessingRuleCondition extends formae.SubResource {
     /// The alert attribute the condition tests.
     @azure.FieldHint { required = true }
     field: ("AlertContext"|"AlertRuleId"|"AlertRuleName"|"Description"|"MonitorCondition"|"MonitorService"|"Severity"|"SignalType"|"TargetResource"|"TargetResourceGroup"|"TargetResourceType")
