@@ -60,8 +60,7 @@ set -eEuo pipefail
 # command that actually failed. Three fixes (#146, #147, #149) were aimed at
 # line 189 on the strength of that message; the real failure was always further
 # in. With -E the trap fires at the inner line and names it.
-err_trap='rc=$?; echo "::error::clean-environment.sh failed at line ${LINENO} (exit ${rc}): ${BASH_COMMAND}" >&2'
-trap "${err_trap}" ERR
+trap 'rc=$?; echo "clean-environment.sh: command failed at line ${LINENO} (exit ${rc}): ${BASH_COMMAND}" >&2' ERR
 
 # An if-block, not `[[ ... ]] && set -x`, for the reason this file already
 # documents further down: under `set -e` that construct takes the exit status of
@@ -95,37 +94,24 @@ echo ""
 # projection - is dropped instead of being passed to `az group delete`. Deleting is
 # destructive, so it only ever acts on a name it has re-verified itself.
 list_groups() {
-    # `set +e` for the WHOLE body, not just around `az group list`.
-    #
-    # Every caller consumes this through `GROUPS=$(list_groups)`. Under `set -e`
-    # ANY failing command in here aborts the function before its `return 0` can
-    # run, the substitution then exits non-zero, and that kills the script - which
-    # is the pre-cleanup/nightly/reaper failure that has resisted three fixes. The
-    # previous version only disarmed `set -e` around the `az group list` call, so
-    # every other command in this function was still able to abort it. Listing
-    # groups is read-only, so nothing in here needs to be fatal; the function
-    # reports "no groups" by printing nothing, and that is a valid answer.
-    #
-    # The ERR trap goes with it. `set -E` above makes the trap fire inside
-    # functions, which is what finally located this bug - but a tolerated failure
-    # in here is not an error, and letting it reach the trap prints a GitHub
-    # `::error::` annotation on a run that then succeeds. The `note:` line below
-    # already reports it.
-    set +e
-    trap - ERR
-    local raw rc=0 err
+    local raw err
     err=$(mktemp)
-    # `set +e` around the call on purpose. A CLEAN_DEBUG=1 trace showed
-    # `az group list` exiting NON-ZERO while writing a complete, valid JSON body
-    # for all 117 groups - and 2>/dev/null was discarding whatever it complained
-    # about. That non-zero status propagated out of this command substitution and
-    # killed the script under `set -e` before a single group was swept, which is
-    # the silent failure seen in pre-cleanup, the nightly cleanup job and the
-    # reaper. The output is usable, so the status must not be fatal.
-    raw=$(az group list -o json 2>"${err}")
-    rc=$?
-    if [[ ${rc} -ne 0 ]]; then
-        echo "  note: 'az group list' exited ${rc}; continuing with the output it produced" >&2
+    # `|| true` goes INSIDE the substitution.
+    #
+    # A CLEAN_DEBUG=1 trace showed `az group list` exiting 1 in CI while writing a
+    # complete, valid JSON body for all 117 groups, with `2>/dev/null` discarding
+    # whatever it complained about. That status escaped the command substitution
+    # and killed the script before a single group was swept - the silent failure
+    # seen in pre-cleanup, the nightly cleanup job and the reaper. Neither `set +e`
+    # around the call nor an explicit `return 0` below stopped it, so the status
+    # must not be allowed to leave the subshell in the first place: with `true` as
+    # the last command inside it, the substitution cannot report failure at all.
+    # That holds without needing errexit or ERR-trap semantics to be exactly right.
+    raw=$(az group list -o json 2>"${err}" || true)
+    # Judge success by the output, not an exit status: a non-empty stderr from az
+    # is worth surfacing even when the JSON that came with it is perfectly usable.
+    if [[ -s "${err}" ]]; then
+        echo "  note: 'az group list' wrote to stderr; continuing with the output it produced" >&2
         sed 's/^/    az: /' "${err}" >&2 || true
     fi
     rm -f "${err}"
@@ -134,8 +120,6 @@ list_groups() {
     # is consumed by a `GROUPS=$(list_groups)` command substitution, where a
     # non-zero exit kills the whole script under `set -e`.
     if [[ -z "${raw}" ]]; then
-        set -e
-        trap "${err_trap}" ERR
         return 0
     fi
     printf '%s' "${raw}" \
@@ -144,8 +128,6 @@ list_groups() {
     # Explicit: "no matching groups" is a normal result, not a failure. Every
     # caller assigns this through a command substitution, so any non-zero status
     # leaking out of here aborts the script before a single group is swept.
-    set -e
-    trap "${err_trap}" ERR
     return 0
 }
 
@@ -202,7 +184,9 @@ wait_gone() {
     local deadline=$(( SECONDS + CLEAN_WAIT_MINUTES * 60 ))
     while [[ ${SECONDS} -lt ${deadline} ]]; do
         local remaining
+        set +e
         remaining=$(list_groups)
+        set -e
         [[ -z "${remaining}" ]] && return 0
         local n
         n=$(echo "${remaining}" | grep -c . || true)
@@ -215,7 +199,24 @@ wait_gone() {
 REFUSED=0
 
 # Pass 1 - whatever is there now.
+#
+# `set +e` around the substitution, not just inside list_groups.
+#
+# list_groups already runs its body with `set -e` off and ends in `return 0`, and
+# that was still not enough: pre-cleanup failed again, identically, on the CI
+# runner. The function survives this locally under bash 3.2 and dies under the
+# runner's bash 5, so something in there is fatal in a way `set +e` inside the
+# function does not cover - a `set -u` unbound-variable error and a failed
+# `local` are both fatal regardless of errexit, and both are bash-version
+# sensitive.
+#
+# Rather than keep guessing at which, the call sites stop caring: a non-zero
+# status here is not allowed to kill a sweep. `GROUPS=$(list_groups) || GROUPS=""`
+# would be wrong - the assignment lands first, so the fallback would discard the
+# group list it just captured.
+set +e
 GROUPS=$(list_groups)
+set -e
 if [[ -z "${GROUPS}" ]]; then
     echo "No resource groups found with prefix '${TEST_PREFIX}'"
 else
@@ -229,7 +230,9 @@ fi
 
 # Pass 2 - catch anything created while pass 1 was running. This is the case a
 # cancelled run hits: jobs still finishing create groups after the first list.
+set +e
 GROUPS=$(list_groups)
+set -e
 if [[ -n "${GROUPS}" ]]; then
     echo ""
     echo "Pass 2 - these appeared during or survived pass 1:"
@@ -254,8 +257,11 @@ else
     done
 fi
 
-# Verdict.
+# Verdict. Same `set +e` guard as the other call sites - a non-zero list here
+# must not pre-empt the verdict it exists to compute.
+set +e
 SURVIVORS=$(list_groups)
+set -e
 echo ""
 if [[ -z "${SURVIVORS}" ]] && [[ ${REFUSED} -eq 0 ]]; then
     echo "clean-environment.sh: clean - no test resource groups remain"
