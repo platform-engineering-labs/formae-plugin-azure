@@ -34,6 +34,6 @@ forma {
     location = "eastus"
     resourceGroupName = rg.res.name
     state = "Disabled"
-    definition = #"{"$schema":"https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#","actions":{"reply":{"inputs":{"body":"updated","statusCode":202},"kind":"Http","type":"Response"}},"contentVersion":"1.0.0.0","triggers":{"tick":{"recurrence":{"frequency":"Week","interval":1},"type":"Recurrence"}}}"#
+    definition = #"{"$schema":"https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#","actions":{"noop":{"inputs":"updated","runAfter":{},"type":"Compose"}},"contentVersion":"1.0.0.0","triggers":{"tick":{"recurrence":{"frequency":"Week","interval":1},"type":"Recurrence"}}}"#
   }
 }

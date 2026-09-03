@@ -29,7 +29,10 @@ forma {
   // runs: it costs nothing to hold for the length of a conformance run.
   //
   // The definition is the smallest thing ARM accepts as a real workflow — one
-  // Recurrence trigger and one Response action. It is compact JSON with sorted
+  // Recurrence trigger and one Compose action. A `Response` action is NOT
+  // allowed here: ARM rejects the pair with
+  // `WorkflowUnsupportedRecurrenceTriggerForResponseAction`, since a workflow
+  // that replies to a caller may not be started by a recurrence. It is compact JSON with sorted
   // keys, and it is write-only: ARM injects `$schema`, `contentVersion` and an
   // empty `parameters` block and rewrites the recurrence into its own canonical
   // form, so comparing its echo would report drift on an untouched workflow.
@@ -43,6 +46,6 @@ forma {
     location = "eastus"
     resourceGroupName = rg.res.name
     state = "Disabled"
-    definition = #"{"$schema":"https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#","actions":{"reply":{"inputs":{"body":"ok","statusCode":200},"kind":"Http","type":"Response"}},"contentVersion":"1.0.0.0","triggers":{"tick":{"recurrence":{"frequency":"Day","interval":1},"type":"Recurrence"}}}"#
+    definition = #"{"$schema":"https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#","actions":{"noop":{"inputs":"ok","runAfter":{},"type":"Compose"}},"contentVersion":"1.0.0.0","triggers":{"tick":{"recurrence":{"frequency":"Day","interval":1},"type":"Recurrence"}}}"#
   }
 }
