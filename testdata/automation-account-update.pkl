@@ -34,7 +34,7 @@ forma {
     name = "fpsdt-aa-\(vars.testRunID)"
     location = "eastus"
     resourceGroupName = rg.res.name
-    skuName = "Free"
+    skuName = "Basic"
     // Update: retag. The SKU is also updatable in place (Free -> Basic), but
     // Basic bills per job minute, so the tag is the safer mutation for a
     // lifecycle test.

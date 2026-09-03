@@ -25,7 +25,7 @@ local acct = new automationaccount.AutomationAccount {
   name = "fpsdt-aasc-\(vars.testRunID)"
   location = "eastus"
   resourceGroupName = rg.res.name
-  skuName = "Free"
+  skuName = "Basic"
 }
 
 // ARM rejects a startTime that is not at least five minutes in the future, and

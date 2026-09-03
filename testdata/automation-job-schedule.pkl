@@ -27,7 +27,7 @@ local acct = new automationaccount.AutomationAccount {
   name = "fpsdt-aajs-\(vars.testRunID)"
   location = "eastus"
   resourceGroupName = rg.res.name
-  skuName = "Free"
+  skuName = "Basic"
 }
 
 // A job schedule can only attach a PUBLISHED runbook, so unlike
