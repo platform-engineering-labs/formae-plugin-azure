@@ -20,7 +20,8 @@ const apiVersion = "2023-03-01"
 /// honoured only on top-level resource properties, so a flag the service defaulted
 /// to true inside `rules[]` would read back as "not expected and not a provider
 /// default" on every sync.
-class PrometheusRule {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class PrometheusRule extends formae.SubResource {
     /// Name of the recorded series. Mutually exclusive with `alert`.
     @azure.FieldHint { }
     `record`: String?

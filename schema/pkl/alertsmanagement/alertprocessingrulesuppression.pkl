@@ -16,7 +16,8 @@ const apiVersion = "2021-08-08"
 /// When the suppression is in effect. Both bounds are ISO-8601 date-times WITHOUT a
 /// timezone suffix, e.g. "2030-01-01T00:00:00"; `timeZone` is what gives them a
 /// zone.
-class AlertProcessingRuleSchedule {
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class AlertProcessingRuleSchedule extends formae.SubResource {
     @azure.FieldHint { }
     effectiveFrom: String?
 
