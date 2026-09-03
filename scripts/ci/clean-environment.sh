@@ -171,6 +171,38 @@ list_groups() {
     return 0
 }
 
+# summarise_kinds <file> <indent> - print a count per resource kind, not a list
+# of every group name.
+#
+# A full sweep touches ~200 groups, and naming each one twice (once on discovery,
+# once on delete) buries the only thing a reader actually wants: WHAT was cleaned
+# up. The fixture kind is already encoded in the group name, so
+#   formae-plugin-sdk-test-cdn-profile-rg-6d137340
+# reduces to `cdn-profile` by dropping the prefix, the trailing run id and a
+# trailing `-rg`. Individual names are still available in the trace under
+# CLEAN_DEBUG=1 if a specific group ever needs chasing.
+#
+# Deliberately no associative arrays: this has to run under the bash 3.2 used for
+# local testing as well as the runner's bash 5.
+summarise_kinds() {
+    local file="$1" indent="${2:-  }" name kind tmp
+    tmp=$(mktemp)
+    while IFS= read -r name; do
+        [[ -z "${name}" ]] && continue
+        kind=${name#"${TEST_PREFIX}"}
+        kind=${kind%-*}
+        kind=${kind%-rg}
+        [[ -z "${kind}" ]] && kind="(unnamed)"
+        printf '%s\n' "${kind}" >> "${tmp}"
+    done < "${file}"
+    if [[ -s "${tmp}" ]]; then
+        sort "${tmp}" | uniq -c | sort -rn | while read -r n k; do
+            printf '%s%s x%s\n' "${indent}" "${k}" "${n}"
+        done
+    fi
+    rm -f "${tmp}"
+}
+
 # remove_locks <groups...> - drop any management lock inside these groups.
 #
 # A CanNotDelete or ReadOnly lock makes `az group delete` fail permanently, so a
@@ -183,7 +215,12 @@ list_groups() {
 # Scoped to the prefixed test groups the caller already verified - this never
 # touches a lock outside them.
 remove_locks() {
-    for RG in $@; do
+    # Takes a FILE of group names, one per line - not positional arguments. See
+    # the note above `GROUPS_FILE` for why nothing here passes the group list
+    # through a variable.
+    local RG
+    while IFS= read -r RG; do
+        [[ -z "${RG}" ]] && continue
         local ids
         ids=$(az lock list --resource-group "${RG}" --query "[].id" -o tsv 2>/dev/null) || continue
         [[ -z "${ids}" ]] && continue
@@ -192,7 +229,7 @@ remove_locks() {
             echo "  removing lock ${id}"
             az lock delete --ids "${id}" 2>/dev/null || echo "    could not remove lock"
         done <<< "${ids}"
-    done
+    done < "$1"
     # Explicit: this script runs under `set -e`, and issue_deletes calls this
     # first. A lock sweep that could not clean up must not abort the whole
     # cleanup - deleting groups is the important part, and a lock that survives
@@ -203,10 +240,11 @@ remove_locks() {
 # issue_deletes <groups...> - returns non-zero if ARM refused any delete outright.
 # A refusal is reported rather than swallowed; "already gone" is not a refusal.
 issue_deletes() {
-    local failed=0
-    remove_locks $@
-    for RG in $@; do
-        echo "  deleting ${RG}"
+    local failed=0 RG
+    remove_locks "$1"
+    while IFS= read -r RG; do
+        [[ -z "${RG}" ]] && continue
+        # No per-group line: see summarise_kinds. The caller prints one summary.
         if ! err=$(az group delete --name "${RG}" --yes --no-wait 2>&1); then
             if echo "${err}" | grep -qi 'could not be found\|ResourceGroupNotFound'; then
                 echo "    already gone"
@@ -215,7 +253,7 @@ issue_deletes() {
                 failed=1
             fi
         fi
-    done
+    done < "$1"
     return $failed
 }
 
@@ -223,13 +261,12 @@ issue_deletes() {
 wait_gone() {
     local deadline=$(( SECONDS + CLEAN_WAIT_MINUTES * 60 ))
     while [[ ${SECONDS} -lt ${deadline} ]]; do
-        local remaining
         set +e
-        remaining=$(list_groups)
+        list_groups > "${GROUPS_FILE}"
         set -e
-        [[ -z "${remaining}" ]] && return 0
+        [[ ! -s "${GROUPS_FILE}" ]] && return 0
         local n
-        n=$(echo "${remaining}" | grep -c . || true)
+        n=$(wc -l < "${GROUPS_FILE}" | tr -d ' ')
         echo "  ${n} group(s) still deleting, waiting..."
         sleep 30
     done
@@ -245,7 +282,37 @@ REFUSED=0
 # it in a subshell, so a variable assignment inside the function is discarded the
 # moment it returns. A flag file is the only channel that survives.
 PARSE_FAIL_FLAG=$(mktemp)
-trap 'rm -f "${PARSE_FAIL_FLAG}"' EXIT
+
+# The group list travels through FILES, never through a variable.
+#
+# `GROUPS=$(list_groups)` looked obviously correct and was the actual bug. A
+# CLEAN_DEBUG=1 trace from CI shows the function working perfectly - "az reported
+# 205 group(s), parsed 205, matched prefix 204", `return 0`, and even the correct
+# 204 names being assigned - and then, on the very next traced line, `GROUPS` is
+# the string `1001` and the substitution has reported exit 1:
+#
+#     + GROUPS='formae-plugin-sdk-test-vnet-rg-13770d81
+#     formae-plugin-sdk-test-pip-rg-9042acb1
+#     ...'
+#     ++ echo 'clean-environment.sh: command failed at line 267 (exit 1): GROUPS=$(list_groups)'
+#     + [[ -z 1001 ]]
+#     + issue_deletes 1001
+#     ++ az group delete --name 1001 --yes --no-wait
+#     + err='ERROR: (ResourceGroupNotFound) Resource group '1001' could not be found.'
+#
+# So the sweep asked ARM to delete a group named `1001`, was told it does not
+# exist, counted that as "already gone", and then sat in wait_gone for two full
+# 25-minute budgets while all 204 real groups survived. Every fix before this one
+# targeted the function; the function was never wrong. The corruption is in
+# capturing its ~8KB multi-line output through a command substitution, and no
+# amount of care inside the function can survive that - which is also why
+# wait_gone appeared to work: it re-lists and counts, so it saw the real 204.
+#
+# Short substitutions are unaffected (`err=$(mktemp)` traces correctly), so
+# mktemp here is safe. Only the large group list moves to a file.
+GROUPS_FILE=$(mktemp)
+SURVIVORS_FILE=$(mktemp)
+trap 'rm -f "${PARSE_FAIL_FLAG}" "${GROUPS_FILE}" "${SURVIVORS_FILE}"' EXIT
 
 # Pass 1 - whatever is there now.
 #
@@ -260,18 +327,16 @@ trap 'rm -f "${PARSE_FAIL_FLAG}"' EXIT
 # sensitive.
 #
 # Rather than keep guessing at which, the call sites stop caring: a non-zero
-# status here is not allowed to kill a sweep. `GROUPS=$(list_groups) || GROUPS=""`
-# would be wrong - the assignment lands first, so the fallback would discard the
-# group list it just captured.
+# status here is not allowed to kill a sweep.
 set +e
-GROUPS=$(list_groups)
+list_groups > "${GROUPS_FILE}"
 set -e
-if [[ -z "${GROUPS}" ]]; then
+if [[ ! -s "${GROUPS_FILE}" ]]; then
     echo "No resource groups found with prefix '${TEST_PREFIX}'"
 else
-    echo "Pass 1 - found:"
-    echo "${GROUPS}" | sed 's/^/  /'
-    issue_deletes ${GROUPS} || REFUSED=1
+    echo "Pass 1 - deleting $(wc -l < "${GROUPS_FILE}" | tr -d ' ') group(s):"
+    summarise_kinds "${GROUPS_FILE}"
+    issue_deletes "${GROUPS_FILE}" || REFUSED=1
     echo ""
     echo "Waiting up to ${CLEAN_WAIT_MINUTES}m for deletion to complete..."
     wait_gone || true
@@ -280,13 +345,13 @@ fi
 # Pass 2 - catch anything created while pass 1 was running. This is the case a
 # cancelled run hits: jobs still finishing create groups after the first list.
 set +e
-GROUPS=$(list_groups)
+list_groups > "${GROUPS_FILE}"
 set -e
-if [[ -n "${GROUPS}" ]]; then
+if [[ -s "${GROUPS_FILE}" ]]; then
     echo ""
-    echo "Pass 2 - these appeared during or survived pass 1:"
-    echo "${GROUPS}" | sed 's/^/  /'
-    issue_deletes ${GROUPS} || REFUSED=1
+    echo "Pass 2 - $(wc -l < "${GROUPS_FILE}" | tr -d ' ') group(s) appeared during or survived pass 1:"
+    summarise_kinds "${GROUPS_FILE}"
+    issue_deletes "${GROUPS_FILE}" || REFUSED=1
     echo ""
     echo "Waiting up to ${CLEAN_WAIT_MINUTES}m for deletion to complete..."
     wait_gone || true
@@ -309,7 +374,7 @@ fi
 # Verdict. Same `set +e` guard as the other call sites - a non-zero list here
 # must not pre-empt the verdict it exists to compute.
 set +e
-SURVIVORS=$(list_groups)
+list_groups > "${SURVIVORS_FILE}"
 set -e
 echo ""
 if [[ -s "${PARSE_FAIL_FLAG}" ]]; then
@@ -318,14 +383,25 @@ if [[ -s "${PARSE_FAIL_FLAG}" ]]; then
     exit 1
 fi
 
-if [[ -z "${SURVIVORS}" ]] && [[ ${REFUSED} -eq 0 ]]; then
+if [[ ! -s "${SURVIVORS_FILE}" ]] && [[ ${REFUSED} -eq 0 ]]; then
     echo "clean-environment.sh: clean - no test resource groups remain"
     exit 0
 fi
 
-if [[ -n "${SURVIVORS}" ]]; then
-    echo "SURVIVING resource groups (still billing):"
-    echo "${SURVIVORS}" | sed 's/^/  /'
+if [[ -s "${SURVIVORS_FILE}" ]]; then
+    echo "SURVIVING: $(wc -l < "${SURVIVORS_FILE}" | tr -d ' ') group(s) still billing, by kind:"
+    summarise_kinds "${SURVIVORS_FILE}"
+    # Survivors DO get named, capped: this is the failure path and someone has to
+    # go and delete them by hand, so the names matter - but a wholesale failure
+    # leaves ~200 of them, and 200 lines is the noise this summary exists to
+    # avoid. First 20, then a count. All of them are in the trace under
+    # CLEAN_DEBUG=1.
+    n_surv=$(wc -l < "${SURVIVORS_FILE}" | tr -d ' ')
+    echo "  names:"
+    head -20 "${SURVIVORS_FILE}" | sed 's/^/    /'
+    if [[ ${n_surv} -gt 20 ]]; then
+        echo "    ... and $((n_surv - 20)) more"
+    fi
 fi
 # An if-block, not `[[ ... ]] && echo`: with `set -e` that construct exits the
 # script when the test is false, skipping the ::error:: annotation below.
