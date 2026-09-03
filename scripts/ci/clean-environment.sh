@@ -384,11 +384,20 @@ fi
 # quota is reached quickly once deleted ones stop being reclaimed. Key Vaults have
 # been purged here since the beginning; APIM was simply missed.
 #
-# `--no-wait` is deliberately NOT used: unlike a vault purge, an APIM purge that is
-# only queued does not free quota in time to help the run that follows, and the
-# call returns quickly enough that waiting costs little. Failures are tolerated -
-# a purge that cannot proceed is reported by the quota error on the next create,
-# and must not abort the sweep.
+# `--no-wait`, after getting this wrong once.
+#
+# The first version of this block purged synchronously, on the reasoning that a
+# queued purge would not free quota in time to help the run that follows. Measured:
+# each synchronous purge takes ~1.3 min, so clearing a 16-service backlog held
+# pre-cleanup for over 17 minutes with nothing else to do - and at steady state
+# every run leaves ~28 soft-deleted services behind, which would be ~36 min of
+# purging in EVERY sweep.
+#
+# The original worry does not survive contact with the timings either: the matrix
+# takes hours, so a purge queued at the start of pre-cleanup completes long before
+# the APIM fixtures need the quota. Failures are tolerated - a purge that cannot
+# proceed shows up as the quota error on a later create, and must not abort the
+# sweep.
 echo ""
 echo "Purging soft-deleted API Management services with prefix 'fpsdt-'..."
 DELETED_APIMS=$(az apim deletedservice list --query "[?starts_with(name, 'fpsdt-')].{n:name,l:location}" -o tsv 2>/dev/null || true)
@@ -407,13 +416,13 @@ else
             echo "    skipping ${APIM_NAME} - does not match the test prefix"
             continue
         fi
-        if az apim deletedservice purge --service-name "${APIM_NAME}" --location "${APIM_LOC}" > /dev/null 2>&1; then
+        if az apim deletedservice purge --service-name "${APIM_NAME}" --location "${APIM_LOC}" --no-wait > /dev/null 2>&1; then
             apim_purged=$((apim_purged + 1))
         else
             echo "    could not purge ${APIM_NAME} (${APIM_LOC})"
         fi
     done <<< "${DELETED_APIMS}"
-    echo "  purged ${apim_purged} soft-deleted APIM service(s)"
+    echo "  queued purge for ${apim_purged} soft-deleted APIM service(s)"
 fi
 
 # Verdict. Same `set +e` guard as the other call sites - a non-zero list here
