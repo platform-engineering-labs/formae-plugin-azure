@@ -56,6 +56,15 @@ forma {
     clientRegistrationEndpoint = "https://docs.platform.engineering/register"
     clientId = "conformance-client"
     grantTypes = new Listing { "implicit" }
+
+    // Set explicitly, not left to ARM's documented GET default.
+    //
+    // ARM rejected the create with
+    //   ValidationError target=authorizationMethods "Invalid value"
+    // even though the field was omitted from the request (the handler sends nil
+    // for an empty list, and the SDK omits nil). So the documented default does
+    // not apply to an implicit-grant server, and the value has to be stated.
+    authorizationMethods = new Listing { "GET" }
     defaultScope = "openid"
     description = "OAuth 2.0 server registration for the developer portal"
   }

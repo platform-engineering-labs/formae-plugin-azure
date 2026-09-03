@@ -51,7 +51,9 @@ forma {
     schemaType = "xml"
     description = "Shared conformance types, extended by the update phase"
     value = """
-      <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  targetNamespace="http://formae.test/conformance"
+                  xmlns="http://formae.test/conformance">
         <xsd:element name="OrderId" type="xsd:string" />
         <xsd:element name="OrderTotal" type="xsd:decimal" />
       </xsd:schema>
