@@ -371,6 +371,51 @@ else
     done
 fi
 
+# Soft-deleted API Management services do the same, and worse: they keep counting
+# against the Consumption per-subscription service quota until purged, so they do
+# not merely hold a name - they eventually stop new services being created at all.
+#
+# That is not hypothetical. On 2026-09-03 the subscription had accumulated 31
+# soft-deleted APIM services, and conformance fixtures began failing with
+#
+#   RESPONSE 400: MaxConsumptionServicesPerSubscriptionExceeded
+#
+# on create. Every APIM fixture provisions its own Consumption service, so the
+# quota is reached quickly once deleted ones stop being reclaimed. Key Vaults have
+# been purged here since the beginning; APIM was simply missed.
+#
+# `--no-wait` is deliberately NOT used: unlike a vault purge, an APIM purge that is
+# only queued does not free quota in time to help the run that follows, and the
+# call returns quickly enough that waiting costs little. Failures are tolerated -
+# a purge that cannot proceed is reported by the quota error on the next create,
+# and must not abort the sweep.
+echo ""
+echo "Purging soft-deleted API Management services with prefix 'fpsdt-'..."
+DELETED_APIMS=$(az apim deletedservice list --query "[?starts_with(name, 'fpsdt-')].{n:name,l:location}" -o tsv 2>/dev/null || true)
+if [[ -z "${DELETED_APIMS}" ]]; then
+    echo "  none"
+else
+    apim_purged=0
+    while IFS=$'\t' read -r APIM_NAME APIM_LOC; do
+        [[ -z "${APIM_NAME}" ]] && continue
+        # Re-check the prefix LOCALLY, exactly as list_groups does and for the same
+        # reason: a purge is irreversible, so it only ever acts on a name this
+        # script has verified itself rather than trusting the server-side
+        # projection in the --query above. A stub that ignored that query was
+        # enough to make this loop purge a service it had no business touching.
+        if [[ "${APIM_NAME}" != fpsdt-* ]]; then
+            echo "    skipping ${APIM_NAME} - does not match the test prefix"
+            continue
+        fi
+        if az apim deletedservice purge --service-name "${APIM_NAME}" --location "${APIM_LOC}" > /dev/null 2>&1; then
+            apim_purged=$((apim_purged + 1))
+        else
+            echo "    could not purge ${APIM_NAME} (${APIM_LOC})"
+        fi
+    done <<< "${DELETED_APIMS}"
+    echo "  purged ${apim_purged} soft-deleted APIM service(s)"
+fi
+
 # Verdict. Same `set +e` guard as the other call sites - a non-zero list here
 # must not pre-empt the verdict it exists to compute.
 set +e
