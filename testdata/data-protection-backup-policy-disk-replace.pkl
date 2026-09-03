@@ -9,12 +9,12 @@ import "@formae/formae.pkl"
 
 import "@azure/resources/resourcegroup.pkl"
 import "@azure/dataprotection/backupvault.pkl" as bv
-import "@azure/dataprotection/dataprotectionbackuppolicypostgresqlflex.pkl" as bp
+import "@azure/dataprotection/dataprotectionbackuppolicydisk.pkl" as bp
 import "vars.pkl"
 
 local rg = new resourcegroup.ResourceGroup {
-  label = "bp-pg-test-rg"
-  name = "formae-plugin-sdk-test-bp-pg-rg-\(vars.testRunID)"
+  label = "bp-disk-test-rg"
+  name = "formae-plugin-sdk-test-bp-disk-rg-\(vars.testRunID)"
   location = "eastus"
 }
 
@@ -22,8 +22,8 @@ local rg = new resourcegroup.ResourceGroup {
 // soft delete off, so the destroy phase is clean. A policy is a record inside the
 // vault and adds nothing to its cost.
 local backupVault = new bv.BackupVault {
-  label = "bp-pg-test-vault"
-  name = "fpsdt-bppg-\(vars.testRunID)"
+  label = "bp-disk-test-vault"
+  name = "fpsdt-bpdisk-\(vars.testRunID)"
   location = "eastus"
   resourceGroupName = rg.res.name
   storageSettings = new Listing {
@@ -44,20 +44,22 @@ forma {
 
   backupVault
 
-  // A flexible-server backup is a full dump written into the vault tier.
-  // Update: retain for six months instead of three.
-  new bp.BackupPolicyPostgreSqlFlexibleServer {
-    label = "plugin-sdk-test-bp-pg"
-    name = "fpsdt-bppg-pol-\(vars.testRunID)"
+  // Disk backup is snapshot-based, so both tiers are OperationalStore.
+  // Replace, not update: ARM refuses "Update of existing policy", so every
+  // field is createOnly and a changed retention plans as a replace.
+  new bp.BackupPolicyDisk {
+    label = "plugin-sdk-test-bp-disk"
+    name = "fpsdt-bpdisk-pol-\(vars.testRunID)"
     resourceGroupName = rg.res.name
     vaultName = backupVault.res.name
     backupRules = new Listing {
       new bp.BackupRule {
-        name = "BackupWeekly"
-        backupType = "Full"
-        datastoreType = "VaultStore"
-        repeatingTimeIntervals = new Listing { "R/2024-01-01T06:30:00+00:00/P1W" }
-        timeZone = "UTC"
+        name = "BackupHourly"
+        backupType = "Incremental"
+        datastoreType = "OperationalStore"
+        // Every four hours from 13:00 UTC. timeZone is deliberately left unset:
+        // ARM's own disk template omits it and fills in UTC.
+        repeatingTimeIntervals = new Listing { "R/2024-01-01T13:00:00+00:00/PT4H" }
         taggingCriteria = new Listing {
           new bp.TaggingCriterion {
             tagName = "Default"
@@ -73,8 +75,8 @@ forma {
         isDefault = true
         lifecycles = new Listing {
           new bp.RetentionLifecycle {
-            sourceDatastoreType = "VaultStore"
-            deleteAfterDuration = "P6M"
+            sourceDatastoreType = "OperationalStore"
+            deleteAfterDuration = "P14D"
           }
         }
       }

@@ -45,7 +45,7 @@ forma {
   backupVault
 
   // No AKS cluster is created or needed: an AKS policy is a record.
-  // Update: keep operational-tier snapshots for 14 days instead of 7.
+  // Replace: keep operational-tier snapshots for 14 days instead of 7.
   new bp.BackupPolicyKubernetesCluster {
     label = "plugin-sdk-test-bp-aks"
     name = "fpsdt-bpaks-pol-\(vars.testRunID)"

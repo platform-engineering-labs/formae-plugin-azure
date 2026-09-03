@@ -143,6 +143,16 @@ open class BackupPolicyBlobStorageResolvable extends formae.Resolvable {
 /// `OperationalStore` and no schedule at all. Vault-tier protection copies blobs
 /// into the vault on a schedule, so it needs a `Discrete` backup rule over
 /// `VaultStore` alongside its retention rule.
+/// IMMUTABLE. ARM refuses any change to an existing backup policy outright:
+///
+///   "Update of existing policy is not supported."
+///
+/// `armdataprotection.BackupPoliciesClient` has no PATCH verb, and its
+/// CreateOrUpdate is create-only in practice - a PUT against an existing policy
+/// is rejected rather than replacing it. Every field is therefore `createOnly`,
+/// so a changed rule tree plans as a replace instead of an in-place update, and
+/// the conformance fixture pairs with a `-replace.pkl` rather than an
+/// `-update.pkl`. Same shape as AZURE::Automation::JobSchedule.
 @azure.ResourceHint {
     type = module.type
     identifier = "id"
@@ -168,11 +178,11 @@ open class BackupPolicyBlobStorage extends formae.Resource {
     /// Schedules. Optional because some policies carry retention rules only: a
     /// blob operational-tier policy has no schedule at all, because continuous
     /// point-in-time restore is fed by the source account itself.
-    @azure.FieldHint { }
+    @azure.FieldHint { createOnly = true }
     backupRules: Listing<BackupRule>?
 
     /// At least one rule, and exactly one of them the default.
-    @azure.FieldHint { required = true }
+    @azure.FieldHint { required = true; createOnly = true }
     retentionRules: Listing<RetentionRule>
 
     hidden parent = this

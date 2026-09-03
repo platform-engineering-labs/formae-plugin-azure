@@ -135,23 +135,6 @@ case "$RESOURCE" in
     # Key Vault delete has to clear soft-delete before the recreate.
     set_timeouts 10 30
     ;;
-  data-factory-data-flow|data-factory-linked-service-sql-database|data-factory-linked-service-table-storage|log-analytics-datasource-*)
-    # Discovery, not provisioning, is what runs long here. All five failed the
-    # discovery phase with
-    #
-    #   [Discover] resource not discovered: timeout after 5m0s
-    #   (7 discovery trigger attempt(s))
-    #
-    # on 2026-09-03, while structurally identical siblings passed - same
-    # listParam, same ARM type discriminator, same discoverable flag, and in the
-    # Data Factory case the same shared List helper. The agent log shows the
-    # discovery cycle being paused and resumed repeatedly for user changesets, so
-    # the resource is created and simply has not been imported inside the 5 minute
-    # default. Raising the per-command budget is the intended knob rather than a
-    # code change; if these still time out at 15 min, the cause is not timing and
-    # this arm should come back out.
-    set_timeouts 15 40
-    ;;
   api-management-service)
     # The service itself, not its children: a Consumption instance provisions in
     # ~3 min but DELETE takes far longer, and the CRUD lifecycle deletes twice -
