@@ -1,0 +1,88 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.automation.automationmodule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Automation::Module"
+const apiVersion = "2024-10-23"
+
+open class AutomationModuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutomationModuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutomationModuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A PowerShell module imported into an Azure Automation account, so runbooks in
+/// that account can use its cmdlets.
+///
+/// The import is ASYNCHRONOUS in a way ARM does not expose a poller for. The PUT
+/// returns immediately and ARM then downloads and validates the package out of
+/// band, walking provisioningState through ContentRetrieved / ContentDownloaded /
+/// ContentValidated to Succeeded — or to Failed if the URI is unreachable or the
+/// package is not a valid module. That state is service-managed and NOT modelled:
+/// it is neither settable nor stable, so emitting it would report drift on every
+/// sync of an import still in flight, and a create that ARM later fails will have
+/// already been reported as succeeded. Check provisioningState in the portal or
+/// with `az automation module show` if an import does not take effect.
+///
+/// `contentLinkUri` is write-only: ARM's Get returns only the values derived from
+/// the package it downloaded (version, size, activity count), never the link, so
+/// drift in the URI cannot be detected. Changing it re-imports the module, which
+/// is exactly what a new URI should mean.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Automation::Account"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "automationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AutomationModule extends formae.Resource {
+
+    /// Must match the module name inside the package: ARM refuses a mismatch, and
+    /// runbooks import by this name.
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    automationAccountName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// HTTPS URI of the module package — a PowerShell Gallery `.nupkg` or a `.zip`
+    /// laid out as a module folder. ARM fetches it server-side, so it must be
+    /// reachable from Azure and anonymous (or carry its own SAS token).
+    ///
+    /// Write-only: ARM never returns it. See the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    contentLinkUri: (formae.Value|String)?
+
+    /// Optional version string recorded alongside the content link. It does not
+    /// select a version — the URI does that.
+    @azure.FieldHint { writeOnly = true }
+    contentLinkVersion: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AutomationModuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

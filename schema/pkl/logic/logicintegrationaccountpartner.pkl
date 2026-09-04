@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccountpartner
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccountPartner"
+const apiVersion = "2019-05-01"
+
+/// `B2B` is the only usable value. ARM also accepts `NotSpecified`, which
+/// produces a partner no agreement can name, so it is not offered.
+typealias PartnerType = "B2B"
+
+/// One business identity a partner is known by: a qualifier naming the identity
+/// scheme, plus the value within it.
+///
+/// An agreement matches its host and guest partners by qualifier AND value, so
+/// the pair declared here has to be reproduced exactly in
+/// `AZURE::Logic::IntegrationAccountAgreement.hostIdentity` /
+/// `guestIdentity`. Common qualifiers: `AS2Identity` for AS2, `ZZ` / `ZZZ` /
+/// `01` / `08` / `12` for X12, `1` / `4` / `5` for EDIFACT.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class BusinessIdentity extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    qualifier: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    value: String(length >= 1)
+}
+
+open class IntegrationAccountPartnerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountPartnerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountPartnerResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A trading partner held in an integration account: a name plus the business
+/// identities it is recognised by on the wire.
+///
+/// Free: partners are metadata on the parent account and are not billed
+/// separately.
+///
+/// A partner on its own does nothing. It becomes meaningful when an
+/// `AZURE::Logic::IntegrationAccountAgreement` names two of them as host and
+/// guest — and an agreement will not create until both partners exist AND carry
+/// the exact qualifier/value pair the agreement declares. Create partners first.
+///
+/// `metadata` is arbitrary JSON the schema cannot express and is not read back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Logic::IntegrationAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "integrationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationAccountPartner extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    partnerType: PartnerType
+
+    /// At least one identity. Order is preserved as written.
+    @azure.FieldHint { required = true }
+    businessIdentities: Listing<BusinessIdentity>
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountPartnerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

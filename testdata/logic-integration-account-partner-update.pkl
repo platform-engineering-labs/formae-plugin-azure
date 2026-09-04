@@ -1,0 +1,61 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountpartner.pkl" as logicpartner
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicptn-test-rg"
+  name = "formae-plugin-sdk-test-logicptn-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+// westus2: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicptn-test-account"
+  name = "fpsdt-logicptn-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Update: a second business identity, under a different qualifier. The whole
+  // identity list is re-PUT because a partner has no PATCH verb, and order is
+  // preserved as written. The AS2Identity entry is kept unchanged: an agreement
+  // matches a partner on BOTH qualifier and value, so dropping it would break
+  // any agreement naming this partner.
+  new logicpartner.IntegrationAccountPartner {
+    label = "plugin-sdk-test-logic-integration-account-partner"
+    name = "conformance-host-partner"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    partnerType = "B2B"
+    businessIdentities = new Listing {
+      new logicpartner.BusinessIdentity {
+        qualifier = "AS2Identity"
+        value = "FORMAE-HOST"
+      }
+      new logicpartner.BusinessIdentity {
+        qualifier = "ZZ"
+        value = "FORMAEHOST"
+      }
+    }
+  }
+}

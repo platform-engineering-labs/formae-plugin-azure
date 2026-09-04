@@ -1,0 +1,67 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountcertificate.pkl" as logiccert
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logiccrt-test-rg"
+  name = "formae-plugin-sdk-test-logiccrt-rg-\(vars.testRunID)"
+  location = "northeurope"
+}
+
+// northeurope: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logiccrt-test-account"
+  name = "fpsdt-logiccrt-\(vars.testRunID)"
+  location = "northeurope"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Update: the same certificate under a second resource, and the original left
+  // in place. A certificate carries no field a conformance update can safely
+  // change on its own — the only mutable property IS the blob, and swapping it
+  // for an unrelated certificate would be a replace in everything but name — so
+  // the update phase adds a sibling instead. Both are re-PUT; neither is billed.
+  // Update: the certificate is rotated - publicCertificate is swapped for a
+  // second, independently generated certificate on the SAME resource.
+  //
+  // This fixture used to declare a second IntegrationAccountCertificate instead,
+  // which is not an update at all. It left two resources behind and failed
+  //
+  //     [Update] Inventory should still contain exactly 1 resource after update
+  //
+  // and the sibling it added carried the same key material as the first, so it
+  // would not have exercised a rotation even as an update.
+  //
+  // name, resourceGroupName and integrationAccountName are all createOnly and
+  // publicCertificate is the only other field on this type, so rotating it is
+  // the only in-place update this resource has. It is writeOnly - ARM answers a
+  // GET with a thumbprint, never the key - so Verify cannot compare the new
+  // value; the phase proves the apply succeeds and the resource is not replaced.
+  new logiccert.IntegrationAccountCertificate {
+    label = "plugin-sdk-test-logic-integration-account-certificate"
+    name = "conformance-as2-cert"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    publicCertificate = "MIIDMzCCAhugAwIBAgIUKlD+TsMyjkDH751sPtx/cFMrHEYwDQYJKoZIhvcNAQELBQAwKTEnMCUGA1UEAwweZm9ybWFlLWNvbmZvcm1hbmNlLWFzMi1yb3RhdGVkMB4XDTI2MDkwMzIwMjA1N1oXDTQ2MDgyOTIwMjA1N1owKTEnMCUGA1UEAwweZm9ybWFlLWNvbmZvcm1hbmNlLWFzMi1yb3RhdGVkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApGBEXEdjnoHPgPpGsBn1QPRFhsEDyXDfbPbfxiVQJLgJSIA3XVJkYVLNQlwZK8Z1E4m3Y+LO6rctPNPXYAD0kQ6n1NrJ8npnVGO+WkCa8W/49//SyoiY1KMkLSCbSYZFpev/ncUlAGPpB6RvR6tCRKEON7dMIkPyxVy5/LkGL2eG+l4FkUUz0Yn5yZpk+VZiMRc2IS6uLcJ/D4x4hjfWreGFYl7EZEc4BGZpQ4Muqd3ptEdXJ1T9siDlMww0DvxaB1RVPDaZCBjxOFuOahp3GK5ElvyVxExei9HMie2Ym9Uo3g2dB7y9ec7HqMSdl46yRd9HquzG6OM4AmDJlVoN5wIDAQABo1MwUTAdBgNVHQ4EFgQUNi+6kcTQIbmfjRbmqGzZYZdsQowwHwYDVR0jBBgwFoAUNi+6kcTQIbmfjRbmqGzZYZdsQowwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAXqU+ARDRfVlq3ofqTzNd1A3N42iW4lcuQnTjKdbS5o72NGBT+BprcdH9+W1i+X2QdqOOZ4TfU0rCFN5mmDMgBzLnEZ3io9JxwFE5164b+Wa4BN89N4dQK1EvPkom7yAS8gWrL95/hzxthBbogznFcDr3nmfWywPtwGJeIG3oYSt/q/7VIhXvq7IdWxBGtmpYe+aehR8NU4QBfmgD4xpjZWujp9la+eFQiliXjxyggqmZAwZ7p9Qr+Knv6dnDiNcnbm0lD5Bla0XIHWRpil9QBDxxuj1HEciJ4VHQx02TnmhdZUjhdCxSEpb4QeKTbi/i54hj09TNgRNtrVG1jrsR2g=="
+  }
+}

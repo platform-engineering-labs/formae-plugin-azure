@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.desktopvirtualization.avdworkspace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DesktopVirtualization::Workspace"
+const apiVersion = "2021-07-12"
+
+open class WorkspaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: WorkspaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: WorkspaceResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: WorkspaceResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Virtual Desktop workspace — the top of the feed a user sees when
+/// they sign in to the Remote Desktop client. It groups application groups
+/// together and carries nothing else of substance.
+///
+/// Which application groups appear in the feed is a plain field,
+/// `applicationGroupReferences`, not a separate association resource: ARM
+/// stores the list on the workspace, so the Terraform
+/// `..._workspace_application_group_association` resource that exists to model
+/// the pairing as a row is unnecessary here. One application group can only
+/// belong to one workspace, and ARM writes the reverse pointer
+/// (`workspaceArmPath` on the group) itself.
+///
+/// Deliberately not modelled: `objectId` and `cloudPcResource` are internal
+/// service bookkeeping.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Workspace extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Full ARM IDs of the application groups published in this workspace's
+    /// feed — reference a sibling group with `appGroup.res.id`. Order is
+    /// significant only in that ARM echoes the list back in the order it was
+    /// sent.
+    @azure.FieldHint { }
+    applicationGroupReferences: Listing<(String|formae.Resolvable)>?
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    @azure.FieldHint { }
+    friendlyName: String(length <= 260)?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: WorkspaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

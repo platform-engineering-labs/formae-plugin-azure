@@ -1,0 +1,82 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/blobcontainer.pkl"
+import "@azure/storage/storagelocaluser.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lu-test-rg"
+  name = "formae-plugin-sdk-test-lu-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// ARM rejects a local user on an account without a hierarchical namespace, and
+// SFTP needs isSftpEnabled on top of that. NEITHER FLAG IS EXPRESSIBLE: the
+// StorageAccount schema on this branch has no isHnsEnabled, isSftpEnabled or
+// isLocalUserEnabled field, and that schema is owned by another group. Until it
+// gains them this fixture creates the account and then fails at [Create] with
+// ARM's own "local users are not supported on this account".
+local sa = new storageaccount.StorageAccount {
+  label = "lu-test-sa"
+  name = "fpsdtlu\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local container = new blobcontainer.BlobContainer {
+  label = "lu-test-container"
+  name = "plugin-sdk-test-lu-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = sa.res.name
+  publicAccess = "None"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  container
+
+  new storagelocaluser.LocalUser {
+    label = "plugin-sdk-test-lu"
+    name = "sftpuser"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    // Scoped to the one container created above; ARM validates neither the
+    // container name nor its existence, but a scope naming a missing container
+    // grants nothing.
+    homeDirectory = "plugin-sdk-test-lu-\(vars.testRunID)"
+    permissionScopes = new Listing {
+      new storagelocaluser.PermissionScope {
+        permissions = "rwl"
+        resourceName = "plugin-sdk-test-lu-\(vars.testRunID)"
+        service = "blob"
+      }
+    }
+    // The generated password is returned only from regeneratePassword and never
+    // from Get, so it is never part of this resource — only the request for one.
+    hasSshPassword = true
+    hasSharedKey = false
+    allowAclAuthorization = true
+  }
+}

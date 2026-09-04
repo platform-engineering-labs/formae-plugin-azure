@@ -1,0 +1,131 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorydataflow
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::DataFlow"
+const apiVersion = "2018-06-01"
+
+/// One end of a mapping data flow: a named source or sink the script refers to.
+///
+/// ARM has two structurally identical models for this, `DataFlowSource` and
+/// `DataFlowSink`, so one class serves both.
+///
+/// An endpoint names EITHER a dataset or, for an inline dataset, the linked service
+/// its format is read through. ARM accepts an endpoint with neither, which is how a
+/// data flow is staged before its datasets exist.
+///
+/// `flowlet`, `schemaLinkedService` and `rejectedDataLinkedService` are not
+/// modelled and are not read back: flowlets are a separate `DataFlow` member this
+/// type does not claim, and the two extra linked services are only meaningful for
+/// schema-drift handling this schema has no way to express.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class DataFlowEndpoint extends formae.SubResource {
+
+    /// Transformation name, exactly as the script refers to it.
+    @azure.FieldHint {  }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Name of a dataset in the same factory.
+    @azure.FieldHint { }
+    datasetName: (String|formae.Resolvable)?
+
+    /// Name of a linked service in the same factory, for an inline dataset.
+    @azure.FieldHint { }
+    linkedServiceName: (String|formae.Resolvable)?
+}
+
+open class DataFlowResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataFlowResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataFlowResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A `MappingDataFlow` — a visually authored transformation, expressed as a script
+/// plus the sources and sinks it reads and writes.
+///
+/// Defining one costs nothing. A data flow only spends money when a pipeline's
+/// Execute Data Flow activity runs it, or when somebody opens a debug session — and
+/// the debug session lives on a different API this provider never calls.
+///
+/// `script` is the data flow DSL, a multi-line string. It is declared `writeOnly`:
+/// the service reparses the DSL and stores it as `scriptLines`, so what comes back
+/// is a re-serialisation rather than the text that was authored, and comparing it on
+/// read would report drift on a data flow nobody touched. Changing it in a forma
+/// still pushes the new body; drift introduced elsewhere is not detected. Same
+/// reasoning as `AZURE::DataFactory::Pipeline`'s `activities`.
+///
+/// `transformations` is not modelled for a related reason: it is the body of the
+/// script in object form, so declaring both would be two sources of truth for one
+/// thing.
+///
+/// Flowlets — ARM's other `DataFlow` member — are not modelled, and this type claims
+/// only `MappingDataFlow` when listing, so a flowlet in the same factory is left
+/// alone.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DataFlow extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// The data flow DSL. Write-only — see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    script: (formae.Value|String)?
+
+    /// Where the data flow reads from.
+    @azure.FieldHint { }
+    sources: Listing<DataFlowEndpoint>?
+
+    /// Where the data flow writes to.
+    @azure.FieldHint { }
+    sinks: Listing<DataFlowEndpoint>?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Folder the data flow is filed under in the authoring UI. Purely cosmetic.
+    @azure.FieldHint { }
+    folderName: String(length >= 1)?
+
+    /// Free-form labels the authoring UI shows against the data flow. Unrelated to
+    /// ARM resource tags — a data flow is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: DataFlowResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

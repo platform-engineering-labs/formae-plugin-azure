@@ -135,6 +135,18 @@ case "$RESOURCE" in
     # Key Vault delete has to clear soft-delete before the recreate.
     set_timeouts 10 30
     ;;
+  api-management-service)
+    # The service itself, not its children: a Consumption instance provisions in
+    # ~3 min but DELETE takes far longer, and the CRUD lifecycle deletes twice -
+    # once for Destroy and once for the out-of-band delete phase. The job ran
+    # 10m23s and still failed on
+    #
+    #   [OOB Del] timeout waiting for resource ... removed from inventory
+    #
+    # The 28 APIM child fixtures each stand up their own service too, but they
+    # pass inside the default budget; only the parent's own lifecycle needs this.
+    set_timeouts 30 75
+    ;;
   redis-cache)
     # Out of the matrix because a Basic C0 create is ~20 min and the lifecycle
     # does several; at 30 min the job still ran 60 min before failing on the

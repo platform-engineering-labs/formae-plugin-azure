@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/component.pkl" as aicomponent
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementlogger.pkl" as apimlogger
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-logger-test-rg"
+  name = "formae-plugin-sdk-test-apimlogger-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Workspace-based components are the only kind Azure still creates, so the
+// workspace is a hard dependency rather than an option.
+local law = new workspace.Workspace {
+  label = "apim-logger-test-law"
+  name = "fpsdt-apimlogger-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+}
+
+local telemetry = new aicomponent.Component {
+  label = "apim-logger-test-ai"
+  name = "fpsdt-apimlogger-ai-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  workspaceResourceId = law.res.id
+  applicationType = "web"
+  kind = "web"
+  ingestionMode = "LogAnalytics"
+  retentionInDays = 30
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing. Application
+// Insights request logs ARE available on Consumption — Azure Monitor and Log
+// Analytics request logs are not, which is why this logger is
+// applicationInsights and not azureMonitor.
+local svc = new apim.Service {
+  label = "apim-logger-test-service"
+  name = "fpsdt-apimlogger-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// An Application Insights logger needs an instrumentation key in `credentials`,
+// and this fixture cannot reference the real one: AZURE::Insights::Component
+// deliberately does not surface `instrumentationKey` or `connectionString` as
+// properties, because this plugin has no sensitive-output mechanism and a plain
+// property would write an ingestion credential into resource state in the
+// clear.
+//
+// So a placeholder GUID is declared instead. API Management stores whatever it
+// is given — the key is moved straight into a hidden secret named value and
+// never validated against Application Insights — so the logger is created and
+// the CRUD lifecycle is exercised end to end. What does NOT happen is telemetry
+// actually reaching `telemetry` below; `resourceId` still points at it, which
+// is what makes the portal link the two.
+local instrumentationKeyPlaceholder = "00000000-1111-2222-3333-444444444444"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  law
+  telemetry
+  svc
+
+  new apimlogger.Logger {
+    label = "plugin-sdk-test-apim-logger"
+    name = "conformance-appinsights"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    loggerType = "applicationInsights"
+    description = "Updated description from the conformance update phase."
+    resourceId = telemetry.res.id
+    isBuffered = false
+    credentials {
+      ["instrumentationKey"] = instrumentationKeyPlaceholder
+    }
+  }
+}

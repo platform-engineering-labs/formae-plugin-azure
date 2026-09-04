@@ -1,0 +1,89 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapioperation
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiOperation"
+const apiVersion = "2021-08-01"
+
+open class ApiOperationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiOperationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiOperationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A single operation on an API — one method and one URL template under the
+/// API's path.
+///
+/// The request and response contracts (template parameters, query parameters,
+/// headers, representations and response codes) are deliberately not modelled.
+/// ARM materializes defaults inside every one of those nested objects — an
+/// omitted `required` comes back as false, an omitted `values` comes back as an
+/// empty list — and a service-populated field inside a nested class reads back
+/// as drift rather than as a provider default. Consequently `urlTemplate` must
+/// not contain `{parameters}`: ARM requires a matching template parameter for
+/// each, and there is no way to declare one here.
+///
+/// The operation's policy is a separate resource,
+/// `AZURE::ApiManagement::ApiOperationPolicy`, and ARM's `policies` field on the
+/// operation is not read back so the two cannot fight over the same document.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Api"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "apiName" }
+    )
+}
+open class ApiOperation extends formae.Resource {
+
+    /// Operation identifier, unique within the API.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the parent API — its ARM name, not its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 300)
+
+    /// HTTP method, upper-case, e.g. GET.
+    @azure.FieldHint { required = true }
+    method: String(length >= 1)
+
+    /// Path under the API's own path, e.g. `/status`. Must contain no
+    /// `{parameters}`: see the note on this class.
+    @azure.FieldHint { required = true }
+    urlTemplate: String(length >= 1 && length <= 1000 && !contains("{"))
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: ApiOperationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

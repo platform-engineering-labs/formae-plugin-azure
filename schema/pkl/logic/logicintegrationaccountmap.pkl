@@ -1,0 +1,81 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccountmap
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccountMap"
+const apiVersion = "2019-05-01"
+
+/// Transform language the map is written in. ARM also accepts `NotSpecified`,
+/// which produces a map no action can run, so it is not offered.
+typealias MapType = "Xslt"|"Xslt20"|"Xslt30"|"Liquid"
+
+open class IntegrationAccountMapResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountMapResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountMapResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A transform held in an integration account — an XSLT stylesheet or a Liquid
+/// template — run by a Logic Apps transform action.
+///
+/// Free: maps are metadata on the parent account and are not billed separately.
+///
+/// `content` is WRITE-ONLY for the same reason as an integration account
+/// schema's: ARM answers a GET with a `contentLink` SAS URL to the blob it
+/// copied the transform into, never with the transform itself. There is nothing
+/// to compare on read. Changing `content` in a forma still pushes the new
+/// transform; drift introduced elsewhere is not detected.
+///
+/// `metadata` is arbitrary JSON the schema cannot express and is not read back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Logic::IntegrationAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "integrationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationAccountMap extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    @azure.FieldHint {  }
+    mapType: MapType
+
+    /// The stylesheet or template itself. Write-only; see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
+
+    /// Name of the integration account schema that describes this map's
+    /// parameters. Only meaningful for an XSLT map that takes parameters.
+    @azure.FieldHint { }
+    parametersSchemaRef: (String|formae.Resolvable)?
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountMapResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

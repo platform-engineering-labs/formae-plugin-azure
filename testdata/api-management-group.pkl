@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementgroup.pkl" as apimgroup
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-group-test-rg"
+  name = "formae-plugin-sdk-test-apimgroup-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+//
+// NOTE: this fixture cannot pass on Consumption. Groups belong to the developer
+// portal feature set, which the tier comparison marks unavailable on
+// Consumption "including related functionality such as users, groups, issues,
+// applications, and email templates and notifications"
+// (learn.microsoft.com/azure/api-management/api-management-features). Handler,
+// schema and test are complete; the SKU is deliberately not changed.
+local svc = new apim.Service {
+  label = "apim-group-test-service"
+  name = "fpsdt-apimgroup-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // A custom group: membership is assigned in API Management itself rather than
+  // mirrored from a directory, so no externalId. `system` is reserved for the
+  // three built-ins ARM creates with the service and cannot be declared.
+  new apimgroup.Group {
+    label = "plugin-sdk-test-apim-group"
+    name = "conformance-partners"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance Partners"
+    description = "Group used by the formae Azure plugin conformance suite."
+    groupType = "custom"
+  }
+}

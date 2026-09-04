@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/desktopvirtualization/avdhostpool.pkl"
+import "@azure/desktopvirtualization/avdapplicationgroup.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "avd-ag-test-rg"
+  name = "formae-plugin-sdk-test-avd-ag-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The pool the group publishes from. preferredAppGroupType must agree with the
+// group's applicationGroupType, so a RemoteApp group needs RailApplications.
+local hostPool = new avdhostpool.HostPool {
+  label = "avd-ag-test-host-pool"
+  name = "fpsdt-avd-ag-hp-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  hostPoolType = "Pooled"
+  loadBalancerType = "BreadthFirst"
+  preferredAppGroupType = "RailApplications"
+  maxSessionLimit = 10
+  startVmOnConnect = false
+  validationEnvironment = false
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  hostPool
+
+  // The link to the host pool is a plain field, not a
+  // *_host_pool_association resource: ARM stores exactly one host pool per
+  // application group.
+  new avdapplicationgroup.ApplicationGroup {
+    label = "plugin-sdk-test-avd-application-group"
+    name = "fpsdt-avd-ag-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    hostPoolArmPath = hostPool.res.id
+    applicationGroupType = "RemoteApp"
+    description = "Conformance application group"
+    friendlyName = "fpsdt app group"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

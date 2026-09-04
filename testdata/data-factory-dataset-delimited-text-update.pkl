@@ -1,0 +1,82 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedserviceblobstorage.pkl" as lsblob
+import "@azure/datafactory/datafactorydatasetdelimitedtext.pkl" as dsdt
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfdsdt-test-rg"
+  name = "formae-plugin-sdk-test-adfdsdt-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfdsdt-test-factory"
+  name = "fpsdt-adfdsdt-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Every dataset needs a linked service, so one comes along. The managed-identity
+// shape — `serviceEndpoint` and no credential anywhere — because a
+// `connectionString` is write-only and could never be verified. No storage account
+// is created: creating a linked service does not test the connection, so the
+// endpoint only has to be a well-formed blob service URI.
+local blobLinkedService = new lsblob.LinkedServiceAzureBlobStorage {
+  label = "adfdsdt-test-linked-service"
+  name = "conformance-blob"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  serviceEndpoint = "https://fpsdtdsdt\(vars.testRunID).blob.core.windows.net"
+  accountKind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  blobLinkedService
+
+  // Free: creating a dataset is a metadata write, and the service does not touch
+  // the storage it describes.
+  //
+  // Every dialect field is stated explicitly rather than left to the service's
+  // documented default. The service does not write its defaults into the stored
+  // definition, so an omitted field reads back absent — but stating them means a
+  // future change to that behaviour cannot be mistaken for drift this provider
+  // caused.
+  new dsdt.DatasetDelimitedText {
+    label = "plugin-sdk-test-adf-dataset-delimited-text"
+    name = "conformance-ds-delimited"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    linkedServiceName = blobLinkedService.res.name
+    container = "landing"
+    folderPath = "incoming"
+    fileName = "orders.csv"
+    columnDelimiter = ";"
+    rowDelimiter = "\n"
+    quoteChar = "\""
+    escapeChar = "\\"
+    nullValue = "\\N"
+    encodingName = "UTF-8"
+    firstRowAsHeader = false
+    // Update: switch the dialect to semicolon-separated with no header row, and
+    // retitle. Only name, resourceGroupName and factoryName are create-only.
+    description = "conformance delimited text dataset, updated"
+    folderName = "conformance"
+    annotations = new Listing { "conformance" }
+  }
+}

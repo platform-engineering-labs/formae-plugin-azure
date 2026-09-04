@@ -1,0 +1,63 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementgroupuser
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::GroupUser"
+const apiVersion = "2021-08-01"
+
+open class GroupUserResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GroupUserResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// The membership of one user in one group.
+///
+/// A pure link, like `AZURE::ApiManagement::ProductApi`: ARM's PUT carries no
+/// body, and a delete removes the membership without touching either end.
+///
+/// NOT AVAILABLE ON THE CONSUMPTION TIER, for the same reason as its two ends —
+/// see `AZURE::ApiManagement::Group` and `AZURE::ApiManagement::User`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Group"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "groupName" }
+    )
+}
+open class GroupUser extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the group — its ARM name, not its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    groupName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    /// Identifier of the user — its ARM name, not its email address.
+    @azure.FieldHint { required = true; createOnly = true }
+    userName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    hidden parent = this
+
+    hidden res: GroupUserResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,111 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.loganalyticscluster
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::Cluster"
+const apiVersion = "2021-06-01"
+
+/// The cluster's capacity reservation. `CapacityReservation` is the only SKU name
+/// ARM accepts, and `capacity` is the reserved daily ingestion in GB — billed
+/// whether or not it is used.
+class ClusterSKU {
+    name: "CapacityReservation" = "CapacityReservation"
+
+    /// Reserved GB/day. ARM's enum for this API version accepts 500, 1000, 2000
+    /// and 5000; Microsoft has since lowered the documented floor to 100 GB/day,
+    /// which this API version does not expose.
+    capacity: Int(this == 500 || this == 1000 || this == 2000 || this == 5000)
+}
+
+open class ClusterResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ClusterResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ClusterResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A Log Analytics DEDICATED CLUSTER: a capacity-reservation container that
+/// workspaces are linked into through
+/// AZURE::OperationalInsights::LinkedService with `name = "Cluster"`.
+///
+/// Two things make this resource unlike anything else in this namespace, and both
+/// matter before you declare one:
+///
+///   - It carries a MINIMUM DAILY CAPACITY COMMITMENT — `sku.capacity` GB/day,
+///     billed whether or not the reservation is used. There is no free tier and no
+///     scale-to-zero.
+///   - PROVISIONING TAKES HOURS, not minutes. Microsoft documents that a cluster
+///     must finish provisioning before any workspace can be linked to it; the
+///     create long-running operation stays in progress for that entire time.
+///
+/// Only `sku.capacity`, `billingType` and tags can be changed after creation —
+/// ARM's PATCH body reaches nothing else — so everything else here is createOnly.
+///
+/// The customer-managed-key block (`keyVaultProperties`) and the managed identity
+/// that would unlock it are deliberately not modelled: a CMK cluster needs a key
+/// vault whose access policy points back at the cluster's own identity, a
+/// two-phase bootstrap this type cannot express on its own. `associatedWorkspaces`
+/// is ARM's back-reference to workspaces that linked themselves in, and is
+/// likewise not modelled — it would read as drift against a cluster that never
+/// declared them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Cluster extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 4 && length <= 63 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-]+[A-Za-z0-9]$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The capacity reservation. Its `capacity` is the only part that can be
+    /// changed later.
+    @azure.FieldHint { required = true }
+    sku: ClusterSKU
+
+    /// Who is billed for ingestion into the cluster: `Cluster` bills the
+    /// reservation, `Workspaces` bills each linked workspace. The service
+    /// assigns `Cluster` when unset.
+    @azure.FieldHint { hasProviderDefault = true }
+    billingType: ("Cluster"|"Workspaces")?
+
+    /// Whether the cluster encrypts at rest twice. Cannot be changed after
+    /// creation; the service assigns `true` where the region supports it.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    isDoubleEncryptionEnabled: Boolean?
+
+    /// Whether the cluster spans availability zones. Only settable to `true` in
+    /// regions where Azure Data Explorer offers zones, cannot be changed after
+    /// creation, and the service assigns `true` in regions that support them.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    isAvailabilityZonesEnabled: Boolean?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ClusterResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

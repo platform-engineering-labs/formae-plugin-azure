@@ -1,0 +1,67 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanagersubscriptionconnection
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerSubscriptionConnection"
+const apiVersion = "2023-05-01"
+
+open class NetworkManagerSubscriptionConnectionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerSubscriptionConnectionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerSubscriptionConnectionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A subscription's side of a cross-tenant network manager connection.
+///
+/// SCOPE: SUBSCRIPTION. The resource lives at `/subscriptions/<id>/providers/
+/// Microsoft.Network/networkManagerConnections/<name>` — it has no resource group
+/// and no location, and the subscription it is created in is always the one the
+/// target is configured with.
+///
+/// This is the invitee half of a cross-tenant scope connection: a network manager
+/// in another tenant adds this subscription as a scope, and this resource accepts
+/// the invitation by naming the manager's ARM ID. ARM reports the outcome as a
+/// read-only `connectionState` (`Connected`, `Pending`, `Conflict`, `Revoked`,
+/// `Rejected`); it is not modelled, because it is the service's verdict on the
+/// pairing rather than desired state.
+///
+/// The management-group counterpart (`managementGroupNetworkManagerConnections`)
+/// is deliberately NOT modelled: writing it requires a role assignment above
+/// subscription level, which this provider cannot assume it holds.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class NetworkManagerSubscriptionConnection extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    /// ARM ID of the network manager this subscription is connecting to. Usually a
+    /// manager in a different tenant.
+    @azure.FieldHint { required = true }
+    networkManagerId: String|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerSubscriptionConnectionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

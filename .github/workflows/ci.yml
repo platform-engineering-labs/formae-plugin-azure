@@ -57,6 +57,15 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
+      # Renders every testdata forma. This is the only check here that reaches
+      # formae.SubResource.render(): Build, Lint, Unit tests, the Pkl manifest
+      # eval and Verify schema all evaluate the schema WITHOUT rendering a forma.
+      # PR #144 shipped a schema change that left 113 of 371 fixtures
+      # unrenderable with every one of those steps green, and conformance for
+      # ~57 resource types was impossible until it was found by hand.
+      - name: Verify fixtures render
+        run: make verify-fixtures
+
       - name: Conformance scope self-check
         run: ./scripts/ci/conformance-scope_test.sh
 

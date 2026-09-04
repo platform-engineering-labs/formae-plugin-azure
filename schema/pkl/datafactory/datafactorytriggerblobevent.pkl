@@ -1,0 +1,118 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorytriggerblobevent
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::TriggerBlobEvent"
+const apiVersion = "2018-06-01"
+
+/// Storage event that can fire the trigger.
+typealias BlobEventType = "Microsoft.Storage.BlobCreated"|"Microsoft.Storage.BlobDeleted"
+
+open class TriggerBlobEventResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TriggerBlobEventResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TriggerBlobEventResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A `BlobEventsTrigger` — starts pipelines when a blob appears in or disappears
+/// from a storage account.
+///
+/// Creating one provisions nothing. The Event Grid system topic and event
+/// subscription that actually deliver the events are created by the service's
+/// SubscribeToEvents operation, which runs when the trigger is STARTED — and a
+/// trigger this provider writes is created STOPPED and stays stopped, because
+/// whether a trigger runs is changed by Start and Stop, not by its definition.
+/// `runtimeState` is therefore neither settable nor read back: an operator who
+/// starts the trigger by hand must not have that reported as drift. A stopped
+/// trigger fires nothing and costs nothing.
+///
+/// `Microsoft.EventGrid` must be registered on the subscription before the trigger
+/// can be started. It is not needed to create one.
+///
+/// At least one of `blobPathBeginsWith` and `blobPathEndsWith` must be given. That
+/// is ARM's own rule and the provider checks it before making any call: a trigger
+/// filtering on neither end of the path would fire for every blob in the account.
+///
+/// Per-pipeline parameters are not modelled: they are free-form JSON keyed by
+/// pipeline, which a flat listing of names cannot carry.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class TriggerBlobEvent extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// ARM resource ID of the storage account whose blob events fire the trigger.
+    @azure.FieldHint { required = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// Which storage events fire the trigger. At least one.
+    @azure.FieldHint { required = true }
+    events: Listing<BlobEventType>
+
+    /// Whether blobs of zero length are skipped. REQUIRED rather than optional
+    /// because the service fills it in with `true` when it is omitted, and a value
+    /// the service chose would read back as drift against a forma that did not
+    /// state it.
+    @azure.FieldHint { required = true }
+    ignoreEmptyBlobs: Boolean
+
+    /// Path prefix a blob must match, container included, e.g.
+    /// `/landing/blobs/incoming/`. At least one of this and `blobPathEndsWith` is
+    /// required.
+    @azure.FieldHint { }
+    blobPathBeginsWith: (String|formae.Resolvable)?
+
+    /// Path suffix a blob must match, e.g. `.csv`. At least one of this and
+    /// `blobPathBeginsWith` is required.
+    @azure.FieldHint { }
+    blobPathEndsWith: (String|formae.Resolvable)?
+
+    /// Names of pipelines in the same factory to start. A trigger with none is
+    /// accepted by ARM and fires nothing, which is a legitimate way to stage a
+    /// trigger before its pipeline exists.
+    @azure.FieldHint { }
+    pipelineNames: Listing<String|formae.Resolvable>?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Free-form labels the authoring UI shows against the trigger. Unrelated to
+    /// ARM resource tags — a trigger is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: TriggerBlobEventResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

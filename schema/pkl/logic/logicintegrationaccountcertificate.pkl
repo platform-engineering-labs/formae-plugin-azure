@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccountcertificate
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccountCertificate"
+const apiVersion = "2019-05-01"
+
+open class IntegrationAccountCertificateResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountCertificateResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountCertificateResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A certificate held in an integration account, used to sign, encrypt or verify
+/// AS2 messages.
+///
+/// Free: certificates are metadata on the parent account and are not billed
+/// separately.
+///
+/// PUBLIC HALF ONLY. ARM's certificate model has a second form — a
+/// `KeyVaultKeyReference` naming a private key — which is deliberately not
+/// modelled: it needs a data-plane grant on the vault plus an access policy for
+/// the integration account's managed identity, neither of which this resource
+/// can express, and getting either wrong fails as an opaque ARM 400. A public
+/// certificate stands alone.
+///
+/// `publicCertificate` is the base64 of the certificate's DER bytes — i.e. a PEM
+/// body with its header, footer and line breaks removed. It is declared
+/// `writeOnly` because ARM is free to re-encode the blob it echoes; the value is
+/// still read back, so stored state shows what ARM holds, but a difference in
+/// encoding is not reported as drift.
+///
+/// `metadata` is arbitrary JSON the schema cannot express and is not read back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Logic::IntegrationAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "integrationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationAccountCertificate extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Base64 DER of the X.509 certificate. Write-only; see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    publicCertificate: (formae.Value|String)?
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountCertificateResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

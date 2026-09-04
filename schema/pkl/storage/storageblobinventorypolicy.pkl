@@ -1,0 +1,137 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storageblobinventorypolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::BlobInventoryPolicy"
+const apiVersion = "2024-01-01"
+
+/// Narrows which objects a rule reports on.
+///
+/// ARM couples several of these to `schemaFields`: `includeBlobVersions` requires
+/// `VersionId` and `IsCurrentVersion`, `includeSnapshots` requires `Snapshot`, and
+/// `includeDeleted` requires `Deleted` plus `RemainingRetentionDays`. Setting one
+/// without its fields is rejected at create time.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InventoryFilters extends formae.SubResource {
+    /// Blob types to report. Required when `objectType` is `Blob`; must be omitted
+    /// when it is `Container`. `pageBlob` is not available on HNS accounts.
+    @azure.FieldHint { }
+    blobTypes: Listing<"blockBlob"|"appendBlob"|"pageBlob">?
+
+    /// Up to 10 blob-name prefixes to include.
+    @azure.FieldHint { }
+    prefixMatch: Listing<String>?
+
+    /// Up to 10 blob-name prefixes to exclude.
+    @azure.FieldHint { }
+    excludePrefix: Listing<String>?
+
+    @azure.FieldHint { }
+    includeBlobVersions: Boolean?
+
+    @azure.FieldHint { }
+    includeSnapshots: Boolean?
+
+    @azure.FieldHint { }
+    includeDeleted: Boolean?
+}
+
+/// What one rule reports, in what format, how often.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InventoryDefinition extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    format: ("Csv"|"Parquet")
+
+    /// `Blob` inventories individual blobs, `Container` inventories containers.
+    @azure.FieldHint { required = true }
+    objectType: ("Blob"|"Container")
+
+    @azure.FieldHint { required = true }
+    schedule: ("Daily"|"Weekly")
+
+    /// Columns of the report. `Name` is always required. The valid set differs
+    /// between `Blob` and `Container` object types and between HNS and flat
+    /// accounts — see the Azure blob-inventory documentation.
+    @azure.FieldHint { required = true }
+    schemaFields: Listing<String>(!isEmpty)
+
+    @azure.FieldHint { }
+    filters: InventoryFilters?
+}
+
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InventoryRule extends formae.SubResource {
+    /// Alphanumeric, case-sensitive, unique within the policy.
+    @azure.FieldHint { required = true }
+    name: String(length >= 1 && length <= 256)
+
+    /// Container the inventory files are written to. It must already exist — ARM
+    /// does not create it.
+    @azure.FieldHint { required = true }
+    destination: (String(length >= 3 && length <= 63)|formae.Resolvable)
+
+    /// Set false to keep the rule defined but inactive.
+    @azure.FieldHint { }
+    enabled: Boolean = true
+
+    @azure.FieldHint { required = true }
+    definition: InventoryDefinition
+}
+
+open class BlobInventoryPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BlobInventoryPolicyResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// Blob inventory policy of a storage account
+/// (`Microsoft.Storage/storageAccounts/<account>/inventoryPolicies/default`).
+///
+/// ARM models this as a singleton whose name is always `default`, so the resource
+/// carries no `name`: one inventory policy per storage account.
+///
+/// The parent account needs blob versioning enabled for version-aware rules, and
+/// every rule's `destination` container must already exist.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BlobInventoryPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent storage account.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Master switch for the whole policy.
+    @azure.FieldHint { }
+    enabled: Boolean = true
+
+    /// ARM requires at least one rule; a policy with none is a delete.
+    @azure.FieldHint { required = true }
+    rules: Listing<InventoryRule>(!isEmpty)
+
+    hidden parent = this
+
+    hidden res: BlobInventoryPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

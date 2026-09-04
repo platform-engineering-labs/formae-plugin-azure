@@ -1,0 +1,94 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsfunctionjavascriptudf
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::FunctionJavaScriptUdf"
+const apiVersion = "2020-03-01"
+
+/// Stream Analytics data types a UDF argument or return value can take. `any` is
+/// the loose type and the usual choice for a JavaScript UDF.
+typealias FunctionDataType = "any"|"bigint"|"datetime"|"float"|"nvarchar(max)"|"bit"|"record"|"array"
+
+/// One positional parameter of the function.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class FunctionArgument extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    dataType: FunctionDataType
+
+    /// True marks the parameter as a constant supplied at definition time rather
+    /// than a value from the stream. Omit it for an ordinary argument.
+    @azure.FieldHint { }
+    isConfigurationParameter: Boolean?
+}
+
+open class FunctionJavaScriptUdfResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: FunctionJavaScriptUdfResolvable = (this) {
+        property = "id"
+    }
+    hidden name: FunctionJavaScriptUdfResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A JavaScript user-defined function on a Stream Analytics job, callable from the
+/// job's query as `udf.<name>(...)`.
+///
+/// ARM buries this behind two discriminators — `properties.type = "Scalar"` and
+/// `properties.properties.binding.type =
+/// "Microsoft.StreamAnalytics/JavascriptUdf"`. Neither is a settable field here:
+/// this resource type only ever writes a scalar JavaScript UDF, so `script` sits at
+/// the top level instead of inside a binding object. Aggregate functions and
+/// Azure-Machine-Learning-web-service bindings share the same ARM collection and
+/// would be separate resource types; discovery for this type filters on the binding
+/// so it does not claim them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class FunctionJavaScriptUdf extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    /// A single JavaScript function expression, e.g.
+    /// `function (x, y) { return x + y; }`. Its parameter list must line up with
+    /// `inputs`.
+    @azure.FieldHint { required = true }
+    script: String(length >= 1)
+
+    /// The function's parameters, in order. At least one is required.
+    @azure.FieldHint { required = true }
+    inputs: Listing<FunctionArgument>
+
+    /// The function's return type.
+    @azure.FieldHint { required = true }
+    outputDataType: FunctionDataType
+
+    hidden parent = this
+
+    hidden res: FunctionJavaScriptUdfResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

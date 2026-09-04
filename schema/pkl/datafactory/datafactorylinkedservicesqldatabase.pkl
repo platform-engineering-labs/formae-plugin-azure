@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorylinkedservicesqldatabase
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::LinkedServiceAzureSqlDatabase"
+const apiVersion = "2018-06-01"
+
+open class LinkedServiceAzureSqlDatabaseResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LinkedServiceAzureSqlDatabaseResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LinkedServiceAzureSqlDatabaseResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An `AzureSqlDatabase` linked service — how a factory reaches an Azure SQL
+/// database.
+///
+/// `connectionString` is the whole configuration. It is sent as a `SecureString`,
+/// so the service stores it encrypted and returns only a mask — which is why it is
+/// declared `writeOnly`: it can never be compared on read, and drift in it cannot
+/// be detected. Changing it in a forma still pushes the new value.
+///
+/// A connection string with no credentials in it
+/// (`Data Source=tcp:srv.database.windows.net,1433;Initial Catalog=db;`) means the
+/// factory's managed identity authenticates. That identity must first exist as a
+/// database user — being SQL AD admin on the server is a separate grant.
+///
+/// Creating a linked service is a metadata write and costs nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LinkedServiceAzureSqlDatabase extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// ADO.NET connection string for the database. Write-only — see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    connectionString: (formae.Value|String|formae.SecretValue)?
+
+    /// Client ID of a service principal to authenticate with instead of the
+    /// factory's managed identity. Its secret half is not modelled: store it in a
+    /// key vault and reference it from the connection string.
+    @azure.FieldHint { }
+    servicePrincipalId: (String|formae.Resolvable)?
+
+    /// Entra tenant the service principal belongs to.
+    @azure.FieldHint { }
+    tenant: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Name of an integration runtime in the same factory to route through. Omit to
+    /// use the factory's default AutoResolve runtime.
+    @azure.FieldHint { }
+    connectViaIntegrationRuntimeName: (String|formae.Resolvable)?
+
+    /// Free-form labels the authoring UI shows against the linked service.
+    /// Unrelated to ARM resource tags — a linked service is not an ARM tracked
+    /// resource and cannot carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: LinkedServiceAzureSqlDatabaseResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

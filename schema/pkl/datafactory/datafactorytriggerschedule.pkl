@@ -1,0 +1,142 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorytriggerschedule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::TriggerSchedule"
+const apiVersion = "2018-06-01"
+
+/// How often the recurrence repeats.
+typealias RecurrenceFrequency = "Minute"|"Hour"|"Day"|"Week"|"Month"|"Year"|"NotSpecified"
+
+/// Day of the week, as Data Factory spells it.
+typealias DayOfWeek = "Sunday"|"Monday"|"Tuesday"|"Wednesday"|"Thursday"|"Friday"|"Saturday"
+
+/// An RFC-3339 instant in UTC, whole seconds — e.g. `2027-01-01T00:00:00Z`.
+///
+/// The `Z` is not decoration. ARM normalises the recurrence timestamps to UTC and
+/// does not preserve the offset or the sub-second precision of what was sent, so a
+/// value written any other way would come back different and read as drift on a
+/// trigger nobody touched. Requiring the normalised form up front is what makes the
+/// round trip stable.
+typealias UtcInstant = String(matches(Regex("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$")))
+
+open class TriggerScheduleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TriggerScheduleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TriggerScheduleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A `ScheduleTrigger` — starts pipelines on a wall-clock recurrence.
+///
+/// A trigger this provider writes is created STOPPED and stays stopped: whether a
+/// trigger runs is changed by the service's Start and Stop operations, not by its
+/// definition. `runtimeState` is therefore neither settable nor read back — an
+/// operator who starts the trigger by hand must not have that reported as drift.
+/// A stopped trigger fires nothing and costs nothing.
+///
+/// The recurrence is flattened into this class rather than nested: ARM's
+/// `recurrence` is one required object holding five scalars plus a second object of
+/// four lists, and flattening keeps the whole schedule in one place.
+///
+/// `startTime`, `interval` and `timeZone` are REQUIRED rather than optional
+/// precisely because the service fills them in when they are omitted — `startTime`
+/// becomes the moment of creation, which moves on every apply, and `timeZone`
+/// becomes `UTC`. Stating them keeps the recurrence entirely caller-owned and
+/// leaves nothing for a read to disagree with.
+///
+/// Per-pipeline parameters and `monthlyOccurrences` are not modelled: the first is
+/// free-form JSON keyed by pipeline, the second a list of `{day, occurrence}`
+/// objects, and neither fits a flat listing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class TriggerSchedule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    frequency: RecurrenceFrequency
+
+    /// How many `frequency` units between runs. Required — see the note above.
+    @azure.FieldHint { required = true }
+    interval: Int(this >= 1 && this <= 1000)
+
+    /// First instant the recurrence is evaluated from. Required — see the note
+    /// above.
+    @azure.FieldHint { required = true }
+    startTime: UtcInstant
+
+    /// IANA or Windows time-zone name the recurrence is interpreted in, e.g. `UTC`
+    /// or `W. Europe Standard Time`. Required — see the note above.
+    @azure.FieldHint { required = true }
+    timeZone: String(length >= 1)
+
+    /// Last instant the recurrence is evaluated. Omit for a trigger with no end.
+    @azure.FieldHint { }
+    endTime: UtcInstant?
+
+    /// Names of pipelines in the same factory to start. A trigger with none is
+    /// accepted by ARM and fires nothing, which is a legitimate way to stage a
+    /// trigger before its pipeline exists.
+    @azure.FieldHint { }
+    pipelineNames: Listing<String|formae.Resolvable>?
+
+    /// Hours of the day the recurrence may fire, 0-23. Refines `frequency`.
+    @azure.FieldHint { }
+    scheduleHours: Listing<Int(this >= 0 && this <= 23)>?
+
+    /// Minutes of the hour the recurrence may fire, 0-59.
+    @azure.FieldHint { }
+    scheduleMinutes: Listing<Int(this >= 0 && this <= 59)>?
+
+    /// Days of the week the recurrence may fire. Meaningful for `Week`.
+    @azure.FieldHint { }
+    scheduleWeekDays: Listing<DayOfWeek>?
+
+    /// Days of the month the recurrence may fire, 1-31 or -1 for the last day.
+    /// Meaningful for `Month`.
+    @azure.FieldHint { }
+    scheduleMonthDays: Listing<Int(this >= -1 && this <= 31)>?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Free-form labels the authoring UI shows against the trigger. Unrelated to
+    /// ARM resource tags — a trigger is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: TriggerScheduleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

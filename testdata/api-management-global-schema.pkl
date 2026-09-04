@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementglobalschema.pkl" as apimgs
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-gs-test-rg"
+  name = "formae-plugin-sdk-test-apimgs-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-gs-test-service"
+  name = "fpsdt-apimgs-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Service-wide, so it belongs to no API and its content is declared as
+  // either xml or json rather than by media type. ARM stores an xml schema as
+  // text and re-serializes it the way it does a policy document, so the
+  // provider reports the document declared here when the two are equivalent.
+  new apimgs.GlobalSchema {
+    label = "plugin-sdk-test-apim-global-schema"
+    name = "conformance-shared"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    schemaType = "xml"
+    description = "Shared conformance types"
+    value = """
+      <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  targetNamespace="http://formae.test/conformance"
+                  xmlns="http://formae.test/conformance">
+        <xsd:element name="OrderId" type="xsd:string" />
+      </xsd:schema>
+      """
+  }
+}

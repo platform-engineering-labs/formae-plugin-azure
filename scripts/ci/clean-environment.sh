@@ -84,6 +84,14 @@ if ! az account show &> /dev/null; then
 fi
 
 echo "Using subscription: $(az account show --query name -o tsv)"
+
+# Needed to build the ARM URL for the APIM purge below. Empty would silently
+# produce an unroutable URL, so fail loudly here instead.
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+if [[ -z "${SUBSCRIPTION_ID}" ]]; then
+    echo "Could not determine the subscription id. Skipping cleanup."
+    exit 0
+fi
 echo ""
 
 # list_groups - names of every resource group matching TEST_PREFIX, one per line.
@@ -369,6 +377,72 @@ else
         echo "  purging ${VAULT}"
         az keyvault purge --name "${VAULT}" --no-wait || true
     done
+fi
+
+# Soft-deleted API Management services do the same, and worse: they keep counting
+# against the Consumption per-subscription service quota until purged, so they do
+# not merely hold a name - they eventually stop new services being created at all.
+#
+# That is not hypothetical. On 2026-09-03 the subscription had accumulated 31
+# soft-deleted APIM services, and conformance fixtures began failing with
+#
+#   RESPONSE 400: MaxConsumptionServicesPerSubscriptionExceeded
+#
+# on create. Every APIM fixture provisions its own Consumption service, so the
+# quota is reached quickly once deleted ones stop being reclaimed. Key Vaults have
+# been purged here since the beginning; APIM was simply missed.
+#
+# Purged with `az rest`, after getting this wrong twice.
+#
+# The first version purged synchronously with `az apim deletedservice purge`.
+# Measured: ~1.3 min each, so clearing a 16-service backlog held pre-cleanup for
+# over 17 minutes, and at steady state every run leaves ~28 behind - ~36 min of
+# purging in EVERY sweep.
+#
+# The second version added `--no-wait` to that command. THAT FLAG DOES NOT EXIST:
+#
+#     ERROR: unrecognized arguments: --no-wait
+#
+# so every purge failed, the loop reported "queued purge for 0", and soft-deleted
+# services accumulated unchecked until they exhausted the 20-service Consumption
+# cap. The failure was invisible because a purge that cannot proceed is tolerated
+# here by design, and because the count it prints was the count of successes.
+#
+# `az rest` sends the DELETE and returns on ARM's 202 without the CLI's polling
+# loop: ~20s per service rather than ~1.3 min, with no dependency on which flags
+# this month's `az apim` happens to accept. Failures stay tolerated - a purge that
+# cannot proceed shows up as the quota error on a later create, and must not abort
+# the sweep - but the count below now distinguishes them.
+echo ""
+echo "Purging soft-deleted API Management services with prefix 'fpsdt-'..."
+DELETED_APIMS=$(az apim deletedservice list --query "[?starts_with(name, 'fpsdt-')].{n:name,l:location}" -o tsv 2>/dev/null || true)
+if [[ -z "${DELETED_APIMS}" ]]; then
+    echo "  none"
+else
+    apim_purged=0
+    apim_failed=0
+    while IFS=$'\t' read -r APIM_NAME APIM_LOC; do
+        [[ -z "${APIM_NAME}" ]] && continue
+        # Re-check the prefix LOCALLY, exactly as list_groups does and for the same
+        # reason: a purge is irreversible, so it only ever acts on a name this
+        # script has verified itself rather than trusting the server-side
+        # projection in the --query above. A stub that ignored that query was
+        # enough to make this loop purge a service it had no business touching.
+        if [[ "${APIM_NAME}" != fpsdt-* ]]; then
+            echo "    skipping ${APIM_NAME} - does not match the test prefix"
+            continue
+        fi
+        APIM_LOC_SLUG=$(printf '%s' "${APIM_LOC}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+        if az rest --method delete --url \
+            "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.ApiManagement/locations/${APIM_LOC_SLUG}/deletedservices/${APIM_NAME}?api-version=2022-08-01" \
+            > /dev/null 2>&1; then
+            apim_purged=$((apim_purged + 1))
+        else
+            apim_failed=$((apim_failed + 1))
+            echo "    could not purge ${APIM_NAME} (${APIM_LOC_SLUG})"
+        fi
+    done <<< "${DELETED_APIMS}"
+    echo "  purged ${apim_purged} soft-deleted APIM service(s), ${apim_failed} failed"
 fi
 
 # Verdict. Same `set +e` guard as the other call sites - a non-zero list here

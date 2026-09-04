@@ -1,0 +1,132 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapi
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Api"
+const apiVersion = "2021-08-01"
+
+open class ApiResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiResolvable = (this) {
+        property = "name"
+    }
+    hidden path: ApiResolvable = (this) {
+        property = "path"
+    }
+}
+
+/// An API in an API Management instance — the URL suffix, the protocols it is
+/// exposed over, and the backend it fronts.
+///
+/// This resource models the EXPLICIT form of an API: a path plus protocols.
+/// ARM also accepts an import (a swagger, OpenAPI or WSDL document, by value or
+/// by link), and that form is deliberately not modelled: an import makes ARM
+/// synthesize an operation per path in the document, and those synthesized
+/// operations are indistinguishable from operations someone added by hand — so
+/// every one of them reads back as an unmanaged child, and declaring the same
+/// operations explicitly collides with them.
+///
+/// The request and response contracts of an operation live on
+/// `AZURE::ApiManagement::ApiOperation`, not here.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Api extends formae.Resource {
+
+    /// The API identifier, unique within the service. This is the ARM name, not
+    /// the display name, and it appears in the resource id.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Name shown in the portal and in the developer documentation.
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 300)
+
+    /// URL suffix under the gateway, e.g. `orders` serves
+    /// https://<service>.azure-api.net/orders. Unique within the service.
+    @azure.FieldHint { required = true }
+    path: String(length <= 400)
+
+    /// Protocols the API is reachable over. ARM requires at least one.
+    @azure.FieldHint { required = true }
+    protocols: Listing<"http"|"https"|"ws"|"wss">
+
+    /// Absolute URL of the backend the gateway forwards to. Optional: an API
+    /// whose every operation sets its own backend in policy needs none.
+    @azure.FieldHint { }
+    serviceUrl: String(length <= 2000)?
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Kind of API. Left to ARM by default, which infers `http` for a
+    /// path-and-protocols API like the ones this resource creates.
+    @azure.FieldHint { hasProviderDefault = true }
+    apiType: ("http"|"soap"|"websocket"|"graphql")?
+
+    /// Revision identifier. ARM assigns "1" to the first revision of an API.
+    @azure.FieldHint { hasProviderDefault = true }
+    apiRevision: String(length >= 1 && length <= 100)?
+
+    /// Version identifier within a version set. Only meaningful together with
+    /// `apiVersionSetId`.
+    @azure.FieldHint { }
+    apiVersion: String(length <= 100)?
+
+    /// ARM id of the `AZURE::ApiManagement::ApiVersionSet` this API is a
+    /// version of. The version set must already exist.
+    @azure.FieldHint { }
+    apiVersionSetId: (String|formae.Resolvable)?
+
+    /// Whether this revision is the one the gateway currently serves. ARM makes
+    /// the first revision current.
+    @azure.FieldHint { hasProviderDefault = true }
+    isCurrent: Boolean?
+
+    /// Whether a subscription key is needed to call the API. ARM defaults it to
+    /// true.
+    @azure.FieldHint { hasProviderDefault = true }
+    subscriptionRequired: Boolean?
+
+    /// Header the subscription key is read from. Flattened out of ARM's nested
+    /// `subscriptionKeyParameterNames` block: ARM fills both names in with its
+    /// own defaults, and a service-populated field inside a nested class reads
+    /// back as drift rather than as a provider default.
+    @azure.FieldHint { hasProviderDefault = true }
+    subscriptionKeyHeaderName: String?
+
+    /// Query-string parameter the subscription key is read from.
+    @azure.FieldHint { hasProviderDefault = true }
+    subscriptionKeyQueryName: String?
+
+    hidden parent = this
+
+    hidden res: ApiResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

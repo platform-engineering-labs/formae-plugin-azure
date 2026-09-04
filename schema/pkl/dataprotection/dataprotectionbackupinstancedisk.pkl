@@ -1,0 +1,110 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dataprotection.dataprotectionbackupinstancedisk
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataProtection::BackupInstanceDisk"
+const apiVersion = "2024-04-01"
+
+open class BackupInstanceDiskResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupInstanceDiskResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupInstanceDiskResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Puts one managed disk under a Backup vault policy
+/// (`Microsoft.DataProtection/backupVaults/backupInstances`, datasource
+/// `Microsoft.Compute/disks`).
+///
+/// PREREQUISITES ARM ENFORCES, AND WHICH THIS PLUGIN CANNOT YET SATISFY:
+/// the vault must carry a managed identity, and that identity must hold
+/// `Disk Backup Reader` on the disk plus `Disk Snapshot Contributor` on the
+/// snapshot resource group. Role propagation is eventually consistent, so ARM
+/// answers `UserErrorMissingRequiredPermissions` until it settles.
+/// `AZURE::DataProtection::BackupVault` does not model an `identity` block, so a
+/// vault created through formae has no principal to grant those roles to, and a
+/// create will fail. The type is modelled so an instance configured out-of-band
+/// can be discovered, read and extracted; declaring a new one needs vault identity
+/// support first.
+///
+/// Free — the instance is a record. The incremental snapshots it writes are billed
+/// against `snapshotResourceGroupId`, not against the vault.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataProtection::BackupVault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BackupInstanceDisk extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 150 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9\-_]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Backup vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String(length >= 2 && length <= 50)|formae.Resolvable
+
+    /// ARM ID of the managed disk to protect. ARM also wants the disk's own name
+    /// and type alongside it; both are derived from this ID rather than asked for,
+    /// because ARM rejects the pair when they disagree.
+    @azure.FieldHint { required = true; createOnly = true }
+    dataSourceId: String|formae.Resolvable
+
+    /// Region of the disk. Must match it — ARM does not look it up.
+    @azure.FieldHint { required = true; createOnly = true }
+    dataSourceLocation: azure.Location
+
+    /// ARM ID of an `AZURE::DataProtection::BackupPolicyDisk` in the same vault.
+    /// Changing it re-points the instance at another policy in place.
+    @azure.FieldHint { required = true }
+    policyId: String|formae.Resolvable
+
+    /// Display name in the portal. ARM derives one from the datasource when it is
+    /// omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    friendlyName: String?
+
+    /// ARM ID of the resource group the incremental snapshots are written into.
+    /// The vault's identity needs `Disk Snapshot Contributor` on it. ARM carries
+    /// this as an operational-tier data-store parameter, not a top-level field.
+    @azure.FieldHint { }
+    snapshotResourceGroupId: (String|formae.Resolvable)?
+
+    /// ARM ID of a user-assigned identity already attached to the vault. Unset
+    /// means the vault's system-assigned identity, which is ARM's own default.
+    @azure.FieldHint { }
+    userAssignedIdentityArmUrl: (String|formae.Resolvable)?
+
+    /// Service-reported protection state, e.g. `ProtectionConfigured`. Read-only:
+    /// it reflects whether the backup pipeline is healthy, not anything declared.
+    @azure.FieldHint { hasProviderDefault = true }
+    currentProtectionState: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: BackupInstanceDiskResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

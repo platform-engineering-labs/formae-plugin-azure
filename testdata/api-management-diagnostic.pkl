@@ -1,0 +1,128 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/component.pkl" as aicomponent
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementlogger.pkl" as apimlogger
+import "@azure/apimanagement/apimanagementdiagnostic.pkl" as apimdiag
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-diag-test-rg"
+  name = "formae-plugin-sdk-test-apimdiag-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Workspace-based components are the only kind Azure still creates, so the
+// workspace is a hard dependency rather than an option.
+local law = new workspace.Workspace {
+  label = "apim-diag-test-law"
+  name = "fpsdt-apimdiag-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+}
+
+local telemetry = new aicomponent.Component {
+  label = "apim-diag-test-ai"
+  name = "fpsdt-apimdiag-ai-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  workspaceResourceId = law.res.id
+  applicationType = "web"
+  kind = "web"
+  ingestionMode = "LogAnalytics"
+  retentionInDays = 30
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-diag-test-service"
+  name = "fpsdt-apimdiag-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// See api-management-logger.pkl for why this is a placeholder rather than the
+// component's real instrumentation key: AZURE::Insights::Component deliberately
+// does not surface it, because this plugin has no sensitive-output mechanism.
+// APIM stores whatever it is given without validating it.
+local instrumentationKeyPlaceholder = "00000000-1111-2222-3333-444444444444"
+
+// The diagnostic writes to this. A logger on its own emits nothing, and a
+// diagnostic cannot be created before the logger it names exists — hence the
+// two, not one.
+local sink = new apimlogger.Logger {
+  label = "apim-diag-test-logger"
+  name = "conformance-appinsights"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  loggerType = "applicationInsights"
+  resourceId = telemetry.res.id
+  credentials {
+    ["instrumentationKey"] = instrumentationKeyPlaceholder
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  law
+  telemetry
+  svc
+  sink
+
+  // `applicationinsights` is not a name chosen here: a diagnostic is a
+  // singleton per destination kind, and ARM recognises exactly two ids. It has
+  // to match the kind of logger `loggerId` names, and `azuremonitor` is
+  // unavailable on Consumption anyway — the tier comparison marks "Azure
+  // Monitor and Log Analytics request logs" unavailable there, while
+  // "Application Insights request logs" is available.
+  //
+  // Every field below is one the service would otherwise default; they are
+  // declared so the conformance verify phase compares real values rather than
+  // an empty body. What is NOT declared is ARM's `dataMasking` block, which the
+  // service populates with its own entries and which the schema deliberately
+  // does not model.
+  new apimdiag.Diagnostic {
+    label = "plugin-sdk-test-apim-diagnostic"
+    name = "applicationinsights"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    loggerId = sink.res.id
+    alwaysLog = "allErrors"
+    httpCorrelationProtocol = "W3C"
+    logClientIp = true
+    operationNameFormat = "Name"
+    verbosity = "information"
+    sampling {
+      samplingType = "fixed"
+      percentage = 100
+    }
+    frontend {
+      request {
+        headers = new Listing { "x-formae-conformance" }
+        bodyBytes = 512
+      }
+    }
+  }
+}

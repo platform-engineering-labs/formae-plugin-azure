@@ -1,0 +1,122 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsoutputeventhub
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::OutputEventHub"
+const apiVersion = "2020-03-01"
+
+/// How the written events are encoded. `Avro` takes no further settings.
+typealias EventHubOutputSerializationType = "Json"|"Csv"|"Avro"
+
+/// How Stream Analytics writes each event.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class EventHubOutputSerialization extends formae.SubResource {
+    @azure.FieldHint {  }
+    type: EventHubOutputSerializationType
+
+    /// The only value ARM accepts is "UTF8". Required for Json and Csv.
+    @azure.FieldHint { }
+    encoding: ("UTF8")?
+
+    /// Csv only. Common values: "," (comma), "\t" (tab), "|" (pipe), " " (space).
+    @azure.FieldHint { }
+    fieldDelimiter: String?
+
+    /// Json only. `LineSeparated` writes one JSON object per line;
+    /// `Array` wraps the batch in a JSON array.
+    @azure.FieldHint { }
+    format: ("Array"|"LineSeparated")?
+}
+
+open class OutputEventHubResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OutputEventHubResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OutputEventHubResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Event Hubs output on a Stream Analytics job.
+///
+/// `name` is the alias the job's query writes to — `INTO [<name>]`.
+///
+/// The credential is write-only. ARM accepts `sharedAccessPolicyKey` on every PUT
+/// and PATCH but strips it from every response, so its value is not part of
+/// resource state and drift in it cannot be detected. Nothing validates it at
+/// create time either: Stream Analytics checks a datasource only when the job
+/// starts, or through the separate Test operation.
+///
+/// This is ARM's `Microsoft.ServiceBus/EventHub` datasource — the shared-access-key
+/// form. Its managed-identity sibling (`Microsoft.EventHub/EventHub`, "EventHubV2")
+/// is a different datasource and would be a different resource type.
+///
+/// `serviceBusNamespace` is the Event Hubs namespace name, not a Service Bus
+/// namespace: Event Hubs inherited the field name from Service Bus.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class OutputEventHub extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    /// The Event Hubs namespace name.
+    @azure.FieldHint {  }
+    serviceBusNamespace: (String|formae.Resolvable)
+
+    @azure.FieldHint {  }
+    eventHubName: (String|formae.Resolvable)
+
+    /// A shared access policy on the namespace or the hub. It needs Send. Every
+    /// Event Hubs namespace ships with `RootManageSharedAccessKey`.
+    @azure.FieldHint {  }
+    sharedAccessPolicyName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. The primary or secondary key of that
+    /// shared access policy.
+    @azure.FieldHint { ; writeOnly = true}
+    sharedAccessPolicyKey: (formae.Value|String)?
+
+    /// Column from the query's SELECT list that decides which hub partition each
+    /// event lands on. Omitting it round-robins.
+    @azure.FieldHint { }
+    partitionKey: String?
+
+    /// Columns from the query's SELECT list to attach to each event as custom
+    /// user properties instead of writing them into the body.
+    @azure.FieldHint { }
+    propertyColumns: Listing<String>?
+
+    @azure.FieldHint { required = true }
+    serialization: EventHubOutputSerialization
+
+    hidden parent = this
+
+    hidden res: OutputEventHubResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

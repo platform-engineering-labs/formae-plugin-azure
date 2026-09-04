@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagernetworkgroup.pkl" as networkgroup
+import "@azure/network/networkmanagerconnectivityconfiguration.pkl" as connectivity
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmcc-test-rg"
+  name = "formae-plugin-sdk-test-nmcc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+// Connectivity is the scope access a connectivity configuration needs; ARM
+// rejects the configuration if the manager does not list it.
+local manager = new netmanager.NetworkManager {
+  label = "nmcc-test-manager"
+  name = "fpsdt-nmcc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "Connectivity"
+  }
+  networkManagerScopes = managerScopes
+}
+
+local group = new networkgroup.NetworkManagerNetworkGroup {
+  label = "nmcc-test-group"
+  name = "conformance-group"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+  group
+
+  // Update: redescribe and add deleteExistingPeering. The topology is left
+  // alone — switching Mesh to HubAndSpoke would also require a hub, which is a
+  // different configuration rather than an edit of this one.
+  //
+  // Still UNCOMMITTED, for the same reason as the create fixture.
+  new connectivity.NetworkManagerConnectivityConfiguration {
+    label = "plugin-sdk-test-network-manager-connectivity-configuration"
+    name = "conformance-connectivity"
+    resourceGroupName = rg.res.name
+    networkManagerName = manager.res.name
+    connectivityTopology = "Mesh"
+    appliesToGroups {
+      new connectivity.ConnectivityGroupItem {
+        networkGroupId = group.res.id
+        groupConnectivity = "None"
+        isGlobal = "False"
+      }
+    }
+    deleteExistingPeering = "False"
+    description = "Conformance connectivity configuration, redescribed"
+  }
+}

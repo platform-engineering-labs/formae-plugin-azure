@@ -1,0 +1,90 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/automation/automationaccount.pkl"
+import "@azure/automation/automationrunbook.pkl"
+import "@azure/automation/automationschedule.pkl"
+import "@azure/automation/automationjobschedule.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aajs-test-rg"
+  name = "formae-plugin-sdk-test-aajs-rg-\(vars.testRunID)"
+  location = "westus2"
+}
+
+local acct = new automationaccount.AutomationAccount {
+  label = "aajs-test-account"
+  name = "fpsdt-aajs-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+// A job schedule can only attach a PUBLISHED runbook, so unlike
+// automation-runbook.pkl this one carries a publishContentLink. ARM fetches the
+// URI server-side at create time; this is the canonical Azure quickstart tutorial
+// runbook, and it declares no parameters, which is why the job schedule below
+// passes none.
+local runbook = new automationrunbook.AutomationRunbook {
+  label = "aajs-test-runbook"
+  name = "fpsdt-jsrunbook-\(vars.testRunID)"
+  location = "westus2"
+  resourceGroupName = rg.res.name
+  automationAccountName = acct.res.name
+  runbookType = "PowerShell"
+  logVerbose = false
+  logProgress = false
+  publishContentLinkUri = "https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/quickstarts/microsoft.automation/101-automation/scripts/AzureAutomationTutorial.ps1"
+}
+
+local schedule = new automationschedule.AutomationSchedule {
+  label = "aajs-test-schedule"
+  name = "fpsdt-jsschedule-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  automationAccountName = acct.res.name
+  frequency = "Hour"
+  interval = 1
+  // Far-future whole minute: ARM rejects a start that is not at least five
+  // minutes out and truncates to the minute. See automation-schedule.pkl.
+  startTime = "2030-01-01T00:00:00Z"
+  timeZone = "Etc/UTC"
+  isEnabled = true
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  acct
+  runbook
+  schedule
+
+  // The name is the jobScheduleId GUID, not a friendly name: ARM uses it as both
+  // the URL segment and the resource name. A fixed GUID is safe because the
+  // parent automation account is created fresh for every run.
+  //
+  // Immutable: ARM has no update verb for a job schedule, so every field is
+  // createOnly and the -replace variant is what exercises a change.
+  new automationjobschedule.AutomationJobSchedule {
+    label = "plugin-sdk-test-automation-job-schedule"
+    // Replace: a different jobScheduleId GUID. Every field on this type is
+    // createOnly, so any change is a delete-and-recreate.
+    name = "8b1d4f60-2c73-4e59-91af-6a5c0d3e7b24"
+    resourceGroupName = rg.res.name
+    automationAccountName = acct.res.name
+    runbookName = runbook.res.name
+    scheduleName = schedule.res.name
+  }
+}

@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementproduct
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Product"
+const apiVersion = "2021-08-01"
+
+/// Whether the product is visible in the developer portal.
+///
+/// `notPublished` keeps it visible only to administrators, which is ARM's
+/// default for a new product.
+typealias ProductState = "published"|"notPublished"
+
+open class ProductResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ProductResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ProductResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An API Management product — the unit a consumer subscribes to.
+///
+/// A product bundles APIs (`AZURE::ApiManagement::ProductApi`), grants visibility
+/// to groups (`AZURE::ApiManagement::ProductGroup`) and can carry its own policy
+/// (`AZURE::ApiManagement::ProductPolicy`). Those links are separate resources so
+/// that adding one API to a product is not a rewrite of the product itself.
+///
+/// `approvalRequired` and `subscriptionsLimit` are only meaningful on a product
+/// that requires a subscription: ARM rejects either one when
+/// `subscriptionRequired` is false, so leave both unset for an open product.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Product extends formae.Resource {
+
+    /// Product identifier, unique within the service. This is the ARM name, not
+    /// the display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Name shown in the portal.
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 300)
+
+    /// Product description. May contain HTML.
+    @azure.FieldHint { }
+    description: String?
+
+    /// Terms of use a developer has to accept before subscribing.
+    @azure.FieldHint { }
+    terms: String?
+
+    /// Whether calling an API in this product needs a subscription key. ARM
+    /// assumes true when the field is omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    subscriptionRequired: Boolean?
+
+    /// Whether an administrator has to approve each new subscription. Only
+    /// valid together with `subscriptionRequired = true`.
+    @azure.FieldHint { }
+    approvalRequired: Boolean?
+
+    /// How many simultaneous subscriptions one developer may hold. Unset means
+    /// unlimited. Only valid together with `subscriptionRequired = true`.
+    @azure.FieldHint { }
+    subscriptionsLimit: Int?
+
+    /// Portal visibility. ARM defaults a new product to `notPublished`.
+    @azure.FieldHint { hasProviderDefault = true }
+    state: ProductState?
+
+    hidden parent = this
+
+    hidden res: ProductResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

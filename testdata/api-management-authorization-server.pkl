@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementauthorizationserver.pkl" as apimas
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-as-test-rg"
+  name = "formae-plugin-sdk-test-apimas-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-as-test-service"
+  name = "fpsdt-apimas-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // The implicit flow is used deliberately: it is the only grant type that
+  // needs neither a token endpoint nor a client secret, so this fixture
+  // carries no credential at all. Supported on the Consumption tier.
+  //
+  // The three method lists (authorizationMethods, bearerTokenSendingMethods,
+  // clientAuthenticationMethod) are left out so ARM applies its own defaults.
+  new apimas.AuthorizationServer {
+    label = "plugin-sdk-test-apim-authorization-server"
+    name = "conformance-oauth"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance OAuth server"
+    authorizationEndpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    clientRegistrationEndpoint = "https://docs.platform.engineering/register"
+    clientId = "conformance-client"
+    grantTypes = new Listing { "implicit" }
+
+    // Set explicitly, not left to ARM's documented GET default.
+    //
+    // ARM rejected the create with
+    //   ValidationError target=authorizationMethods "Invalid value"
+    // even though the field was omitted from the request (the handler sends nil
+    // for an empty list, and the SDK omits nil). So the documented default does
+    // not apply to an implicit-grant server, and the value has to be stated.
+    authorizationMethods = new Listing { "GET" }
+    defaultScope = "openid"
+    description = "OAuth 2.0 server registration for the developer portal"
+  }
+}

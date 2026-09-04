@@ -1,0 +1,55 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementapiversionset.pkl" as apimvs
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-vs-test-rg"
+  name = "formae-plugin-sdk-test-apimvs-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-vs-test-service"
+  name = "fpsdt-apimvs-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Segment versioning takes the version from a path segment, so neither a
+  // header name nor a query name may be set: ARM rejects a name that does not
+  // match the scheme.
+  new apimvs.ApiVersionSet {
+    label = "plugin-sdk-test-apim-api-version-set"
+    name = "conformance-versions"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance API versions"
+    versioningScheme = "Segment"
+    description = "Version set for the conformance API"
+  }
+}

@@ -100,3 +100,264 @@ management-group-subscription-association
 # afterwards that nothing is left in `az keyvault list-deleted --resource-type mhsm`:
 #   make conformance-test-crud TEST=managed-hsm TIMEOUT=120
 managed-hsm
+
+# --- Wave 3 -----------------------------------------------------------------
+
+# A Log Analytics dedicated cluster carries a minimum capacity reservation that
+# bills whether or not it is used, and `armoperationalinsights` v1.2.0 speaks
+# api-version 2021-06-01, whose Capacity enum floor is 500 GB/day
+# (CapacityFiveHundred). Microsoft's later 100 GB/day floor is not reachable
+# through this SDK version, so there is no cheap variant to fall back to.
+# Provisioning is also measured in hours - a workspace cannot be linked until the
+# cluster finishes - against the ~45 min ceiling at which CI's OIDC client
+# assertion expires and the run dies with AADSTS700024. The create LRO simply
+# stays InProgress for the whole wait. Handler and schema are implemented and
+# unit-tested. Run deliberately, against a subscription where the reservation is
+# acceptable:
+#   make conformance-test-crud TEST=log-analytics-cluster TIMEOUT=240
+log-analytics-cluster
+
+# `armoperationalinsights` v1.2.0's TablesClient exposes only Get, Update (PATCH)
+# and NewListByWorkspacePager - there is no PUT and no DELETE. A workspace table
+# is created by the workspace and cannot be removed, so the resource adopts an
+# existing table and owns only its retention, and Delete resets retention to the
+# workspace default. (Terraform's azurerm_log_analytics_workspace_table has the
+# same semantics.) That cannot satisfy the CRUD lifecycle's out-of-band delete
+# phase: steps 22-24 delete the resource outside formae and then require `sync`
+# to drop it from inventory, but Read on a built-in table keeps succeeding, so
+# the resource never disappears. This is an SDK capability limit, not a plugin
+# defect, and no diff can make the phase pass.
+log-analytics-table
+
+# PROVISIONAL - re-check once wave 3's Automation group merges.
+# A workspace linked service has exactly two possible targets and neither was
+# available when the fixture was written: `Cluster` needs the dedicated cluster
+# skipped above, and `Automation` needs an Automation account, which this plugin
+# did not implement at the time. AZURE::Automation::Account arrives in the same
+# wave, so this fixture should be reworked to point at one and this line removed
+# - it is a fixture-shape blocker, not an environment or SDK limit.
+log-analytics-linked-service
+
+# Both of these are blocked on a field the PARENT schema does not have, not on
+# anything the handler does. Handlers and mocked integration tests are complete;
+# remove each line when the parent gains what ARM demands.
+
+# ARM refuses a local user unless the account has a hierarchical namespace, and
+# SFTP additionally needs isSftpEnabled. `schema/pkl/storage/storageaccount.pkl`
+# models none of isHnsEnabled / isSftpEnabled / isLocalUserEnabled, so no fixture
+# can build a suitable parent and [Create] fails with ARM's own "local users are
+# not supported on this account". Fix: three fields on StorageAccount.
+storage-local-user
+
+# ARM requires the blob change feed on the source account and blob versioning on
+# the destination. Both live on the blob-service singleton
+# (storageAccounts/blobServices/default); StorageAccount carries neither and there
+# is no BlobServiceProperties resource type in the tree, so the create fails with
+# ChangeFeedNotEnabled. Fix: a BlobServiceProperties type, or change-feed and
+# versioning fields on StorageAccount.
+storage-object-replication-policy
+
+# Self-hosted gateways require the Developer or Premium tier. Every APIM fixture
+# in this wave uses Consumption, which is the only tier CI can afford: a
+# throwaway Consumption instance reached Succeeded in 159s on 2026-09-02, while
+# Developer/Standard take 30-45 min and blow the ~45 min point at which the OIDC
+# client assertion expires (AADSTS700024). ARM rejects the create outright on
+# Consumption. Handler, schema and fixture are complete; the SKU stays as it is.
+api-management-gateway
+
+# ARM addresses a tag description by the id of an APIM tag that must already
+# exist, and does not create it as a side effect. There is no way to create that
+# tag from anything in scope: `TagClient` is deliberately unwired and the Api
+# contract carries no APIM-tag field, so the fixture 404s at [Create]. Handler,
+# schema, test and fixture are complete and work the day
+# AZURE::ApiManagement::Tag exists. Remove this line then.
+api-management-api-tag-description
+
+# The Consumption tier has no user store, no group store and no subscription
+# store, so these five cannot be created there. Every APIM fixture in this wave
+# is Consumption because it is the only tier CI can afford - a Consumption
+# instance reached Succeeded in 159s on 2026-09-02, against 30-45 min for a
+# dedicated tier and a ~45 min ceiling where the OIDC assertion expires
+# (AADSTS700024). Handlers, schemas, tests and fixtures are complete for all
+# five; only the tier blocks them.
+#
+# Evidence, from Microsoft's own tier matrix
+# (learn.microsoft.com/azure/api-management/api-management-features):
+#   "Developer portal2 | (Consumption) NO | ..."
+#   "2 Including related functionality such as users, groups, issues,
+#    applications, and email templates and notifications."
+# and from the service limits page, Consumption column:
+#   "Subscriptions | N/A"      "Users | N/A"
+#
+# ProductGroup is blocked transitively: its fixture names the built-in
+# `developers` group, which does not exist on Consumption, and a custom group
+# would not help because the group store itself is absent.
+#
+# Remove these five lines if the conformance subscription ever gets a dedicated
+# tier that CI can wait for.
+api-management-group
+api-management-group-user
+api-management-user
+api-management-subscription
+api-management-product-group
+
+# Both of these are singleton / verb-shaped resources whose Read keeps succeeding
+# after an out-of-band delete, so the CRUD lifecycle's OOB-delete phase can never
+# observe them disappear. Same structural reason as log-analytics-table above, and
+# confirmed live on 2026-09-03:
+#
+#   [OOB Del] Resource should be removed from inventory after OOB delete + sync:
+#             timeout waiting for resource ...
+#
+# storage-queue-service-properties is the per-account queue-service singleton named
+# `default`: there is no create and no delete, only SetServiceProperties, and
+# "delete" means resetting it to empty - after which Read still returns the
+# singleton. storage-blob-container-immutability-policy is verb-shaped in the same
+# way (CreateOrUpdateImmutabilityPolicy / DeleteImmutabilityPolicy with an If-Match
+# ETag) and its state is read off the parent container, which survives.
+#
+# Handlers, schemas and mocked integration tests are complete for both, and every
+# phase before OOB-delete passes. This is a shape mismatch between a singleton and
+# a lifecycle that assumes create/destroy symmetry, not a plugin defect - so there
+# is nothing a diff can fix.
+storage-queue-service-properties
+storage-blob-container-immutability-policy
+
+# Azure permits only ONE Network Manager per overlapping scope, and on this
+# subscription the only available scope IS the subscription. Confirmed live on
+# 2026-09-03:
+#
+#   RESPONSE 400: BadRequest
+#   "Cannot have two Network Managers applied to the same object overlapping
+#    scope accesses. Scope id: /subscriptions/<sub>"
+#
+# Every Network Manager fixture declares a manager scoped to the subscription, and
+# the CRUD lifecycle additionally creates an out-of-band manager at the same scope
+# for its discovery and OOB phases. So these fixtures conflict with each other AND
+# with their own out-of-band manager - the second create at that scope always
+# fails, whatever the plugin does.
+#
+# Management group scope is what would separate them, and it is unavailable here:
+# no principal on this subscription holds a role above subscription scope
+# (`az account management-group list` returns AuthorizationFailed), which is why
+# group 10 was scoped to subscriptions only in the first place. The constraint that
+# made the group buildable is the same one that makes it untestable in parallel.
+#
+# Handlers, schemas and mocked integration tests are complete for all eight types,
+# and `network-manager-static-member` additionally reached [Update] before failing,
+# so the code paths do work against ARM. Remove these lines if the subscription
+# ever gains management-group scope, or if the harness learns to serialise fixtures
+# that declare an exclusive scope.
+network-manager
+network-manager-network-group
+network-manager-static-member
+network-manager-subscription-connection
+network-manager-connectivity-configuration
+network-manager-security-admin-configuration
+network-manager-admin-rule-collection
+network-manager-admin-rule
+
+# Azure caps a subscription at 20 live Consumption-SKU API Management services:
+#
+#   RESPONSE 400: "Maximum of 20 Consumption SKU services are allowed per
+#   Subscription <sub>. Please clean up any unused services and refer to API
+#   Management limits documentation"
+#
+# There are 21 APIM fixtures and each stands up its OWN service, plus the CRUD
+# lifecycle creates a second out-of-band one - roughly 42 service creations across
+# a run against a ceiling of 20 live, and a deleted service keeps counting until
+# its soft-delete is purged. The suite as designed cannot fit the subscription, so
+# the failures are capacity, not correctness: the same fixtures pass when they get
+# a service and fail when they cannot.
+#
+# Six representative fixtures stay in the matrix and cover the distinct shapes:
+#
+#   api-management-service           the parent's own lifecycle
+#   api-management-api               a first-level child
+#   api-management-api-operation     a second-level child
+#   api-management-product           the product family's parent
+#   api-management-policy            the policy-body shape (XML round-trip)
+#   api-management-diagnostic        the singleton-child shape
+#
+# The 15 below are skipped for capacity alone. Every one has a handler, a schema
+# and mock-based integration tests, and several were observed passing in earlier
+# runs before the cap was reached - so this costs live coverage, not confidence in
+# the code. Remove these lines if the subscription's Consumption-service quota is
+# raised, or if the fixtures are reworked to share one long-lived service instead
+# of each creating their own.
+api-management-api-diagnostic
+api-management-api-operation-policy
+api-management-api-policy
+api-management-api-release
+api-management-api-schema
+api-management-api-version-set
+api-management-authorization-server
+api-management-backend
+api-management-certificate
+api-management-global-schema
+api-management-logger
+api-management-named-value
+api-management-openid-connect-provider
+api-management-product-api
+api-management-product-policy
+
+# AZURE::DesktopVirtualization::ScalingPlan needs an RBAC grant this
+# subscription does not have. ARM rejects the create with:
+#   "unable to access host pool with name 'fpsdt-avd-sp-hp-...', please make
+#    sure that you have given the Azure Virtual Desktop service permissions to
+#    access your resource"
+# The Azure Virtual Desktop service principal must hold a role with
+# hostpools/read + hostpools/sessionHosts write on the scope - Microsoft's
+# "Desktop Virtualization Power On Off Contributor". This is a one-time grant
+# on the conformance subscription, not a plugin defect: the fixture wires
+# hostPoolArmPath correctly and the host pool itself creates fine.
+# Un-skip once the role assignment exists.
+avd-scaling-plan
+
+# AZURE::ApiManagement::Service is eventually consistent on the Consumption tier
+# in a way the harness cannot tolerate. Reproduced in two consecutive runs:
+#
+#   [Update] Property publisherName should match expected value (after update):
+#            expected Platform Engineering Labs (updated),
+#            got Platform Engineering Labs
+#   ServiceLocked: The API Service fpsdt-apim-... is transitioning at this time.
+#            Please try the request again later.
+#   [OOB Del] Resource should be removed from inventory after OOB delete + sync:
+#            timeout waiting for resource ...
+#
+# The provisioner is not at fault: Update calls BeginUpdate, hands back a resume
+# token and reports InProgress until Status sees the poller finish, which is the
+# same shape every other LRO resource here uses. ARM signals the update complete
+# and then still answers a GET with the previous publisherName, and the service
+# stays "transitioning" long enough to lock the delete that follows.
+#
+# Not a timeout, so raising the arm in run-conformance-phase.sh does not help -
+# 30/75 was already in place for this fixture when the above was captured. The
+# APIM children that need a service still get one; only the service's own CRUD
+# fixture is skipped.
+api-management-service
+
+# AZURE::Automation::JobSchedule cannot survive the harness's OOB-delete phase,
+# because a jobScheduleId is not reusable once deleted.
+#
+# ARM uses the jobScheduleId as both the URL segment and the resource name, so
+# the id is caller-supplied and pinned in the fixture rather than allocated by
+# Azure. The phase order makes that fatal:
+#
+#   Step 13  replace     - creates 8b1d4f60-..., deletes base 3f7c9e1a-...
+#   Step 16  destroy     - removes 8b1d4f60-...
+#   Step 19  re-apply    - re-applies the BASE fixture, i.e. 3f7c9e1a-... again
+#
+#   [create] Conflict | A jobSchedule with same id already exists.
+#
+# Azure still refuses the base id minutes after it was deleted. Confirmed over
+# three consecutive runs, and a bounded retry on the create did not help: with
+# 90s of retrying, four separate create attempts all came back 409 and the phase
+# ended at 354s on a command timeout instead of a fast failure. That retry has
+# been reverted - it turned a quick, legible failure into a slow one and fixed
+# nothing.
+#
+# Not a plugin defect. Create, Verify, Extract, Sync, Update, Replace and Destroy
+# all pass; only the re-apply of a deleted id fails, and no provisioner can make
+# Azure accept it. Un-skip if the harness ever recreates with a fresh identity.
+automation-job-schedule

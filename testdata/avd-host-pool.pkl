@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/desktopvirtualization/avdhostpool.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "avd-hp-test-rg"
+  name = "formae-plugin-sdk-test-avd-hp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // A host pool with zero session hosts is a valid, free ARM record: it is pure
+  // configuration and nothing bills until a VM registers into it. No session
+  // host is created here.
+  //
+  // Pooled + BreadthFirst + maxSessionLimit is the cheapest valid combination.
+  // Personal and BYODesktop would additionally require
+  // personalDesktopAssignmentType.
+  new avdhostpool.HostPool {
+    label = "plugin-sdk-test-avd-host-pool"
+    name = "fpsdt-avd-hp-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    hostPoolType = "Pooled"
+    loadBalancerType = "BreadthFirst"
+    preferredAppGroupType = "RailApplications"
+    maxSessionLimit = 10
+    startVmOnConnect = false
+    validationEnvironment = false
+    description = "Conformance host pool"
+    friendlyName = "fpsdt host pool"
+    // registrationInfo is write-only: the token is a live joining credential ARM
+    // only hands out from RetrieveRegistrationToken, and the expiry is rewritten
+    // by the service. "None" leaves the current token alone, which is what a
+    // pool with no session hosts wants.
+    registrationInfo = new avdhostpool.RegistrationInfo {
+      registrationTokenOperation = "None"
+    }
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

@@ -222,3 +222,43 @@ func (m *mockProvisioner) List(ctx context.Context, request *resource.ListReques
 	args := m.Called(ctx, request)
 	return args.Get(0).(*resource.ListResult), args.Error(1)
 }
+
+// The wrapper used to set ErrorCode and discard the error text, so an ARM refusal
+// reached core as a bare code and a failed operation had nothing to say why. Every
+// resource routes its Go-error path through these helpers, so the message has to
+// survive here or it is lost for all of them.
+func TestFailureHelpersKeepTheReason(t *testing.T) {
+	err := &azcore.ResponseError{ErrorCode: "MaxConsumptionServicesPerSubscriptionExceeded", StatusCode: 400}
+
+	cr, cerr := createFailure(err)
+	if cerr != nil {
+		t.Fatalf("createFailure returned an error: %v", cerr)
+	}
+	if cr.ProgressResult.StatusMessage == "" {
+		t.Error("createFailure dropped the reason: StatusMessage is empty")
+	}
+
+	ur, uerr := updateFailure("/subscriptions/s/rg/r", err)
+	if uerr != nil {
+		t.Fatalf("updateFailure returned an error: %v", uerr)
+	}
+	if ur.ProgressResult.StatusMessage == "" {
+		t.Error("updateFailure dropped the reason: StatusMessage is empty")
+	}
+
+	dr, derr := deleteFailure("/subscriptions/s/rg/r", err)
+	if derr != nil {
+		t.Fatalf("deleteFailure returned an error: %v", derr)
+	}
+	if dr.ProgressResult.StatusMessage == "" {
+		t.Error("deleteFailure dropped the reason: StatusMessage is empty")
+	}
+
+	sr, serr := statusFailure("req-1", err)
+	if serr != nil {
+		t.Fatalf("statusFailure returned an error: %v", serr)
+	}
+	if sr.ProgressResult.StatusMessage == "" {
+		t.Error("statusFailure dropped the reason: StatusMessage is empty")
+	}
+}
