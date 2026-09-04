@@ -1,10 +1,10 @@
-// © 2026 Platform Engineering Labs Inc.
+// © 2025 Platform Engineering Labs Inc.
 //
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 //go:build unit
 
-package main
+package registry
 
 import (
 	"io/fs"
@@ -41,7 +41,12 @@ var fieldHintRE = regexp.MustCompile(`(?s)@azure\.FieldHint\s*\{(.*?)\}\s*(?:@fo
 func TestNoFieldIsBothWriteOnlyAndRequired(t *testing.T) {
 	var offenders []string
 
-	err := filepath.WalkDir("schema/pkl", func(path string, d fs.DirEntry, err error) error {
+	root, err := filepath.Abs(filepath.Join("..", "..", "schema", "pkl"))
+	if err != nil {
+		t.Fatalf("resolve schema/pkl path: %v", err)
+	}
+
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".pkl") {
 			return err
 		}
@@ -49,10 +54,14 @@ func TestNoFieldIsBothWriteOnlyAndRequired(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			rel = path
+		}
 		for _, m := range fieldHintRE.FindAllStringSubmatch(string(src), -1) {
 			body, field := m[1], m[2]
 			if strings.Contains(body, "writeOnly = true") && strings.Contains(body, "required = true") {
-				offenders = append(offenders, path+": "+field)
+				offenders = append(offenders, filepath.Join("schema", "pkl", rel)+": "+field)
 			}
 		}
 		return nil
