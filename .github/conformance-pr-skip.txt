@@ -632,3 +632,19 @@ cognitive-services-account
 # via test-integration (mocked); run live locally against a real principal:
 #   make conformance-test-crud TEST=sql-ad-administrator
 sql-ad-administrator
+
+# AZURE::ContainerService::ManagedCluster is the AKS cluster itself, and this
+# fixture is a replace, so one run provisions three clusters: the original, the
+# replacement under a new name, and a third for the OOB-delete phase. At ~6-8
+# min per provision plus deletes that is 35-50 min of wall clock on billed
+# compute, for the same reason flux-configuration, maintenance-configuration and
+# trusted-access-role-binding are all excluded from the matrix.
+#
+# It has a 30/90 timeout arm in scripts/ci/run-conformance-phase.sh and a
+# commented entry in conformance-matrix.txt, so it can be run deliberately:
+#   make conformance-test-crud TEST=managed-cluster
+#
+# virtual-machine and network-interface, added in the same commit, are NOT
+# skipped: a detached NIC is unbilled and a Standard_D2s_v4 costs cents, so a PR
+# that touches them can prove them.
+managed-cluster

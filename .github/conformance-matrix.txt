@@ -396,6 +396,12 @@ sql-server-dns-alias
 # flux-configuration. Nightly excludes it for the same reason. Run locally:
 #   make conformance-test-crud TEST=trusted-access-role-binding
 # - trusted-access-role-binding
+# managed-cluster excluded: the cluster is the resource under test and the
+# fixture is a replace, so a single run provisions three clusters (~35-50 min on
+# billed compute). Same class as flux-configuration above. It has a 30/90 arm in
+# run-conformance-phase.sh; run it deliberately with:
+#   make conformance-test-crud TEST=managed-cluster
+# - managed-cluster
 virtual-machine-extension
 grafana
 grafana-managed-private-endpoint
