@@ -9,14 +9,54 @@ Formae plugin for managing Azure resources.
 
 | Resource Type | Description |
 |---------------|-------------|
+| `AZURE::AlertsManagement::AlertProcessingRuleActionGroup` | An alert processing rule that ADDS action groups to every alert matching its scopes |
+| `AZURE::AlertsManagement::AlertProcessingRuleSuppression` | An alert processing rule that SUPPRESSES notifications |
+| `AZURE::AlertsManagement::PrometheusRuleGroup` | A managed Prometheus rule group |
+| `AZURE::ApiManagement::Api` | An API in an API Management instance |
+| `AZURE::ApiManagement::ApiDiagnostic` | The per-API diagnostic |
+| `AZURE::ApiManagement::ApiOperation` | A single operation on an API — one method and one URL template under the API's path |
+| `AZURE::ApiManagement::ApiOperationPolicy` | The policy attached to one operation |
+| `AZURE::ApiManagement::ApiPolicy` | The policy attached to one API |
+| `AZURE::ApiManagement::ApiRelease` | A release of an API revision |
+| `AZURE::ApiManagement::ApiSchema` | A schema attached to one API |
+| `AZURE::ApiManagement::ApiTagDescription` | The description shown for one tag in the context of one API |
+| `AZURE::ApiManagement::ApiVersionSet` | A version set — the grouping several versions of the same API belong to |
+| `AZURE::ApiManagement::AuthorizationServer` | An OAuth 2.0 authorization server registration |
+| `AZURE::ApiManagement::Backend` | A backend — a named destination an API or a policy can forward to |
+| `AZURE::ApiManagement::Certificate` | A client certificate held by the service, for mutual TLS to a backend |
+| `AZURE::ApiManagement::Diagnostic` | The service-wide diagnostic |
+| `AZURE::ApiManagement::Gateway` | A self-hosted gateway registration |
+| `AZURE::ApiManagement::GlobalSchema` | A service-wide schema |
+| `AZURE::ApiManagement::Group` | A developer group — the unit product visibility is granted to |
+| `AZURE::ApiManagement::GroupUser` | The membership of one user in one group |
+| `AZURE::ApiManagement::Logger` | A logger — the event sink a diagnostic writes to |
+| `AZURE::ApiManagement::NamedValue` | A named value — the service's own key/value store |
+| `AZURE::ApiManagement::OpenIdConnectProvider` | An OpenID Connect provider registration |
+| `AZURE::ApiManagement::Policy` | The service-wide policy of an API Management instance |
+| `AZURE::ApiManagement::Product` | An API Management product — the unit a consumer subscribes to |
+| `AZURE::ApiManagement::ProductApi` | The membership of one API in one product |
+| `AZURE::ApiManagement::ProductGroup` | The visibility of one product to one group |
+| `AZURE::ApiManagement::ProductPolicy` | The policy attached to one product |
+| `AZURE::ApiManagement::Service` | An Azure API Management service |
+| `AZURE::ApiManagement::Subscription` | A subscription — the pair of keys a caller sends to reach an API |
+| `AZURE::ApiManagement::User` | A developer account in the API Management user store |
 | `AZURE::App::ContainerApp` | Container Apps |
 | `AZURE::App::ManagedEnvironment` | Container Apps managed environments |
 | `AZURE::AppConfiguration::ConfigurationStore` | An Azure App Configuration store |
+| `AZURE::Authorization::ManagementLock` | Blocks deletion — or all writes — of everything at and under a scope |
 | `AZURE::Authorization::PolicyAssignment` | Policy assignments (applies a definition or initiative over a scope) |
 | `AZURE::Authorization::PolicyDefinition` | Custom Azure Policy definitions (rule plus effect) |
+| `AZURE::Authorization::PolicyExemption` | Carves a scope out of a policy assignment |
 | `AZURE::Authorization::PolicySetDefinition` | Policy initiatives (several definitions assigned as one unit) |
 | `AZURE::Authorization::RoleAssignment` | Role assignments |
 | `AZURE::Authorization::RoleDefinition` | Custom RBAC roles (granted operations and assignable scopes) |
+| `AZURE::Automation::Account` | An Azure Automation account |
+| `AZURE::Automation::Credential` | A credential asset in an Azure Automation account |
+| `AZURE::Automation::JobSchedule` | The link between a runbook and a schedule |
+| `AZURE::Automation::Module` | A PowerShell module imported into an Azure Automation account |
+| `AZURE::Automation::Runbook` | A runbook in an Azure Automation account |
+| `AZURE::Automation::Schedule` | A schedule in an Azure Automation account |
+| `AZURE::Automation::Variable` | A variable asset in an Azure Automation account |
 | `AZURE::Batch::Account` | An Azure Batch account |
 | `AZURE::Cache::Redis` | An Azure Cache for Redis instance |
 | `AZURE::Cdn::AFDCustomDomain` | Front Door custom domains |
@@ -55,7 +95,36 @@ Formae plugin for managing Azure resources.
 | `AZURE::DBforPostgreSQL::FlexibleServer` | PostgreSQL flexible servers |
 | `AZURE::Dashboard::Grafana` | Azure Managed Grafana workspaces |
 | `AZURE::Dashboard::GrafanaManagedPrivateEndpoint` | Managed private endpoints from a Grafana workspace to a data source |
+| `AZURE::DataFactory::DataFlow` | A `MappingDataFlow` |
+| `AZURE::DataFactory::DatasetAzureBlob` | An `AzureBlob` dataset — a blob path described for a copy activity to read or write |
+| `AZURE::DataFactory::DatasetAzureSqlTable` | An `AzureSqlTable` dataset |
+| `AZURE::DataFactory::DatasetDelimitedText` | A `DelimitedText` dataset — CSV and its relatives, stored in blob storage |
+| `AZURE::DataFactory::DatasetJson` | A `Json` dataset — JSON files in blob storage |
+| `AZURE::DataFactory::DatasetParquet` | A `Parquet` dataset — Parquet files in blob storage |
+| `AZURE::DataFactory::Factory` | An Azure Data Factory (v2) |
+| `AZURE::DataFactory::IntegrationRuntimeAzure` | An Azure (service-managed) integration runtime |
+| `AZURE::DataFactory::IntegrationRuntimeSelfHosted` | A self-hosted integration runtime |
+| `AZURE::DataFactory::LinkedServiceAzureBlobStorage` | An `AzureBlobStorage` linked service — how a factory reaches blob containers |
+| `AZURE::DataFactory::LinkedServiceAzureSqlDatabase` | An `AzureSqlDatabase` linked service — how a factory reaches an Azure SQL database |
+| `AZURE::DataFactory::LinkedServiceAzureTableStorage` | An `AzureTableStorage` linked service — how a factory reaches table storage |
+| `AZURE::DataFactory::LinkedServiceKeyVault` | An `AzureKeyVault` linked service |
+| `AZURE::DataFactory::LinkedServiceWeb` | A `Web` linked service |
+| `AZURE::DataFactory::Pipeline` | A Data Factory pipeline |
+| `AZURE::DataFactory::TriggerBlobEvent` | A `BlobEventsTrigger` |
+| `AZURE::DataFactory::TriggerSchedule` | A `ScheduleTrigger` — starts pipelines on a wall-clock recurrence |
+| `AZURE::DataProtection::BackupInstanceBlobStorage` | Puts one storage account's blobs under a Backup vault policy |
+| `AZURE::DataProtection::BackupInstanceDisk` | Puts one managed disk under a Backup vault policy |
+| `AZURE::DataProtection::BackupPolicyBlobStorage` | A Backup vault policy for blob storage |
+| `AZURE::DataProtection::BackupPolicyDisk` | A Backup vault policy for managed disks |
+| `AZURE::DataProtection::BackupPolicyKubernetesCluster` | A Backup vault policy for AKS managed clusters |
+| `AZURE::DataProtection::BackupPolicyPostgreSqlFlexibleServer` | A Backup vault policy for PostgreSQL flexible servers |
 | `AZURE::DataProtection::BackupVault` | Backup vaults (Azure Backup data-protection stack) |
+| `AZURE::DataProtection::ResourceGuard` | A Resource Guard |
+| `AZURE::DesktopVirtualization::Application` | A single published application inside a `RemoteApp` application group |
+| `AZURE::DesktopVirtualization::ApplicationGroup` | An Azure Virtual Desktop application group |
+| `AZURE::DesktopVirtualization::HostPool` | An Azure Virtual Desktop host pool |
+| `AZURE::DesktopVirtualization::ScalingPlan` | An Azure Virtual Desktop scaling plan |
+| `AZURE::DesktopVirtualization::Workspace` | An Azure Virtual Desktop workspace |
 | `AZURE::Devices::IotHub` | An Azure IoT Hub |
 | `AZURE::DocumentDB::CassandraKeyspace` | Cosmos DB Cassandra keyspaces |
 | `AZURE::DocumentDB::CassandraTable` | Cosmos DB Cassandra tables (column schema, partition and cluster keys) |
@@ -80,21 +149,37 @@ Formae plugin for managing Azure resources.
 | `AZURE::EventHub::SchemaGroup` | Schema registry groups (Avro schemas with a compatibility rule) |
 | `AZURE::Insights::ActionGroup` | An Azure Monitor action group — the "who to tell" half of alerting |
 | `AZURE::Insights::ActivityLogAlert` | Activity log alerts (fire on control-plane events) |
+| `AZURE::Insights::AutoscaleSetting` | An Azure Monitor autoscale setting |
 | `AZURE::Insights::Component` | An Application Insights component (workspace-based) |
 | `AZURE::Insights::DataCollectionEndpoint` | Data collection endpoints (ingestion front door for Azure Monitor Agent) |
 | `AZURE::Insights::DataCollectionRule` | Data collection rules (what the agent collects and where it lands) |
+| `AZURE::Insights::DataCollectionRuleAssociation` | Attaches a data collection rule |
 | `AZURE::Insights::DiagnosticSetting` | Diagnostic settings (route a resource's logs and metrics to a sink) |
 | `AZURE::Insights::MetricAlert` | Metric alerts (fire when metrics cross a threshold) |
 | `AZURE::Insights::PrivateLinkScope` | Azure Monitor Private Link Scopes |
 | `AZURE::Insights::PrivateLinkScopedResource` | Puts a workspace or component inside a private link scope |
 | `AZURE::Insights::ScheduledQueryRule` | Scheduled query rules (KQL log alerts) |
+| `AZURE::KeyVault::AccessPolicy` | One entry of a Key Vault's access policy list |
 | `AZURE::KeyVault::Certificate` | Key Vault certificates (BYO import or self-signed policy) |
+| `AZURE::KeyVault::Key` | Keys in a Key Vault |
+| `AZURE::KeyVault::ManagedHsm` | A single-tenant, FIPS 140-2 Level 3 HSM pool |
 | `AZURE::KeyVault::Secret` | Key Vault secrets (data-plane; value never read into state) |
 | `AZURE::KeyVault::Vault` | Key vaults |
 | `AZURE::KubernetesConfiguration::Extension` | Kubernetes extensions (Flux, Dapr, etc.) |
 | `AZURE::KubernetesConfiguration::FluxConfiguration` | GitOps Flux v2 configurations |
+| `AZURE::Logic::IntegrationAccount` | An integration account |
+| `AZURE::Logic::IntegrationAccountAgreement` | A trading-partner agreement held in an integration account |
+| `AZURE::Logic::IntegrationAccountAssembly` | A .NET assembly held in an integration account |
+| `AZURE::Logic::IntegrationAccountCertificate` | A certificate held in an integration account |
+| `AZURE::Logic::IntegrationAccountMap` | A transform held in an integration account |
+| `AZURE::Logic::IntegrationAccountPartner` | A trading partner held in an integration account |
+| `AZURE::Logic::IntegrationAccountSchema` | An XSD held in an integration account |
+| `AZURE::Logic::Workflow` | A Logic Apps (Consumption) workflow — one trigger plus the actions it runs |
 | `AZURE::ManagedIdentity::FederatedIdentityCredential` | Federated identity credentials (workload identity / OIDC) |
 | `AZURE::ManagedIdentity::UserAssignedIdentity` | Managed identities |
+| `AZURE::Management::ManagementGroup` | A container for subscriptions and other management groups |
+| `AZURE::Management::ManagementGroupSubscriptionAssociation` | Places one subscription under one management group |
+| `AZURE::Monitor::MonitorWorkspace` | An Azure Monitor workspace |
 | `AZURE::NetApp::Account` | Azure NetApp Files accounts (top of the ANF hierarchy) |
 | `AZURE::Network::ApplicationGateway` | Application Gateway v2 (L7 load balancer / HTTPS ingress) |
 | `AZURE::Network::ApplicationGatewayWebApplicationFirewallPolicy` | WAF policy for Application Gateway |
@@ -120,6 +205,14 @@ Formae plugin for managing Azure resources.
 | `AZURE::Network::LocalNetworkGateway` | Local network gateways (on-premises end of a site-to-site VPN) |
 | `AZURE::Network::NatGateway` | Outbound SNAT for a subnet |
 | `AZURE::Network::NetworkInterface` | Network interfaces |
+| `AZURE::Network::NetworkManager` | An Azure Virtual Network Manager instance |
+| `AZURE::Network::NetworkManagerAdminRule` | A security admin rule |
+| `AZURE::Network::NetworkManagerAdminRuleCollection` | A rule collection inside a security admin configuration |
+| `AZURE::Network::NetworkManagerConnectivityConfiguration` | A connectivity configuration |
+| `AZURE::Network::NetworkManagerNetworkGroup` | A network group inside a virtual network manager |
+| `AZURE::Network::NetworkManagerSecurityAdminConfiguration` | A security admin configuration |
+| `AZURE::Network::NetworkManagerStaticMember` | One virtual network pinned into a network group by ARM ID |
+| `AZURE::Network::NetworkManagerSubscriptionConnection` | A subscription's side of a cross-tenant network manager connection |
 | `AZURE::Network::NetworkSecurityGroup` | Network security groups |
 | `AZURE::Network::NetworkWatcher` | Network Watcher service instances (per region) |
 | `AZURE::Network::PrivateDnsRecordSet` | A record set inside a private DNS zone |
@@ -143,10 +236,21 @@ Formae plugin for managing Azure resources.
 | `AZURE::NotificationHubs::Namespace` | Notification Hubs namespaces |
 | `AZURE::NotificationHubs::NotificationHub` | Notification hubs (PNS credentials never read into state) |
 | `AZURE::NotificationHubs::NotificationHubAuthorizationRule` | Notification hub SAS rules |
+| `AZURE::OperationalInsights::Cluster` | A Log Analytics DEDICATED CLUSTER |
 | `AZURE::OperationalInsights::DataExport` | Continuous export rules (workspace tables to storage or event hub) |
+| `AZURE::OperationalInsights::DataSourceWindowsEvent` | Tells the Log Analytics agents reporting to a workspace to collect one Windows event |
+| `AZURE::OperationalInsights::DataSourceWindowsPerformanceCounter` | Tells the Log Analytics agents reporting to a workspace to sample one Windows |
+| `AZURE::OperationalInsights::LinkedService` | Binds a Log Analytics workspace to another resource by ARM ID |
 | `AZURE::OperationalInsights::LinkedStorageAccount` | Links workspace data classes to customer-owned storage accounts |
 | `AZURE::OperationalInsights::SavedSearch` | Saved searches and workspace functions (stored KQL) |
+| `AZURE::OperationalInsights::StorageInsightConfig` | Ingests an existing diagnostics storage account into a workspace |
+| `AZURE::OperationalInsights::Table` | Per-table data retention on a Log Analytics workspace |
 | `AZURE::OperationalInsights::Workspace` | Log Analytics workspaces |
+| `AZURE::PolicyInsights::PolicyRemediation` | A remediation task |
+| `AZURE::RecoveryServices::BackupPolicyFileShare` | An Azure Files backup policy in a Recovery Services vault |
+| `AZURE::RecoveryServices::BackupPolicyVM` | An Azure VM backup policy in a Recovery Services vault |
+| `AZURE::RecoveryServices::BackupProtectedFileShare` | An Azure Files share protected by a Recovery Services vault |
+| `AZURE::RecoveryServices::Vault` | A Recovery Services vault |
 | `AZURE::Relay::HybridConnection` | Relay hybrid connections |
 | `AZURE::Relay::HybridConnectionAuthorizationRule` | Hybrid connection SAS rules (keys never read into state) |
 | `AZURE::Relay::Namespace` | Relay namespaces |
@@ -170,11 +274,26 @@ Formae plugin for managing Azure resources.
 | `AZURE::Sql::ServerDnsAlias` | SQL server DNS aliases (stable hostname, repointable) |
 | `AZURE::Sql::VirtualNetworkRule` | SQL vnet rules (subnet allowed to reach the server) |
 | `AZURE::Storage::BlobContainer` | Blob containers |
+| `AZURE::Storage::BlobContainerImmutabilityPolicy` | Time-based retention (WORM) policy on a blob container |
+| `AZURE::Storage::BlobContainerLegalHold` | Legal hold on a blob container |
+| `AZURE::Storage::BlobInventoryPolicy` | Blob inventory policy of a storage account |
 | `AZURE::Storage::FileShare` | A file share in a storage account's File service |
+| `AZURE::Storage::LocalUser` | A local user of a storage account |
 | `AZURE::Storage::ManagementPolicy` | Blob lifecycle-management policies (tiering / expiry rules) |
+| `AZURE::Storage::ObjectReplicationPolicy` | Object replication between two storage accounts |
 | `AZURE::Storage::Queue` | A queue in a storage account's Queue service |
+| `AZURE::Storage::QueueServiceProperties` | Service-level settings of a storage account's Queue service |
 | `AZURE::Storage::StorageAccount` | Storage accounts |
 | `AZURE::Storage::Table` | A table in a storage account's Table service |
+| `AZURE::StreamAnalytics::FunctionJavaScriptUdf` | A JavaScript user-defined function on a Stream Analytics job |
+| `AZURE::StreamAnalytics::InputBlob` | A blob storage stream input on a Stream Analytics job |
+| `AZURE::StreamAnalytics::InputEventHub` | An Event Hubs stream input on a Stream Analytics job |
+| `AZURE::StreamAnalytics::InputIotHub` | An IoT Hub stream input on a Stream Analytics job |
+| `AZURE::StreamAnalytics::OutputBlob` | A blob storage output on a Stream Analytics job |
+| `AZURE::StreamAnalytics::OutputEventHub` | An Event Hubs output on a Stream Analytics job |
+| `AZURE::StreamAnalytics::OutputServiceBusQueue` | A Service Bus queue output on a Stream Analytics job |
+| `AZURE::StreamAnalytics::OutputTable` | An Azure Table storage output on a Stream Analytics job |
+| `AZURE::StreamAnalytics::StreamingJob` | An Azure Stream Analytics job |
 | `AZURE::Web::Certificate` | App Service certificates |
 | `AZURE::Web::CustomHostnameBinding` | Custom hostname bindings on a web app |
 | `AZURE::Web::FunctionApp` | Function apps |
