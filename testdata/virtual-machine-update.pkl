@@ -1,0 +1,133 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/networkinterface.pkl"
+import "@azure/compute/virtualmachine.pkl"
+import "vars.pkl"
+
+// Cost: one Standard_D2s_v4 (2 vCPU / 8 GiB, ~$0.096/hr in East US) plus a
+// 30 GiB Standard_LRS OS disk (~$1.54/month, so well under a cent for a test
+// run). A full CRUD pass holds the VM for roughly ten minutes — a few cents.
+//
+// Why D2s_v4 and not something smaller: this subscription's quota for the
+// burstable v2 families is zero ("Standard Bsv2 Family vCPUs" and
+// "Standard Basv2 Family vCPUs" both report limit 0), which is what the parked
+// fixture's Standard_B2als_v2 would have needed. Standard DSv4 has a limit of
+// 10 vCPUs and is the size the two proven compute fixtures
+// (virtual-machine-scale-set, virtual-machine-extension) already use.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "vm-test-rg"
+  name = "formae-plugin-sdk-test-vm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing { "10.0.0.0/16" }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "vm-test-vnet"
+  name = "formae-plugin-sdk-test-vm-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+local snet = new subnet.Subnet {
+  label = "vm-test-snet"
+  name = "vm-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+local nic = new networkinterface.NetworkInterface {
+  label = "vm-test-nic"
+  name = "formae-plugin-sdk-test-vm-nic-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  ipConfigurations = new Listing {
+    new networkinterface.IPConfiguration {
+      name = "vm-ipcfg"
+      subnet = snet.res.id
+      privateIPAllocationMethod = "Dynamic"
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  snet
+  nic
+
+  new virtualmachine.VirtualMachine {
+    label = "plugin-sdk-test-vm"
+    name = "fpsdt-vm-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    vmSize = "Standard_D2s_v4"
+    networkInterfaces = new Listing {
+      new virtualmachine.NetworkInterfaceReference {
+        id = nic.res.id
+        primary = true
+      }
+    }
+    imageReference = new virtualmachine.ImageReference {
+      publisher = "Canonical"
+      offer = "0001-com-ubuntu-server-jammy"
+      sku = "22_04-lts-gen2"
+      version = "latest"
+    }
+    osDisk = new virtualmachine.OSDisk {
+      // Named explicitly: Azure otherwise generates a random OS disk name and
+      // reports it back, which the harness would see as an undeclared property.
+      name = "fpsdt-vm-osdisk-\(vars.testRunID)"
+      createOption = "FromImage"
+      // Azure-provided defaults, declared explicitly so expected and actual
+      // match — hasProviderDefault does not cascade into nested-class fields.
+      caching = "ReadWrite"
+      diskSizeGB = 30
+      managedDisk = new virtualmachine.ManagedDiskParameters {
+        storageAccountType = "Standard_LRS"
+      }
+    }
+    adminUsername = "azureuser"
+    // Password auth rather than the parked fixture's SSH key: it matches the
+    // two proven compute fixtures and avoids depending on Azure echoing an SSH
+    // public key back byte for byte.
+    adminPassword = "Formae!ConformanceTest42"
+    // ComputerName defaults to the VM name inside the provisioner and Azure
+    // always reports it, so pin it here rather than let it read as drift.
+    computerName = "fpsdt-vm-\(vars.testRunID)"
+    // Update: add tags. vmSize, networkInterfaces and tags are the only fields
+    // on this type that are not createOnly, and the provisioner sends both
+    // vmSize and tags through the VirtualMachines PATCH (BeginUpdate) — a tag
+    // change is the cheapest of the three (no resize, no NIC churn).
+    tags = new Listing {
+      new azure.Tag { key = "Environment"; value = "updated" }
+    }
+    linuxConfiguration = new virtualmachine.LinuxConfiguration {
+      // Azure populates both of these on every Linux VM GET; declared so the
+      // harness's expected/actual comparison matches.
+      disablePasswordAuthentication = false
+      provisionVMAgent = true
+    }
+  }
+}
