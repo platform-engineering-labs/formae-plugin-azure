@@ -361,3 +361,274 @@ api-management-service
 # all pass; only the re-apply of a deleted id fails, and no provisioner can make
 # Azure accept it. Un-skip if the harness ever recreates with a fresh identity.
 automation-job-schedule
+
+# --- Wave 1 and 2 backfill: fixtures that had no home ------------------------
+#
+# The rule "every fixture is either in conformance-matrix.txt or here with a
+# stated reason" arrived with wave 3 and was never applied backwards. An audit
+# on 2026-09-04 found 49 fixtures in NEITHER file: nightly never ran them and
+# nothing recorded why, yet a pull request that touched one still tried to.
+#
+# 32 of the 49 already had a reason - it was just written as a commented-out
+# entry in conformance-matrix.txt, or in the hand-maintained matrix nightly.yml
+# carried before 6ec450c shared one list. Those are the ones below. The reason
+# now lives here, which is the file that actually keeps a PR from running them;
+# the matrix keeps its fuller history and the local escape-hatch command.
+#
+# The reasons are corroborated by the job history: a sweep of all 929 workflow
+# runs found that 25 of the fixtures below have run in CI or nightly at some
+# point and EVERY one of those jobs failed - none has ever gone green. The rest
+# have never run at all.
+#
+# One of the 49 turned out to be a mis-triage rather than a blocker and is now an
+# active entry in conformance-matrix.txt: `saved-search` passed both phases in CI
+# run 33113639841, job `conformance-tests (saved-search)`.
+#
+# The other 16 are in NEITHER file on purpose. None of them has ever run in CI or
+# nightly - the sweep above found zero jobs for any of them, and they were never
+# in any matrix, including nightly's own before it was shared - so there is no
+# evidence they pass, and an audit of their handlers, schemas and SDK clients
+# found no blocker either. Listing them here would record a reason that does not
+# exist; adding them to the matrix would claim evidence that does not exist. They
+# need a proving run first, which is the bar wave 3 met:
+#
+#   alert-processing-rule-action-group   keyvault-access-policy
+#   alert-processing-rule-suppression    keyvault-key
+#   autoscale-setting                    management-lock
+#   backup-policy-file-share             monitor-workspace
+#   backup-policy-vm                     policy-exemption
+#   backup-protected-file-share          policy-remediation
+#   data-collection-rule-association     prometheus-rule-group
+#                                        recovery-services-vault
+#                                        resource-guard
+#
+# Run them with the Debug Conformance workflow and add the ones that come back
+# green to conformance-matrix.txt, citing the run:
+#   gh workflow run debug-conformance.yml --ref <branch> -f resources=<names>
+
+# The formae-core discovery persistence bug. For every fixture in this group the
+# plugin's List does return the resource - the job log carries a "Received N
+# resources for <TYPE>" line - and the discovery gate still fails with "resource
+# did not appear in inventory". The result is never persisted, so no plugin diff
+# can make the phase pass. CRUD passes for all of them. Remove these lines when
+# formae core persists discovered resources; run any of them locally with:
+#   make conformance-test-crud TEST=<name>
+acr-webhook
+availability-set
+compute-gallery
+compute-gallery-image
+compute-image
+firewall-rule
+flexible-server
+gallery-application
+mysql-flexible-server
+relay-hc-auth-rule
+relay-namespace-auth-rule
+service-bus-authorization-rule
+
+# Discovery cannot address these at all - a different failure from the group
+# above, where the List works and the persistence does not. Here the type is
+# never enumerated in the first place. CRUD passes for all five.
+
+# armnetwork's LocalNetworkGatewaysClient offers only
+# NewListPager(resourceGroupName) - no subscription-wide listing - so the
+# handler's List returns an empty result when the group is blank. The schema
+# (schema/pkl/network/localnetworkgateway.pkl) declares a listParam with
+# parentProperty "resourceGroupName" but no `parent =` clause, unlike
+# compute/availabilityset.pkl which names AZURE::Resources::ResourceGroup. So
+# discovery has nothing to hand the group down from and the type is never
+# enumerated. CRUD passes and the fixture is free and self-contained (RFC 5737 /
+# RFC 1918 documentation addresses; no gateway or connection is created).
+#   make conformance-test-crud TEST=local-network-gateway
+local-network-gateway
+
+# A diagnostic setting hangs off an arbitrary target resource and is addressed by
+# that resource's URI, so listing them means enumerating every resource in the
+# subscription first. Discovery has no parent to supply the URI and the phase
+# times out. Run locally with:
+#   make conformance-test-crud TEST=diagnostic-setting
+diagnostic-setting
+
+# An event subscription is a scoped extension resource whose scope is any ARM ID
+# - a topic, a storage account, the subscription itself - and the schema carries
+# that scope as one opaque string rather than as resource group + provider +
+# type + name. ARM's per-resource listing needs those four parts, so discovery
+# has nothing to hand down, and the subscription-wide listing the provider falls
+# back to returns only subscription-LEVEL subscriptions, not the topic-scoped one
+# the fixture creates. Run locally with:
+#   make conformance-test-crud TEST=event-grid-event-subscription
+event-grid-event-subscription
+
+# A flow log is created inside Azure's own auto-provisioned NetworkWatcherRG
+# resource group, not the test's resource group, so the discovery gate never sees
+# it - AZURE::Network::FlowLog is not enumerated at all in the run. The schema
+# (schema/pkl/network/flowlog.pkl) declares parent
+# "AZURE::Network::NetworkWatcher", a type the discovery run never creates, so the
+# core has no parent to drive List from. Not a plugin bug: the handler's List has
+# both a per-watcher path and a subscription-wide NewListAllWatchersPager
+# fallback, and Delete/Read are a real BeginDelete and Get, so the OOB phase is
+# fine. Note the fixture attaches the log to a virtual network rather than an NSG
+# on purpose - Azure blocked new NSG flow logs on 2025-06-30
+# (NsgFlowLogCreationBlocked) ahead of retiring them on 2027-09-30.
+#   make conformance-test-crud TEST=network-watcher-flow-log
+network-watcher-flow-log
+
+# CRUD passes end to end (12 min) but discovery never enumerates
+# AZURE::DBforPostgreSQL::Database at all - the log has no "Received N resources"
+# line for the type, only for its parent AZURE::DBforPostgreSQL::FlexibleServer,
+# which is itself skipped above. Not the listParam bug: Database's List does carry
+# a subscription-wide fallback that walks every flexible server. Run locally with:
+#   make conformance-test-crud TEST=database
+database
+
+# Key Vault DATA-plane resources. The principal can create the vault through ARM
+# and still not write into it: both fixtures put the vault in RBAC-authorization
+# mode (enableRbacAuthorization = true), which bypasses vault access policies
+# entirely, so only an Azure role assignment counts. Confirmed against the
+# conformance subscription on 2026-09-04 with
+#   az role assignment list --all
+# which returns every Key Vault data-plane assignment on it:
+#   Key Vault Crypto Officer        4 service principals + 1 user
+#   Key Vault Secrets Officer       1 user, no service principal
+#   Key Vault Certificates Officer  no assignment at all
+# so a certificate cannot be issued by anyone, and a secret cannot be written by
+# any service principal - the create 403s with innererror.code ForbiddenByRbac.
+# The handlers use the data-plane SDKs (azcertificates, azsecrets) because ARM
+# has no equivalent, so there is no control-plane fallback. Not a plugin defect;
+# un-skip each once its role is granted to the CI principal. Run locally as a
+# principal holding the role:
+#   make conformance-test-crud TEST=certificate
+#   make conformance-test-crud TEST=secret
+certificate
+secret
+
+# Front Door fixtures that need real-world inputs the CI subscription does not
+# have. cdn-afd-custom-domain needs a REAL owned domain: Azure serves a
+# `_dnsauth.<host>` TXT ownership challenge and the domain stays Pending until it
+# is answered, while the fixture defaults to www.example.com. cdn-secret needs a
+# real Key Vault certificate - which `certificate` above cannot issue - plus a
+# vault-access grant to the Front Door service principal
+# (ad0e1c7e-6d38-4ba4-9efd-0bc77ba9f037), which no role assignment on this
+# subscription carries. Both are covered by mocked integration tests and a
+# marshaller round-trip. Run locally with a real domain and certificate:
+#   make conformance-test-crud TEST=cdn-afd-custom-domain
+#   make conformance-test-crud TEST=cdn-secret
+cdn-afd-custom-domain
+cdn-secret
+
+# The Route references TWO sibling resources created in the same apply (the
+# origin group and the endpoint), which reliably trips the formae core
+# resolve-cache race (ResolveCacheMissingInAction) on first apply - the route
+# aborts in the "resolving" state while its siblings succeed around it, 3/3 live
+# attempts. NOT a plugin bug: Route marshalling is covered by
+# TestCdnRoute_MarshallerRoundTrip, and cdn-profile, cdn-afd-endpoint,
+# cdn-afd-origin-group and cdn-afd-origin all pass live and stay in the matrix.
+# Re-enable once the core resolve-cache race is fixed. Run locally with:
+#   make conformance-test-crud TEST=cdn-route
+cdn-route
+
+# Too slow for the job's time budget. Each is correct as far as it gets - the
+# failure is duration, not behaviour - so they are run deliberately rather than
+# on every PR that touches them.
+
+# A Basic C0 is the smallest cache Azure sells and a single create is still
+# 15-20 min; the lifecycle does several (create, replace-recreate, out-of-band
+# delete, re-apply). With the per-command poll at 30 min the job burned 60 min and
+# then failed on the OOB-delete re-apply, everything before it having passed.
+#   make conformance-test-crud TEST=redis-cache TIMEOUT=90
+redis-cache
+
+# Both stand up an AKS cluster (~8 min) and then install the microsoft.flux
+# cluster extension (~5 min) before the resource under test is even attempted,
+# and the cluster is billed for the whole run. Create alone runs past 20 min, so
+# flux-configuration exceeds even the `set_timeouts 20 50` arm it already has in
+# scripts/ci/run-conformance-phase.sh.
+#
+# `extension` is worse: it has no arm in that timeout table at all - its three
+# AKS siblings share one - and ci.yml sets no FORMAE_TEST_TIMEOUT, so it inherits
+# the harness default of 5 minutes per command against ~13 min of provisioning.
+# Adding a timeout arm would make it merely slow rather than doomed; it is listed
+# here because today a PR that touches it runs it and goes red. Handlers for both
+# are complete, with real BeginDelete paths.
+#   make conformance-test-crud TEST=extension TIMEOUT=45
+#   make conformance-test-crud TEST=flux-configuration TIMEOUT=45
+extension
+flux-configuration
+
+# Container Apps are serverless (Microsoft.App), so unlike Microsoft.Web these are
+# NOT blocked by the subscription's dedicated-VM quota - the blocker is time: a
+# managed environment takes ~5 min to provision and container-app builds on top of
+# one, exceeding the CI command timeout. Note also that Microsoft.App is still
+# NotRegistered on this subscription (`az provider show -n Microsoft.App`), so the
+# first live run has to register the namespace before any of it can succeed.
+#   make conformance-test-crud TEST=managed-environment TIMEOUT=15
+#   make conformance-test-crud TEST=container-app TIMEOUT=15
+managed-environment
+container-app
+
+# Reach a terminal Failed state in a specific lifecycle phase.
+
+# AZURE::DBforPostgreSQL::Configuration is a server setting, not a deletable
+# child, and the SDK says so: in `armpostgresqlflexibleservers/v4` v4.1.0 the
+# ConfigurationsClient exposes only Get, NewListByServerPager, BeginPut and
+# BeginUpdate - there is no Delete. The handler mirrors that
+# (pkg/resources/configuration.go: "Configurations can't be deleted - reset to
+# default"), implementing Delete as BeginUpdate with Source "system-default",
+# and Read is a plain Get with no synthesized not-found. Two consequences, both
+# fatal and neither fixable by a diff:
+#   - ARM rejects the reset-update itself. With the per-command poll raised to
+#     20 min the lifecycle gets as far as Destroy, which then reaches a terminal
+#     Failed state in about one second - so this is not a timeout.
+#   - even if the reset succeeded, the built-in parameter still answers a Get,
+#     so the OOB-delete phase could never observe it leave inventory.
+# Same shape as log-analytics-table and storage-queue-service-properties above.
+# The core does not surface the Azure error text, so the message still has to be
+# read off a local run:
+#   make conformance-test-crud TEST=configuration
+configuration
+
+# Needs the same billed AKS cluster as flux-configuration above, and then the
+# OOB-delete re-apply reaches a terminal Failed state after 14 min - a failure
+# inside a 20 min budget, not a timeout. The handler is a synchronous
+# CreateOrUpdate/Delete pair and nothing in it explains ARM's refusal, so the
+# root cause is not diagnosable from this repo; it needs a local run that can
+# show the ARM error.
+#   make conformance-test-crud TEST=maintenance-configuration TIMEOUT=45
+maintenance-configuration
+
+# The fixture binds the AKS role
+# `Microsoft.MachineLearningServices/workspaces/mlworkload` and points
+# sourceResourceId at an ML workspace under the test resource group - but nothing
+# creates that workspace. The fixture declares only a resource group and a
+# cluster, and the plugin has no ML workspace type at all: across schema/pkl/ and
+# pkg/resources/, `MachineLearningServices` appears only as the role-name string
+# in schema/pkl/containerservice/trustedaccessrolebinding.pkl. The namespace is
+# not even usable on this subscription - checked on 2026-09-04:
+#   az provider show -n Microsoft.MachineLearningServices --query registrationState
+#   -> NotRegistered
+# which is why Replace reaches a terminal Failed state after 13 min. Un-skip once
+# an AZURE::MachineLearningServices::Workspace type exists, or once the fixture
+# binds a trusted-access role whose source service this plugin can create.
+#   make conformance-test-crud TEST=trusted-access-role-binding TIMEOUT=45
+trusted-access-role-binding
+
+# Replace reaches a terminal Failed state, and the cause is in the fixture pair
+# rather than in the environment. The base fixture is kind OpenAI + sku S0, but
+# cognitive-services-account-replace.pkl asks for kind TextAnalytics + sku S0, and
+# ARM does not offer S0 for that kind - checked on 2026-09-04:
+#   az cognitiveservices account list-skus --kind TextAnalytics --location eastus
+#   -> F0, S      (no S0)
+#   az cognitiveservices account list-skus --kind OpenAI --location eastus
+#   -> S0, restrictions: []
+# so the base create is NOT gated by quota or approval on this subscription, which
+# is what the matrix previously recorded. Fixing the replace fixture's sku to S or
+# F0 should make this runnable; that belongs to whoever owns testdata/ and this
+# line comes out with it.
+#   make conformance-test-crud TEST=cognitive-services-account
+cognitive-services-account
+
+# Create fails outright: the fixture carries a placeholder sid/tenantId and Azure
+# requires a real Entra ID principal for a SQL AD administrator. CRUD is validated
+# via test-integration (mocked); run live locally against a real principal:
+#   make conformance-test-crud TEST=sql-ad-administrator
+sql-ad-administrator

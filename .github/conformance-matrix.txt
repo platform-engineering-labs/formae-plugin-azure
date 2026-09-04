@@ -31,6 +31,15 @@
 # out below - that is how you re-check an exclusion without editing this file. An
 # unknown name fails the run rather than quietly testing nothing.
 #
+# Every name commented out below is ALSO listed in .github/conformance-pr-skip.txt,
+# so a pull request that touches one of those fixtures does not run it either. The
+# two files have to be edited together: an exclusion recorded only here still lets
+# a PR run the fixture and go red. An audit on 2026-09-04 found 49 fixtures in
+# neither file - most of them already commented out here with a reason, which is
+# how the gap went unnoticed - and gave each of them a home. The reason for each
+# skipped fixture is recorded in conformance-pr-skip.txt; the blocks below keep the
+# fuller history and the local command that still exercises the fixture.
+#
 # Caveat: dispatching from a feature branch fails at the azure/login step with
 # AADSTS700213. The Entra federated identity credential only trusts the subjects
 # main and pull_request present, and a workflow_dispatch on a branch presents
@@ -140,14 +149,18 @@ private-link-scoped-resource
 # 14 days, so fixtures carry the run ID in the name.
 log-analytics-workspace
 app-insights-component
-# saved-search excluded: CRUD passes in under 2 min, and the plugin enumerates
-# the type correctly - the log goes from "Received 39 resources for
-# AZURE::OperationalInsights::SavedSearch" (the workspace's built-in searches) to
-# "Received 40" once the test's own search exists. It still never lands in
-# inventory, so this is the same formae-core persistence bug the group above
-# carries, not a plugin defect. CRUD still runs:
-#   make conformance-test-crud TEST=saved-search
-# saved-search
+# saved-search was excluded here in 6ec450c as one more instance of the
+# formae-core discovery-persistence bug. That was a mis-triage: it passed both
+# phases in the very run 6ec450c was triaging (32952452260), and again in CI run
+# 33113639841 on main, job `conformance-tests (saved-search)`:
+#   --- PASS: TestPluginConformance/FORMAE-PLUGIN-AZURE::saved-search (110.14s)
+#   --- PASS: TestPluginDiscovery/Discovery/FORMAE-PLUGIN-AZURE::saved-search (153.99s)
+# with "Discovery finished ... AZURE::OperationalInsights::SavedSearch 313"
+# confirming the type does reach inventory. A sweep of all 929 workflow runs found
+# 7 green jobs for it and one failure, and that failure was on
+# naxty/fix-ci-conformance-discovery while the discovery contract was mid-rewrite.
+# Restored on the strength of that evidence.
+saved-search
 data-export
 linked-storage-account
 # diagnostic-setting excluded from the matrix: a diagnostic setting hangs off
