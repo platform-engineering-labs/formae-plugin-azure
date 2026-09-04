@@ -465,3 +465,87 @@ cosmos-table
 # - vpn-gateway
 # - virtual-network-gateway
 # - virtual-network-gateway-connection
+
+# ---------------------------------------------------------------------------
+# Wave 3. Every fixture below passed CRUD and discovery on run 33818231073
+# before being listed here; nothing is added on the strength of a local run.
+#
+# The wave-3 fixtures that are NOT here are in .github/conformance-pr-skip.txt
+# with the ARM error or structural reason recorded inline. Three of them are
+# worth knowing about because no plugin change can fix them:
+#
+#   automation-job-schedule  a jobScheduleId cannot be reused, and the harness
+#                            re-applies one it deleted earlier in the run
+#   api-management-service   ARM reports the update complete, then serves the
+#                            previous publisherName
+#   avd-scaling-plan         needs the Azure Virtual Desktop service principal
+#                            to hold host-pool read on the subscription
+# ---------------------------------------------------------------------------
+
+api-management-api
+api-management-api-operation
+api-management-diagnostic
+api-management-policy
+api-management-product
+
+automation-account
+automation-credential
+automation-module
+automation-runbook
+automation-schedule
+automation-variable
+
+avd-application
+avd-application-group
+avd-host-pool
+avd-workspace
+
+data-factory
+data-factory-data-flow
+data-factory-dataset-azure-blob
+data-factory-dataset-azure-sql-table
+data-factory-dataset-delimited-text
+data-factory-dataset-json
+data-factory-dataset-parquet
+data-factory-integration-runtime-azure
+data-factory-integration-runtime-self-hosted
+data-factory-linked-service-blob-storage
+data-factory-linked-service-key-vault
+data-factory-linked-service-sql-database
+data-factory-linked-service-table-storage
+data-factory-linked-service-web
+data-factory-pipeline
+data-factory-trigger-blob-event
+data-factory-trigger-schedule
+
+data-protection-backup-policy-blob-storage
+data-protection-backup-policy-disk
+data-protection-backup-policy-kubernetes-cluster
+data-protection-backup-policy-postgresql-flex
+
+log-analytics-datasource-windows-event
+log-analytics-datasource-windows-perf-counter
+log-analytics-storage-insight-config
+
+logic-workflow
+
+logic-integration-account
+logic-integration-account-agreement
+logic-integration-account-assembly
+logic-integration-account-certificate
+logic-integration-account-map
+logic-integration-account-partner
+logic-integration-account-schema
+
+storage-blob-container-legal-hold
+storage-blob-inventory-policy
+
+stream-analytics-function-javascript-udf
+stream-analytics-input-blob
+stream-analytics-input-event-hub
+stream-analytics-input-iot-hub
+stream-analytics-job
+stream-analytics-output-blob
+stream-analytics-output-event-hub
+stream-analytics-output-service-bus-queue
+stream-analytics-output-table

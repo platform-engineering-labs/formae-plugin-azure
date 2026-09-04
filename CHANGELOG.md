@@ -10,6 +10,54 @@ formae agent.
 
 ## [Unreleased]
 
+### Added
+
+- 100 new Azure resource types, taking the plugin to 292:
+
+  | Namespace | Types |
+  |---|---|
+  | `AZURE::ApiManagement` | 28 |
+  | `AZURE::DataFactory` | 17 |
+  | `AZURE::StreamAnalytics` | 9 |
+  | `AZURE::Logic` | 8 |
+  | `AZURE::Network` (virtual network manager) | 8 |
+  | `AZURE::Automation` | 7 |
+  | `AZURE::DataProtection` | 6 |
+  | `AZURE::OperationalInsights` | 6 |
+  | `AZURE::Storage` | 6 |
+  | `AZURE::DesktopVirtualization` | 5 |
+
+  Every type ships with a PKL schema, a provisioner, mock-based integration
+  tests and conformance fixtures.
+
+- 58 conformance fixtures in `.github/conformance-matrix.txt`, so nightly now
+  covers the new resources as well as CI. Each one passed CRUD *and* discovery
+  against a live subscription before being listed; none was added on the
+  strength of a local run.
+
+- `TestNoFieldIsBothWriteOnlyAndRequired`, guarding a combination that makes a
+  resource permanently undiscoverable. `writeOnly` says the provider never
+  returns the value and `required` makes core reject anything lacking it, so
+  discovery finds the resource and then throws it away — reported as a bare
+  `[Discover] timeout` with nothing pointing at the cause. Twenty fields had
+  both; `verify-schema` cannot see it and neither can any other gate.
+
+- `make verify-fixtures`, which renders every `testdata/*.pkl`. `verify-schema`,
+  `test-unit`, `go vet`, `golangci-lint` and `pkl eval` all evaluate the schema
+  without rendering a forma, so none of them catches a fault that only appears
+  when one is rendered.
+
+### Changed
+
+- Azure operation failures now log the provider's own message. All four failure
+  helpers in `pkg/prov/wrap.go` set `ErrorCode` and discarded `err.Error()`, so
+  every ARM error arrived as a bare code with no reason attached.
+
+- `scripts/ci/clean-environment.sh` purges soft-deleted API Management services
+  with `az rest` rather than `az apim deletedservice purge --no-wait` — a flag
+  that does not exist, so every purge had been failing silently and the
+  soft-deletes were exhausting the 20-service Consumption cap.
+
 ### Removed
 
 - `schema/provider-default-dispositions.json` and its `TestProviderDefaultDispositionsManifest`
