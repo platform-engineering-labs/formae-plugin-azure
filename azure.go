@@ -78,9 +78,12 @@ func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
 			//
 			// The marker answers one question, whether formae created the
 			// thing. It says nothing about who may delete it.
+			// Tags serialize as an array of {Key, Value} objects under an
+			// uppercase "Tags", not as the lowercase map the ARM API uses.
+			// See azureTagsToFormaeTags in pkg/resources/common.go.
 			Conditions: []model.FilterCondition{
 				{
-					PropertyPath:  `$.tags['formae-owned']`,
+					PropertyPath:  `$.Tags[?(@.Key=='formae-owned')].Value`,
 					PropertyValue: "true",
 				},
 			},

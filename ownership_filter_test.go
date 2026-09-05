@@ -28,16 +28,24 @@ func excluded(t *testing.T, resourceType, properties string) bool {
 	return false
 }
 
+// Tag fixtures use the shape the plugin actually emits: an array of
+// {Key, Value} objects under an uppercase "Tags", built by
+// azureTagsToFormaeTags in pkg/resources/common.go. The lowercase map the ARM
+// API uses never reaches a filter.
 func TestOwnershipMarkerExcludesATaggedResource(t *testing.T) {
-	identity := `{"name":"fai-t-i","tags":{"formae-owned":"true"}}`
+	identity := `{"name":"fai-t-i","Tags":[{"Key":"formae-owned","Value":"true"}]}`
 
 	assert.True(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", identity))
 }
 
 func TestOwnershipMarkerLeavesEveryOtherResourceAlone(t *testing.T) {
-	assert.False(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", `{"name":"someone-elses","tags":{"app":"formae-agent"}}`))
+	assert.False(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", `{"name":"someone-elses","Tags":[{"Key":"app","Value":"formae-agent"}]}`))
 	assert.False(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", `{"name":"untagged"}`))
-	assert.False(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", `{"name":"n","tags":{"formae-owned":"false"}}`))
+	assert.False(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", `{"name":"n","Tags":[{"Key":"formae-owned","Value":"false"}]}`))
+
+	// The lowercase ARM-style map is not what discovery sees, so a filter
+	// written against it would silently exclude nothing.
+	assert.False(t, excluded(t, "AZURE::ManagedIdentity::UserAssignedIdentity", `{"name":"n","tags":{"formae-owned":"true"}}`))
 }
 
 // The federated credential has no tags property at all, so it is identified by
