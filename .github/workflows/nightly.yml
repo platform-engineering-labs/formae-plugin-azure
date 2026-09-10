@@ -9,9 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       formae_branch:
-        description: "Formae branch to build from (default: main)"
+        description: "Formae Git branch or tag to build from (default: 0.84.0)"
         required: false
         default: "0.84.0"
+        type: string
+      formae_version:
+        description: "Canonical candidate version (X.Y.Z); leave empty for normal nightly behavior"
+        required: false
+        default: ""
         type: string
       skip_makefile_align:
         description: "Skip Makefile branch alignment (test the triggered branch as-is)"
@@ -54,16 +59,39 @@ jobs:
           go-version: "1.26"
 
       - name: Build formae
+        env:
+          FORMAE_BRANCH: ${{ inputs.formae_branch || 'main' }}
+          FORMAE_VERSION: ${{ inputs.formae_version || '' }}
         run: |
-          BRANCH="${{ inputs.formae_branch || 'main' }}"
-          echo "Building formae from branch: ${BRANCH}"
-          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          set -euo pipefail
+          if [ -n "$FORMAE_VERSION" ] && ! [[ "$FORMAE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::formae_version must be canonical numeric X.Y.Z (got: $FORMAE_VERSION)"
+            exit 1
+          fi
+          echo "Building formae from ref: ${FORMAE_BRANCH}"
+          git clone --branch "$FORMAE_BRANCH" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
           cd /tmp/formae
           git fetch --tags --unshallow
-          make build
-          /tmp/formae/formae --version
+          FORMAE_CORE_SHA="$(git rev-parse HEAD)"
+          echo "Resolved formae commit: $FORMAE_CORE_SHA"
+          if [ -n "$FORMAE_VERSION" ]; then
+            make build VERSION="$FORMAE_VERSION"
+          else
+            make build
+          fi
+          FORMAE_VERSION_OUTPUT="$(/tmp/formae/formae --version)"
+          printf '%s\n' "$FORMAE_VERSION_OUTPUT"
+          FORMAE_VERSION_LINE="$(printf '%s\n' "$FORMAE_VERSION_OUTPUT" | sed -n '1p')"
+          if [ -n "$FORMAE_VERSION" ]; then
+            test "$FORMAE_VERSION_LINE" = "formae version: $FORMAE_VERSION" \
+              || { echo "::error::built formae did not report requested version $FORMAE_VERSION"; exit 1; }
+          fi
           mkdir -p /tmp/formae-install/bin /tmp/formae-install/.ops
           touch /tmp/formae-install/.ops/.keep
+          {
+            printf 'core_sha=%s\n' "$FORMAE_CORE_SHA"
+            printf 'version=%s\n' "$FORMAE_VERSION_LINE"
+          } > /tmp/formae-install/.ops/formae-build-metadata
           cp /tmp/formae/formae /tmp/formae-install/bin/formae
 
       - name: Track formae clone
@@ -194,6 +222,54 @@ jobs:
           else
             echo "No ref override for ${PLUGIN_NAME}, staying on default branch"
           fi
+
+      # Candidate conformance must use the matching published core schema, not
+      # the pinned release dependency. This rewrites only the runner checkout;
+      # scheduled and normal dispatch runs leave the project and lock untouched.
+      - name: Resolve candidate formae schema dependency
+        env:
+          FORMAE_VERSION: ${{ inputs.formae_version || '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FORMAE_VERSION" ]; then
+            echo "No formae_version supplied; retaining checked-out schema dependency"
+            exit 0
+          fi
+          if ! [[ "$FORMAE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::formae_version must be canonical numeric X.Y.Z (got: $FORMAE_VERSION)"
+            exit 1
+          fi
+          PROJECT_FILE=schema/pkl/PklProject
+          LOCK_FILE=schema/pkl/PklProject.deps.json
+          EXPECTED_URI="package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@$FORMAE_VERSION"
+          python3 - "$PROJECT_FILE" "$EXPECTED_URI" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          project_file = Path(sys.argv[1])
+          expected_uri = sys.argv[2]
+          original = project_file.read_text()
+          pattern = r'(?m)^([ \t]*uri[ \t]*=[ \t]*)"package://hub\.platform\.engineering/plugins/pkl/schema/pkl/formae/formae@[^"\s]+"([ \t]*)$'
+          rewritten, replacements = re.subn(pattern, rf'\1"{expected_uri}"\2', original)
+          if replacements != 1:
+              raise SystemExit(f"expected exactly one formae URI in {project_file}, found {replacements}")
+          expected_pattern = rf'(?m)^[ \t]*uri[ \t]*=[ \t]*"{re.escape(expected_uri)}"[ \t]*$'
+          if len(re.findall(expected_pattern, rewritten)) != 1:
+              raise SystemExit(f"expected exactly one requested formae URI in {project_file}")
+          project_file.write_text(rewritten)
+          PY
+          rm -f "$LOCK_FILE"
+          pkl project resolve --cache-dir /tmp/pkl-candidate-cache schema/pkl
+          test -s "$LOCK_FILE" \
+            || { echo "::error::candidate Pkl dependency resolve did not create $LOCK_FILE"; exit 1; }
+          EXPECTED_LOCK_URI="project$EXPECTED_URI"
+          LOCK_MATCHES="$(jq --arg expected "$EXPECTED_LOCK_URI" '[.resolvedDependencies | to_entries[] | select(.value.uri == $expected and (.value.checksums.sha256 | type == "string") and (.value.checksums.sha256 | test("^[0-9a-f]{64}$")))] | length' "$LOCK_FILE")"
+          FORMAE_LOCK_URIS_MATCH="$(jq --arg expected "$EXPECTED_LOCK_URI" '[.resolvedDependencies | to_entries[] | select((.value.uri? // "") | contains("/formae/formae@")) | .value.uri] | length == 1 and all(.[]; . == $expected)' "$LOCK_FILE")"
+          test "$LOCK_MATCHES" -eq 1 && test "$FORMAE_LOCK_URIS_MATCH" = true \
+            || { echo "::error::candidate Pkl lock did not contain exactly one requested formae URI with SHA-256 checksum"; exit 1; }
+          echo "Resolved candidate schema: $EXPECTED_URI"
+          jq -r --arg expected "$EXPECTED_LOCK_URI" '.resolvedDependencies | to_entries[] | select(.value.uri == $expected) | "Resolved candidate schema checksum: \(.value.checksums.sha256)"' "$LOCK_FILE"
 
       - name: Configure Azure Credentials
         uses: azure/login@v3
