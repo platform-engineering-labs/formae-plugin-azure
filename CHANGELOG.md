@@ -146,10 +146,12 @@ formae agent.
 - Conformance cleanup verifies its deletions instead of firing and forgetting. It
   previously ran `az group delete --no-wait || true` and reported success
   unconditionally, so a refused delete or a group created mid-sweep leaked silently.
-- `Management::ManagementGroup` discovery no longer fails a whole run for a
-  credential that holds no rights in the tenant. The client is tenant-scoped, so a
-  subscription-scoped service principal gets `403 AuthorizationFailed` on the
-  entire tree; that now lists nothing instead of erroring every cycle.
+- A list the target's credential is not authorized for reports nothing instead of
+  failing the whole discovery run, and says so in the plugin log. A credential
+  rarely covers every one of the plugin's resource types — `Management::ManagementGroup`
+  is tenant-scoped, so a subscription-scoped service principal gets
+  `403 AuthorizationFailed` on the entire tree. Reads keep the opposite rule: there
+  the resource is known to exist, so a permission failure stays a failure.
 - `Authorization::RoleAssignment` discovery no longer picks up assignments
   inherited from a management group or the tenant root. Azure returns them
   alongside the ones at and below the requested scope, and reading one needs

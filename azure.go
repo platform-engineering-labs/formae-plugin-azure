@@ -11,6 +11,7 @@ import (
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
@@ -173,18 +174,19 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.Read(ctx, request)
-	// A read that fails returns an ErrorCode rather than an error, and ReadResult
-	// carries no message, so without this the agent only records "finished_with_error"
-	// and the reason is lost. Log it here while we still have it.
+	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := provisioner.Read(ctx, request)
+	// Unlike List, a read we are not authorized for stays a failure: the resource
+	// exists and formae is tracking it, so silently reporting nothing would look
+	// like drift. Reads carry that failure in ErrorCode and ReadResult has no
+	// message field, so log the reason here or it is lost — the agent would record
+	// only "finished_with_error".
 	if err != nil || (result != nil && result.ErrorCode != "") {
-		log := plugin.LoggerFromContext(ctx)
 		errorCode := resource.OperationErrorCode("")
 		if result != nil {
 			errorCode = result.ErrorCode
 		}
-		log.Error("Read failed",
+		plugin.LoggerFromContext(ctx).Error("Read failed",
 			"resourceType", request.ResourceType,
 			"nativeID", request.NativeID,
 			"errorCode", errorCode,
@@ -275,11 +277,10 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.List(ctx, request)
+	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := provisioner.List(ctx, request)
 	if err != nil {
-		log.Error("List failed", "resourceType", request.ResourceType, "error", err)
-		return result, err
+		return listOutcome(log, request.ResourceType, result, err)
 	}
 
 	log.Debug("List completed",
@@ -287,4 +288,26 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		"nativeIDCount", len(result.NativeIDs),
 	)
 	return result, nil
+}
+
+// listOutcome decides what discovery sees when a List fails.
+//
+// A target's credential rarely covers every resource type the plugin knows —
+// tenant-scoped types in particular are unreadable to a subscription-scoped
+// service principal. There is nothing to discover where we cannot look, so an
+// authorization failure yields an empty listing rather than failing the whole
+// discovery run. It is still logged: an unexpected 403 is worth seeing.
+//
+// This is the opposite of Read, where the resource is known to exist and a
+// permission failure has to stay a failure.
+func listOutcome(log plugin.Logger, resourceType string, result *resource.ListResult, err error) (*resource.ListResult, error) {
+	if code, ok := prov.AzureErrorCode(err); ok && code == resource.OperationErrorCodeAccessDenied {
+		log.Warn("List skipped: the credential is not authorized for this resource type",
+			"resourceType", resourceType,
+			"error", err,
+		)
+		return &resource.ListResult{}, nil
+	}
+	log.Error("List failed", "resourceType", resourceType, "error", err)
+	return result, err
 }
