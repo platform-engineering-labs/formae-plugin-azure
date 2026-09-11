@@ -259,6 +259,9 @@ jobs:
               raise SystemExit(f"expected exactly one requested formae URI in {project_file}")
           project_file.write_text(rewritten)
           PY
+          # Resolving PklProject evaluates package.version before make install
+          # has generated this ignored file. Use the plugin's declared version.
+          pkl eval -x version formae-plugin.pkl > schema/pkl/VERSION
           rm -f "$LOCK_FILE"
           pkl project resolve --cache-dir /tmp/pkl-candidate-cache schema/pkl
           test -s "$LOCK_FILE" \
