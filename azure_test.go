@@ -8,8 +8,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/platform-engineering-labs/formae/pkg/plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,4 +38,46 @@ func TestSetOidcTokenSource_PopulatesDeps(t *testing.T) {
 
 	require.NotNil(t, p.oidc)
 	assert.NotNil(t, p.oidc.Source)
+}
+
+// recordingLogger captures what the plugin logged, so a test can assert that an
+// authorization failure is reported rather than silently swallowed.
+type recordingLogger struct {
+	warns  []string
+	errors []string
+}
+
+func (l *recordingLogger) Debug(string, ...any) {}
+func (l *recordingLogger) Info(string, ...any)  {}
+func (l *recordingLogger) Warn(msg string, _ ...any) {
+	l.warns = append(l.warns, msg)
+}
+func (l *recordingLogger) Error(msg string, _ ...any) {
+	l.errors = append(l.errors, msg)
+}
+func (l *recordingLogger) With(...any) plugin.Logger { return l }
+
+func TestListReportsNothingWhenTheCredentialIsNotAuthorized(t *testing.T) {
+	log := &recordingLogger{}
+
+	got, err := listOutcome(log, "AZURE::Management::ManagementGroup", nil,
+		fmt.Errorf("failed to list management groups: %w",
+			&azcore.ResponseError{StatusCode: 403, ErrorCode: "AuthorizationFailed"}))
+
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Empty(t, got.NativeIDs)
+	assert.Len(t, log.warns, 1, "an unexpected 403 must still be logged")
+	assert.Empty(t, log.errors)
+}
+
+func TestListStillFailsOnEveryOtherError(t *testing.T) {
+	log := &recordingLogger{}
+	boom := &azcore.ResponseError{StatusCode: 500}
+
+	_, err := listOutcome(log, "AZURE::Management::ManagementGroup", nil, boom)
+
+	require.ErrorIs(t, err, boom)
+	assert.Len(t, log.errors, 1)
+	assert.Empty(t, log.warns)
 }

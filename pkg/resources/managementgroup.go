@@ -414,6 +414,9 @@ func (m *ManagementGroup) List(ctx context.Context, request *resource.ListReques
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			// This client is tenant-scoped, so a credential holding only subscription
+			// roles gets 403 AuthorizationFailed for the whole tree. The plugin's List
+			// entry point turns that into an empty listing for every resource type.
 			return nil, fmt.Errorf("failed to list management groups: %w", err)
 		}
 		for _, group := range page.Value {
