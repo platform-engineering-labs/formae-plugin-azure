@@ -174,7 +174,24 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 	}
 
 	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return prov.Read(ctx, request)
+	result, err := prov.Read(ctx, request)
+	// A read that fails returns an ErrorCode rather than an error, and ReadResult
+	// carries no message, so without this the agent only records "finished_with_error"
+	// and the reason is lost. Log it here while we still have it.
+	if err != nil || (result != nil && result.ErrorCode != "") {
+		log := plugin.LoggerFromContext(ctx)
+		errorCode := resource.OperationErrorCode("")
+		if result != nil {
+			errorCode = result.ErrorCode
+		}
+		log.Error("Read failed",
+			"resourceType", request.ResourceType,
+			"nativeID", request.NativeID,
+			"errorCode", errorCode,
+			"error", err,
+		)
+	}
+	return result, err
 }
 
 // Update modifies an existing Azure resource.

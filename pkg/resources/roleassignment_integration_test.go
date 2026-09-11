@@ -126,6 +126,32 @@ func TestRoleAssignment_CRUD(t *testing.T) {
 		require.Equal(t, testRANativeID, got.NativeIDs[0])
 	})
 
+	t.Run("List_skips_inherited_scopes", func(t *testing.T) {
+		inherited := "/providers/Microsoft.Management/managementGroups/mg-1/providers/Microsoft.Authorization/roleAssignments/00000000-0000-0000-0000-000000000003"
+		fake.listForScopeFn = func(_ string, _ *armauthorization.RoleAssignmentsClientListForScopeOptions) *runtime.Pager[armauthorization.RoleAssignmentsClientListForScopeResponse] {
+			return runtime.NewPager(runtime.PagingHandler[armauthorization.RoleAssignmentsClientListForScopeResponse]{
+				More: func(_ armauthorization.RoleAssignmentsClientListForScopeResponse) bool { return false },
+				Fetcher: func(_ context.Context, _ *armauthorization.RoleAssignmentsClientListForScopeResponse) (armauthorization.RoleAssignmentsClientListForScopeResponse, error) {
+					return armauthorization.RoleAssignmentsClientListForScopeResponse{
+						RoleAssignmentListResult: armauthorization.RoleAssignmentListResult{
+							Value: []*armauthorization.RoleAssignment{
+								{ID: to.Ptr(inherited)},
+								{ID: to.Ptr(testRANativeID)},
+								{ID: to.Ptr("/Subscriptions/SUB-1/providers/Microsoft.Authorization/roleAssignments/00000000-0000-0000-0000-000000000004")},
+							},
+						},
+					}, nil
+				},
+			})
+		}
+		got, err := prov.List(context.Background(), &resource.ListRequest{
+			AdditionalProperties: map[string]string{"scope": "/subscriptions/sub-1"},
+		})
+		require.NoError(t, err)
+		require.NotContains(t, got.NativeIDs, inherited)
+		require.Len(t, got.NativeIDs, 2)
+	})
+
 	t.Run("Azure_error_maps_to_failure", func(t *testing.T) {
 		fake.createFn = func(_ context.Context, _, _ string, _ armauthorization.RoleAssignmentCreateParameters, _ *armauthorization.RoleAssignmentsClientCreateOptions) (armauthorization.RoleAssignmentsClientCreateResponse, error) {
 			return armauthorization.RoleAssignmentsClientCreateResponse{}, &azcore.ResponseError{StatusCode: 409}

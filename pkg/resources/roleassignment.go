@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
@@ -254,6 +255,12 @@ func (r *RoleAssignment) Status(ctx context.Context, request *resource.StatusReq
 	}, nil
 }
 
+// idAtOrUnderScope reports whether an Azure resource ID sits at or below scope.
+// Azure IDs are case-insensitive.
+func idAtOrUnderScope(id, scope string) bool {
+	return strings.HasPrefix(strings.ToLower(id), strings.ToLower(strings.TrimSuffix(scope, "/"))+"/")
+}
+
 func (r *RoleAssignment) List(ctx context.Context, request *resource.ListRequest) (*resource.ListResult, error) {
 	// RoleAssignments can be listed at different scopes
 	// The scope should be provided in AdditionalProperties
@@ -275,6 +282,15 @@ func (r *RoleAssignment) List(ctx context.Context, request *resource.ListRequest
 
 		for _, assignment := range page.Value {
 			if assignment.ID == nil {
+				continue
+			}
+
+			// Azure returns assignments inherited from ancestor scopes (management
+			// groups, tenant root) next to the ones at or below the requested scope.
+			// Reading an inherited one needs permission at that ancestor, which a
+			// subscription-scoped credential does not have, so discovery would fail
+			// on a resource this target does not own. Keep only what lives here.
+			if !idAtOrUnderScope(*assignment.ID, scope) {
 				continue
 			}
 

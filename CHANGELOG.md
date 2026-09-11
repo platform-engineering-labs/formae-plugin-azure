@@ -146,6 +146,18 @@ formae agent.
 - Conformance cleanup verifies its deletions instead of firing and forgetting. It
   previously ran `az group delete --no-wait || true` and reported success
   unconditionally, so a refused delete or a group created mid-sweep leaked silently.
+- `Management::ManagementGroup` discovery no longer fails a whole run for a
+  credential that holds no rights in the tenant. The client is tenant-scoped, so a
+  subscription-scoped service principal gets `403 AuthorizationFailed` on the
+  entire tree; that now lists nothing instead of erroring every cycle.
+- `Authorization::RoleAssignment` discovery no longer picks up assignments
+  inherited from a management group or the tenant root. Azure returns them
+  alongside the ones at and below the requested scope, and reading one needs
+  permission at that ancestor scope, so discovery failed on a resource the target
+  does not own.
+- A failed read is logged with its resource type, native ID and error code. Reads
+  report failure through `ErrorCode` and `ReadResult` carries no message, so the
+  agent previously recorded only `finished_with_error` with no reason anywhere.
 
 ### Removed
 

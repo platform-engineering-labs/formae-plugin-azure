@@ -414,6 +414,12 @@ func (m *ManagementGroup) List(ctx context.Context, request *resource.ListReques
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			// This client is tenant-scoped. A credential that only holds roles on a
+			// subscription gets 403 AuthorizationFailed on the whole tree — it owns no
+			// management groups, so report none instead of failing every discovery run.
+			if code, ok := prov.AzureErrorCode(err); ok && code == resource.OperationErrorCodeAccessDenied {
+				return &resource.ListResult{}, nil
+			}
 			return nil, fmt.Errorf("failed to list management groups: %w", err)
 		}
 		for _, group := range page.Value {

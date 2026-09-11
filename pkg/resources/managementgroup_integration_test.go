@@ -71,6 +71,21 @@ func (f *fakeManagementGroupsAPI) NewListPager(_ *armmanagementgroups.ClientList
 	})
 }
 
+// forbiddenListManagementGroupsAPI stands in for a subscription-scoped credential:
+// the tenant-wide list comes back 403 AuthorizationFailed.
+type forbiddenListManagementGroupsAPI struct {
+	*fakeManagementGroupsAPI
+}
+
+func (forbiddenListManagementGroupsAPI) NewListPager(_ *armmanagementgroups.ClientListOptions) *runtime.Pager[armmanagementgroups.ClientListResponse] {
+	return runtime.NewPager(runtime.PagingHandler[armmanagementgroups.ClientListResponse]{
+		More: func(_ armmanagementgroups.ClientListResponse) bool { return false },
+		Fetcher: func(_ context.Context, _ *armmanagementgroups.ClientListResponse) (armmanagementgroups.ClientListResponse, error) {
+			return armmanagementgroups.ClientListResponse{}, &azcore.ResponseError{StatusCode: 403, ErrorCode: "AuthorizationFailed"}
+		},
+	})
+}
+
 // unreachableTransport fails any request. A poller built from an already-terminal
 // response must never need one, so reaching it is itself the assertion.
 type unreachableTransport struct{}
@@ -312,6 +327,12 @@ func TestManagementGroup_CRUD(t *testing.T) {
 		got, err := prov.List(context.Background(), &resource.ListRequest{})
 		require.NoError(t, err)
 		require.Equal(t, []string{testManagementGroupNativeID, testParentManagementGroupID}, got.NativeIDs)
+	})
+
+	t.Run("List_reports_nothing_when_the_tenant_tree_is_forbidden", func(t *testing.T) {
+		got, err := newTestManagementGroup(&forbiddenListManagementGroupsAPI{fake}).List(context.Background(), &resource.ListRequest{})
+		require.NoError(t, err)
+		require.Empty(t, got.NativeIDs)
 	})
 
 	t.Run("Status_rejects_an_unknown_operation", func(t *testing.T) {
