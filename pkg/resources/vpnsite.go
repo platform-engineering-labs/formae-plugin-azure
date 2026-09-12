@@ -265,7 +265,7 @@ func vpnSiteParams(props vpnSiteProps, payload json.RawMessage) armnetwork.VPNSi
 
 // upsert backs both Create and Update: UpdateTags cannot touch the address space or
 // the links, so an update is another CreateOrUpdate.
-func (r *VpnSite) upsert(ctx context.Context, payload json.RawMessage, label string) (*runtime.Poller[armnetwork.VPNSitesClientCreateOrUpdateResponse], vpnSiteProps, string, error) {
+func (r *VpnSite) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (*runtime.Poller[armnetwork.VPNSitesClientCreateOrUpdateResponse], vpnSiteProps, string, error) {
 	var props vpnSiteProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return nil, props, "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -303,8 +303,12 @@ func (r *VpnSite) upsert(ctx context.Context, payload json.RawMessage, label str
 		return nil, props, "", fmt.Errorf("name is required")
 	}
 
+	params := vpnSiteParams(props, payload)
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
+	}
 	poller, err := r.api.BeginCreateOrUpdate(ctx, props.ResourceGroupName, name,
-		vpnSiteParams(props, payload), nil)
+		params, nil)
 	return poller, props, name, err
 }
 
@@ -397,7 +401,7 @@ func (r *VpnSite) Update(ctx context.Context, request *resource.UpdateRequest) (
 		return nil, err
 	}
 
-	poller, _, name, err := r.upsert(ctx, request.DesiredProperties, "")
+	poller, _, name, err := r.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if name == "" {
 			return nil, err

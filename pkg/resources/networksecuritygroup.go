@@ -376,7 +376,7 @@ func (n *NetworkSecurityGroup) Update(ctx context.Context, request *resource.Upd
 		}
 	}
 
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

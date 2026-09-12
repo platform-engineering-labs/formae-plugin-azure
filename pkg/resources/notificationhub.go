@@ -203,8 +203,10 @@ func (n *NotificationHub) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, fmt.Errorf("failed to parse resource properties: %w", err)
 	}
 
+	params := notificationHubParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	result, err := n.api.CreateOrUpdate(ctx, rgName, namespaceName, name,
-		notificationHubParams(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

@@ -307,7 +307,7 @@ func (b *BackupVault) Update(ctx context.Context, request *resource.UpdateReques
 			FeatureSettings:  backupVaultFeatureSettings(props),
 		},
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

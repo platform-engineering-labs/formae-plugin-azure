@@ -266,7 +266,7 @@ func (c *KeyVaultCertificate) Update(ctx context.Context, request *resource.Upda
 	// Only non-createOnly metadata (tags) is mutable in place; data/password are
 	// createOnly and never patched here.
 	params := azcertificates.UpdateCertificateParameters{}
-	if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+	if tags := formaeUpdateTagsToAzureTags(request); tags != nil {
 		params.Tags = tags
 	}
 	res, err := api.UpdateCertificate(ctx, name, "", params, nil)

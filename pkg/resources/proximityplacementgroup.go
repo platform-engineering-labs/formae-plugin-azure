@@ -236,7 +236,7 @@ func (p *ProximityPlacementGroup) Update(ctx context.Context, request *resource.
 	// ProximityPlacementGroupUpdate has no other fields, and type/intent/zones are
 	// createOnly in the schema.
 	update := armcompute.ProximityPlacementGroupUpdate{
-		Tags: formaeTagsToAzureTags(request.DesiredProperties),
+		Tags: formaeUpdateTagsToAzureTags(request),
 	}
 
 	result, err := p.api.Update(ctx, rgName, name, update, nil)

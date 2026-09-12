@@ -267,6 +267,8 @@ func (t *EventGridDomain) Update(ctx context.Context, request *resource.UpdateRe
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := t.api.BeginCreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

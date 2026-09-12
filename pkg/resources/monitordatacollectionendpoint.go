@@ -236,8 +236,10 @@ func (m *MonitorDataCollectionEndpoint) Update(ctx context.Context, request *res
 		return nil, err
 	}
 
+	params := monitorDataCollectionEndpointParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	result, err := m.api.Create(ctx, rgName, name,
-		monitorDataCollectionEndpointParams(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

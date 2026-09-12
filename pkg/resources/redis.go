@@ -326,7 +326,7 @@ func (r *Redis) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 	}
 
 	params := armredis.UpdateParameters{Properties: updateProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

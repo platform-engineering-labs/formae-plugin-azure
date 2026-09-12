@@ -299,6 +299,8 @@ func (s *SignalR) Update(ctx context.Context, request *resource.UpdateRequest) (
 
 	params := signalRResourceInfoFromProps(props, request.DesiredProperties)
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := s.api.BeginUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

@@ -305,7 +305,7 @@ func (b *BatchAccount) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	params := armbatch.AccountUpdateParameters{Properties: updateProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

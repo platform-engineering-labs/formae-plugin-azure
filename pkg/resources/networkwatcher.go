@@ -186,7 +186,7 @@ func (w *NetworkWatcher) Update(ctx context.Context, request *resource.UpdateReq
 	// Location is the only other field and it is immutable, so tags are all an
 	// update can carry.
 	tags := armnetwork.TagsObject{}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		tags.Tags = azureTags
 	}
 

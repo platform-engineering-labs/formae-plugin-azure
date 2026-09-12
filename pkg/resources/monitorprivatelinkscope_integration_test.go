@@ -272,3 +272,18 @@ func TestMonitorPrivateLinkScope_CRUD(t *testing.T) {
 		require.Equal(t, resource.OperationErrorCodeNotFound, got.ErrorCode)
 	})
 }
+
+func TestPrivateLinkScope_UpdateClearsTagsThroughSharedBuilder(t *testing.T) {
+	fake := &fakePrivateLinkScopesAPI{createOrUpdateFn: func(_ context.Context, _, _ string, params armmonitor.AzureMonitorPrivateLinkScope, _ *armmonitor.PrivateLinkScopesClientCreateOrUpdateOptions) (armmonitor.PrivateLinkScopesClientCreateOrUpdateResponse, error) {
+		body, err := json.Marshal(params)
+		require.NoError(t, err)
+		var wire map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(body, &wire))
+		require.Contains(t, wire, "tags")
+		require.JSONEq(t, `{}`, string(wire["tags"]))
+		return armmonitor.PrivateLinkScopesClientCreateOrUpdateResponse{AzureMonitorPrivateLinkScope: armmonitor.AzureMonitorPrivateLinkScope{ID: to.Ptr(testPrivateLinkScopeNativeID), Tags: params.Tags}}, nil
+	}}
+	got, err := newTestPrivateLinkScope(fake).Update(context.Background(), &resource.UpdateRequest{NativeID: testPrivateLinkScopeNativeID, DesiredProperties: json.RawMessage(`{"resourceGroupName":"rg-1","name":"ampls1","location":"global","ingestionAccessMode":"Open","queryAccessMode":"Open"}`), PatchDocument: to.Ptr(`[{"op":"remove","path":"/Tags"}]`)})
+	require.NoError(t, err)
+	require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+}

@@ -219,7 +219,7 @@ func trafficManagerProfileParams(props trafficManagerProfileProps) armtrafficman
 
 // upsert backs both Create and Update: CreateOrUpdate replaces the profile body,
 // and ARM's Update is a partial merge of the same type.
-func (t *TrafficManagerProfile) upsert(ctx context.Context, payload json.RawMessage, label string) (armtrafficmanager.Profile, string, string, error) {
+func (t *TrafficManagerProfile) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armtrafficmanager.Profile, string, string, error) {
 	var props trafficManagerProfileProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armtrafficmanager.Profile{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -244,6 +244,10 @@ func (t *TrafficManagerProfile) upsert(ctx context.Context, payload json.RawMess
 	params := trafficManagerProfileParams(props)
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := t.api.CreateOrUpdate(ctx, props.ResourceGroupName, name, params, nil)
@@ -309,7 +313,7 @@ func (t *TrafficManagerProfile) Read(ctx context.Context, request *resource.Read
 }
 
 func (t *TrafficManagerProfile) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	profile, rgName, name, err := t.upsert(ctx, request.DesiredProperties, "")
+	profile, rgName, name, err := t.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" || name == "" {
 			return nil, err

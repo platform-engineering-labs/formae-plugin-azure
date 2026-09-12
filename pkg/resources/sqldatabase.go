@@ -325,7 +325,7 @@ func (d *SqlDatabase) Update(ctx context.Context, request *resource.UpdateReques
 	if sku := buildDatabaseSKU(props); sku != nil {
 		params.SKU = sku
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

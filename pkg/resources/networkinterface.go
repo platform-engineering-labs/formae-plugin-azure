@@ -431,7 +431,7 @@ func (nic *NetworkInterface) Update(ctx context.Context, request *resource.Updat
 	}
 
 	// Add tags if present
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

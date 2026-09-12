@@ -287,6 +287,8 @@ func (w *WebPubSub) Update(ctx context.Context, request *resource.UpdateRequest)
 
 	params := webPubSubResourceInfoFromProps(props, request.DesiredProperties)
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := w.api.BeginUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

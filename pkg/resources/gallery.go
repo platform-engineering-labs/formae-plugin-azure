@@ -225,7 +225,7 @@ func (g *Gallery) Update(ctx context.Context, request *resource.UpdateRequest) (
 	if v, ok := props["description"].(string); ok && v != "" {
 		update.Properties.Description = to.Ptr(v)
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

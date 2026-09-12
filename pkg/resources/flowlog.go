@@ -323,6 +323,8 @@ func (f *FlowLog) Update(ctx context.Context, request *resource.UpdateRequest) (
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := f.api.BeginCreateOrUpdate(ctx, rgName, watcherName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

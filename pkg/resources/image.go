@@ -275,7 +275,7 @@ func (i *Image) Update(ctx context.Context, request *resource.UpdateRequest) (*r
 	// The storage profile is createOnly, so the PATCH carries tags only — a body
 	// that re-declares the OS disk source makes ARM re-validate an immutable field.
 	update := armcompute.ImageUpdate{}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

@@ -239,7 +239,7 @@ func vpnGatewayParams(props vpnGatewayProps, payload json.RawMessage) armnetwork
 
 // upsert backs both Create and Update: BeginUpdateTags cannot touch the scale unit
 // or the connections, so an update is another CreateOrUpdate.
-func (r *VpnGateway) upsert(ctx context.Context, payload json.RawMessage, label string) (*runtime.Poller[armnetwork.VPNGatewaysClientCreateOrUpdateResponse], vpnGatewayProps, string, error) {
+func (r *VpnGateway) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (*runtime.Poller[armnetwork.VPNGatewaysClientCreateOrUpdateResponse], vpnGatewayProps, string, error) {
 	var props vpnGatewayProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return nil, props, "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -269,8 +269,12 @@ func (r *VpnGateway) upsert(ctx context.Context, payload json.RawMessage, label 
 		return nil, props, "", fmt.Errorf("name is required")
 	}
 
+	params := vpnGatewayParams(props, payload)
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
+	}
 	poller, err := r.api.BeginCreateOrUpdate(ctx, props.ResourceGroupName, name,
-		vpnGatewayParams(props, payload), nil)
+		params, nil)
 	return poller, props, name, err
 }
 
@@ -363,7 +367,7 @@ func (r *VpnGateway) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, err
 	}
 
-	poller, _, name, err := r.upsert(ctx, request.DesiredProperties, "")
+	poller, _, name, err := r.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if name == "" {
 			return nil, err

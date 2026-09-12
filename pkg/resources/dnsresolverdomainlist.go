@@ -246,7 +246,7 @@ func (d *DNSResolverDomainList) Update(ctx context.Context, request *resource.Up
 	}
 
 	params := armdnsresolver.DomainListPatch{
-		Tags: formaeTagsToAzureTags(request.DesiredProperties),
+		Tags: formaeUpdateTagsToAzureTags(request),
 	}
 	if domains := domainPointers(props.Domains); domains != nil {
 		params.Properties = &armdnsresolver.DomainListPatchProperties{Domains: domains}

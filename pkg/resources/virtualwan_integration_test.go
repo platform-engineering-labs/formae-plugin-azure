@@ -262,3 +262,18 @@ func TestVirtualWan_CRUD(t *testing.T) {
 		require.Equal(t, resource.OperationErrorCodeNotFound, got.ErrorCode)
 	})
 }
+
+func TestVirtualWan_UpdateClearsTagsThroughSharedUpsert(t *testing.T) {
+	fake := &fakeVirtualWansAPI{beginCreateOrUpdateFn: func(_ context.Context, _, _ string, params armnetwork.VirtualWAN, _ *armnetwork.VirtualWansClientBeginCreateOrUpdateOptions) (*runtime.Poller[armnetwork.VirtualWansClientCreateOrUpdateResponse], error) {
+		body, err := json.Marshal(params)
+		require.NoError(t, err)
+		var wire map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(body, &wire))
+		require.Contains(t, wire, "tags")
+		require.JSONEq(t, `{}`, string(wire["tags"]))
+		return newDonePoller(armnetwork.VirtualWansClientCreateOrUpdateResponse{VirtualWAN: armnetwork.VirtualWAN{ID: to.Ptr(testVirtualWanNativeID), Tags: params.Tags}}), nil
+	}}
+	got, err := newTestVirtualWan(fake).Update(context.Background(), &resource.UpdateRequest{NativeID: testVirtualWanNativeID, DesiredProperties: json.RawMessage(`{"resourceGroupName":"rg-1","name":"vwan1","location":"eastus"}`), PatchDocument: to.Ptr(`[{"op":"remove","path":"/Tags"}]`)})
+	require.NoError(t, err)
+	require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+}

@@ -225,7 +225,7 @@ func (n *NotificationHubNamespace) Update(ctx context.Context, request *resource
 	params := armnotificationhubs.NamespacePatchParameters{
 		SKU: notificationHubSKU(props.SKUName),
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

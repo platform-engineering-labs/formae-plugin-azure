@@ -219,7 +219,7 @@ func (d *DNSResolverPolicyVNetLink) Update(ctx context.Context, request *resourc
 		return nil, err
 	}
 
-	params := armdnsresolver.PolicyVirtualNetworkLinkPatch{Tags: formaeTagsToAzureTags(request.DesiredProperties)}
+	params := armdnsresolver.PolicyVirtualNetworkLinkPatch{Tags: formaeUpdateTagsToAzureTags(request)}
 
 	poller, err := d.api.BeginUpdate(ctx, rgName, policyName, name, params, nil)
 	if err != nil {

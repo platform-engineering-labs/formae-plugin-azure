@@ -183,6 +183,8 @@ func (z *DnsZone) Update(ctx context.Context, request *resource.UpdateRequest) (
 
 	params := dnsZoneParamsFromProperties(request.DesiredProperties, props, location)
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	result, err := z.api.CreateOrUpdate(ctx, rgName, zoneName, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

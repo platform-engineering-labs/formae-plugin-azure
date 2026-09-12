@@ -190,7 +190,7 @@ func (z *PrivateDnsZone) Update(ctx context.Context, request *resource.UpdateReq
 	params := armprivatedns.PrivateZone{
 		Location: stringPtr(location),
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

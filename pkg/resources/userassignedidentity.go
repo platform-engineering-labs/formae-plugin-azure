@@ -179,7 +179,7 @@ func (u *UserAssignedIdentity) Update(ctx context.Context, request *resource.Upd
 	// Only tags can be updated for user assigned identities
 	params := armmsi.IdentityUpdate{}
 
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

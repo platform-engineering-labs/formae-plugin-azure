@@ -507,7 +507,7 @@ func (v *VirtualMachineScaleSet) Update(ctx context.Context, request *resource.U
 		}
 		update.SKU = s
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

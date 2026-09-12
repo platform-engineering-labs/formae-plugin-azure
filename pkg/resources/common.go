@@ -104,6 +104,43 @@ func formaeTagsToAzureTags(properties []byte) map[string]*string {
 	return azureTags
 }
 
+// formaeUpdateTagsToAzureTags reads values from DesiredProperties and uses the
+// patch to distinguish tag removal from omission. Empty collections alone are
+// not removal intent: undeclared tags can render as empty lists.
+func formaeUpdateTagsToAzureTags(request *resource.UpdateRequest) map[string]*string {
+	if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+		return tags
+	}
+	if request.PatchDocument == nil {
+		return nil
+	}
+	var ops []struct {
+		Op   string `json:"op"`
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(*request.PatchDocument), &ops) != nil {
+		return nil
+	}
+	for _, op := range ops {
+		if op.Op != "remove" && op.Op != "replace" && op.Op != "add" {
+			continue
+		}
+		if op.Path == "" || op.Path == "/Tags" || strings.HasPrefix(op.Path, "/Tags/") || op.Path == "/Properties/Tags" || strings.HasPrefix(op.Path, "/Properties/Tags/") {
+			return map[string]*string{}
+		}
+		// Properties is an ancestor only for the legacy nested tag representation.
+		if op.Path == "/Properties" {
+			var prior struct{ Properties map[string]json.RawMessage }
+			if json.Unmarshal(request.PriorProperties, &prior) == nil {
+				if _, ok := prior.Properties["Tags"]; ok {
+					return map[string]*string{}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // operationErrorCode maps provider errors to Formae operation error codes.
 func operationErrorCode(err error) resource.OperationErrorCode {
 	return prov.OperationErrorCode(err)

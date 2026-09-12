@@ -289,7 +289,7 @@ func (rt *RouteTable) Update(ctx context.Context, request *resource.UpdateReques
 	if routes := routesFromProperties(props); routes != nil {
 		params.Properties.Routes = routes
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 
