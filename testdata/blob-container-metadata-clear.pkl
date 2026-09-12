@@ -47,6 +47,9 @@ forma {
     resourceGroupName = rg.res.name
     storageAccountName = sa.res.name
     publicAccess = "None"
+    // Keep this collection-clear test independent of late-populated defaults.
+    defaultEncryptionScope = "$account-encryption-key"
+    denyEncryptionScopeOverride = false
     metadata = new Listing { new azure.Tag { key = "remove"; value = "yes" } }
   }
 }
