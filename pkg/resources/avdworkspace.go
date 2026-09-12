@@ -225,7 +225,7 @@ func (a *AvdWorkspace) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	patch := &armdesktopvirtualization.WorkspacePatch{Properties: patchProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		patch.Tags = azureTags
 	}
 

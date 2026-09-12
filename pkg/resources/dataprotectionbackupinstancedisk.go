@@ -319,7 +319,7 @@ func (d *DataProtectionBackupInstanceDisk) Update(ctx context.Context, request *
 	}
 
 	params := armdataprotection.BackupInstanceResource{Properties: instance}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

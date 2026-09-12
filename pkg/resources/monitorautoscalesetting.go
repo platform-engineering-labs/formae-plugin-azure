@@ -408,8 +408,10 @@ func (m *MonitorAutoscaleSetting) Update(ctx context.Context, request *resource.
 		return nil, err
 	}
 
+	params := monitorAutoscaleSettingParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	result, err := m.api.CreateOrUpdate(ctx, rgName, name,
-		monitorAutoscaleSettingParams(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

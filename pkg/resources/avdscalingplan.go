@@ -527,7 +527,7 @@ func (a *AvdScalingPlan) Update(ctx context.Context, request *resource.UpdateReq
 			FriendlyName:       planProps.FriendlyName,
 		},
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		patch.Tags = azureTags
 	}
 

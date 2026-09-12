@@ -231,8 +231,10 @@ func (m *MonitorWorkspace) Update(ctx context.Context, request *resource.UpdateR
 		return nil, err
 	}
 
+	params := monitorWorkspaceParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	result, err := m.api.CreateOrUpdate(ctx, rgName, name,
-		monitorWorkspaceParams(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

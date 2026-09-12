@@ -263,6 +263,8 @@ func (w *LogicWorkflow) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	result, err := w.api.CreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

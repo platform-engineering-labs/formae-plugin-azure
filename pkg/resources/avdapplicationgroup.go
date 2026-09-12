@@ -233,7 +233,7 @@ func (a *AvdApplicationGroup) Update(ctx context.Context, request *resource.Upda
 	}
 
 	patch := &armdesktopvirtualization.ApplicationGroupPatch{Properties: patchProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		patch.Tags = azureTags
 	}
 

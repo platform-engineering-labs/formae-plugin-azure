@@ -293,3 +293,18 @@ func TestMonitorWorkspace_CRUD(t *testing.T) {
 		require.Equal(t, resource.OperationErrorCodeNotFound, got.ErrorCode)
 	})
 }
+
+func TestMonitorWorkspace_UpdateClearsTagsWireBody(t *testing.T) {
+	fake := &fakeMonitorWorkspacesAPI{createFn: func(_ context.Context, _, _ string, params armmonitorworkspaces.AzureMonitorWorkspaceResource, _ *armmonitorworkspaces.AzureMonitorWorkspacesClientCreateOrUpdateOptions) (armmonitorworkspaces.AzureMonitorWorkspacesClientCreateOrUpdateResponse, error) {
+		body, err := json.Marshal(params)
+		require.NoError(t, err)
+		var wire map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(body, &wire))
+		require.Contains(t, wire, "tags")
+		require.JSONEq(t, `{}`, string(wire["tags"]))
+		return armmonitorworkspaces.AzureMonitorWorkspacesClientCreateOrUpdateResponse{AzureMonitorWorkspaceResource: armmonitorworkspaces.AzureMonitorWorkspaceResource{ID: to.Ptr(testMonitorWorkspaceNativeID), Tags: params.Tags}}, nil
+	}}
+	got, err := newTestMonitorWorkspace(fake).Update(context.Background(), &resource.UpdateRequest{NativeID: testMonitorWorkspaceNativeID, DesiredProperties: json.RawMessage(`{"resourceGroupName":"rg-1","name":"amw1","location":"eastus"}`), PatchDocument: to.Ptr(`[{"op":"remove","path":"/Tags"}]`)})
+	require.NoError(t, err)
+	require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+}

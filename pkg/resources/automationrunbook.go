@@ -274,7 +274,7 @@ func (r *AutomationRunbook) Update(ctx context.Context, request *resource.Update
 		Name:       to.Ptr(name),
 		Properties: updateProps,
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 
