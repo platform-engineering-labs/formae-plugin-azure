@@ -10,6 +10,16 @@ formae agent.
 
 ## [Unreleased]
 
+## [0.1.13]
+
+### Fixed
+
+- Removing the last tag now sends an explicit empty tag set to Azure instead of
+  omitting tags from the update request. This applies to storage accounts and
+  other resources with Azure tags. Updates use the desired tag values and the
+  patch document to distinguish removal from an unrelated change, preserving
+  tags when an unset collection is rendered as empty.
+
 ## [0.1.12]
 
 ### Changed
