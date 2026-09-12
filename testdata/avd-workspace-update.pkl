@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/desktopvirtualization/avdhostpool.pkl"
+import "@azure/desktopvirtualization/avdapplicationgroup.pkl"
+import "@azure/desktopvirtualization/avdworkspace.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "avd-ws-test-rg"
+  name = "formae-plugin-sdk-test-avd-ws-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local hostPool = new avdhostpool.HostPool {
+  label = "avd-ws-test-host-pool"
+  name = "fpsdt-avd-ws-hp-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  hostPoolType = "Pooled"
+  loadBalancerType = "BreadthFirst"
+  preferredAppGroupType = "RailApplications"
+  maxSessionLimit = 10
+  startVmOnConnect = false
+  validationEnvironment = false
+}
+
+local appGroup = new avdapplicationgroup.ApplicationGroup {
+  label = "avd-ws-test-application-group"
+  name = "fpsdt-avd-ws-ag-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  hostPoolArmPath = hostPool.res.id
+  applicationGroupType = "RemoteApp"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  hostPool
+
+  appGroup
+
+  // Which application groups appear in the feed is a plain field, not a
+  // *_workspace_application_group_association resource: ARM stores the list on
+  // the workspace and writes the reverse pointer (workspaceArmPath) on the
+  // group itself, which is why the group's read path drops it.
+  // Update: PATCH the free-text names and the tags. The application group list
+  // is sent whole on every update so that dropping the last group actually
+  // empties the feed rather than being read as "no change".
+  new avdworkspace.Workspace {
+    label = "plugin-sdk-test-avd-workspace"
+    name = "fpsdt-avd-ws-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "eastus"
+    applicationGroupReferences = new Listing {
+      appGroup.res.id
+    }
+    description = "Conformance workspace, updated"
+    friendlyName = "fpsdt workspace renamed"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

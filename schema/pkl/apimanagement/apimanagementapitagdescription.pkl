@@ -1,0 +1,93 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapitagdescription
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiTagDescription"
+const apiVersion = "2021-08-01"
+
+open class ApiTagDescriptionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiTagDescriptionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiTagDescriptionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The description shown for one tag in the context of one API — the prose and
+/// external-documentation link the developer portal renders next to the tag.
+///
+/// REQUIRES AN EXISTING TAG. `name` is the identifier of a tag that already
+/// exists in the service; ARM rejects the create otherwise. Tags are a
+/// separate ARM resource (`Microsoft.ApiManagement/service/tags`) which this
+/// plugin does not yet model, so today this resource can only describe a tag
+/// created outside formae.
+///
+/// `displayName` and `tagId` are read-only: both are derived by ARM from the
+/// tag this description points at.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Api"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "apiName" }
+    )
+}
+open class ApiTagDescription extends formae.Resource {
+
+    /// Identifier of the tag being described. The tag must already exist in the
+    /// service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the API this description is scoped to — its ARM name, not
+    /// its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// Link text for the external documentation.
+    @azure.FieldHint { }
+    externalDocsDescription: String?
+
+    /// URL of the external documentation for operations carrying this tag.
+    @azure.FieldHint { }
+    externalDocsUrl: String?
+
+    // Read-only outputs (populated by provider, not user-supplied)
+
+    /// Display name of the tag being described, as ARM reports it.
+    @azure.FieldHint { hasProviderDefault = true }
+    displayName: String?
+
+    /// Full ARM id of the tag being described.
+    @azure.FieldHint { hasProviderDefault = true }
+    tagId: String?
+
+    hidden parent = this
+
+    hidden res: ApiTagDescriptionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

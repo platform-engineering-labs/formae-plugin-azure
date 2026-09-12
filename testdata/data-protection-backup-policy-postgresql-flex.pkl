@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/dataprotection/backupvault.pkl" as bv
+import "@azure/dataprotection/dataprotectionbackuppolicypostgresqlflex.pkl" as bp
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "bp-pg-test-rg"
+  name = "formae-plugin-sdk-test-bp-pg-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The cheapest vault that can hold a policy: one LocallyRedundant VaultStore and
+// soft delete off, so the destroy phase is clean. A policy is a record inside the
+// vault and adds nothing to its cost.
+local backupVault = new bv.BackupVault {
+  label = "bp-pg-test-vault"
+  name = "fpsdt-bppg-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  storageSettings = new Listing {
+    new bv.StorageSetting {
+      datastoreType = "VaultStore"
+      type = "LocallyRedundant"
+    }
+  }
+  softDeleteState = "Off"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  backupVault
+
+  // A flexible-server backup is a full dump written into the vault tier. No
+  // server is needed: the policy is a record until a backup instance names one.
+  new bp.BackupPolicyPostgreSqlFlexibleServer {
+    label = "plugin-sdk-test-bp-pg"
+    name = "fpsdt-bppg-pol-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    vaultName = backupVault.res.name
+    backupRules = new Listing {
+      new bp.BackupRule {
+        name = "BackupWeekly"
+        backupType = "Full"
+        datastoreType = "VaultStore"
+        repeatingTimeIntervals = new Listing { "R/2024-01-01T06:30:00+00:00/P1W" }
+        timeZone = "UTC"
+        taggingCriteria = new Listing {
+          new bp.TaggingCriterion {
+            tagName = "Default"
+            isDefault = true
+            taggingPriority = 99
+          }
+        }
+      }
+    }
+    retentionRules = new Listing {
+      new bp.RetentionRule {
+        name = "Default"
+        isDefault = true
+        lifecycles = new Listing {
+          new bp.RetentionLifecycle {
+            sourceDatastoreType = "VaultStore"
+            deleteAfterDuration = "P3M"
+          }
+        }
+      }
+    }
+  }
+}

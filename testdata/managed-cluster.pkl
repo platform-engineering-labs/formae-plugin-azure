@@ -1,0 +1,100 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/containerservice/managedcluster.pkl"
+import "vars.pkl"
+
+// Cost: the Free SKU tier means the control plane itself is not billed, so the
+// bill is one agent node — a single Standard_D2s_v4 (2 vCPU / 8 GiB,
+// ~$0.096/hr in East US) with a 32 GiB OS disk. A cluster takes roughly 5-8
+// minutes to provision and this fixture also drives a replace, so budget on the
+// order of an hour of node time across a full run: a few cents.
+//
+// Why D2s_v4 and not something smaller: AKS system pools need at least 2 vCPU
+// and 4 GiB, and this subscription's burstable v2 quota is zero
+// ("Standard Bsv2 Family vCPUs" limit 0), which is what the parked fixture's
+// Standard_B2s_v2 needed. Standard DSv4 has a limit of 10 vCPUs and is the size
+// the AKS-backed fixtures already in the matrix (trusted-access-role-binding,
+// flux-configuration, maintenance-configuration) use.
+//
+// Node count is 1, the minimum AKS accepts for a System pool.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aks-test-rg"
+  name = "formae-plugin-sdk-test-aks-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new managedcluster.ManagedCluster {
+    label = "plugin-sdk-test-aks"
+    name = "fpsdt-aks-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    sku = new managedcluster.ManagedClusterSKU {
+      name = "Base"
+      tier = "Free"
+    }
+    identity = new managedcluster.ManagedClusterIdentity {
+      type = "SystemAssigned"
+    }
+    dnsPrefix = "fpsdt-aks-\(vars.testRunID)"
+    // Pinned to a minor-version alias. AKS echoes the alias back in
+    // kubernetesVersion and reports the resolved patch in
+    // currentKubernetesVersion (which the schema marks hasProviderDefault), so
+    // the fixture does not have to chase patch releases. Leaving this unset
+    // would let Azure choose a default that the harness then sees as an
+    // undeclared property.
+    kubernetesVersion = "1.35"
+    // Azure returns enableRBAC on every cluster; declared so it is not read as
+    // an unexpected property.
+    enableRBAC = true
+    agentPoolProfiles = new Listing {
+      new managedcluster.AgentPoolProfile {
+        name = "nodepool1"
+        count = 1
+        vmSize = "Standard_D2s_v4"
+        // 32 GiB is just above the AKS minimum of 30 and small enough to land
+        // on an ephemeral OS disk on this VM size, which is not billed at all.
+        // Left unset, Azure would report its 128 GiB default back as drift.
+        osDiskSizeGB = 32
+        osType = "Linux"
+        mode = "System"
+        // Reported back as false by Azure whether or not it is sent.
+        enableAutoScaling = false
+      }
+    }
+    // Declared in full rather than left to Azure's defaults: the cluster always
+    // comes back with a network profile, and every field the provisioner
+    // serializes has to be declared here or the harness flags it. Sending these
+    // values guarantees Azure echoes exactly them.
+    networkProfile = new managedcluster.NetworkProfile {
+      networkPlugin = "azure"
+      networkPluginMode = "overlay"
+      serviceCidr = "10.0.0.0/16"
+      dnsServiceIP = "10.0.0.10"
+      podCidr = "10.244.0.0/16"
+      loadBalancerSku = "standard"
+    }
+    // Azure reports oidcIssuerProfile.enabled on every cluster; sending it
+    // explicitly keeps expected and actual identical.
+    oidcIssuerProfile = new managedcluster.OIDCIssuerProfile {
+      enabled = false
+    }
+  }
+}

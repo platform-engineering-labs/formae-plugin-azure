@@ -57,6 +57,15 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
+      # Renders every testdata forma. This is the only check here that reaches
+      # formae.SubResource.render(): Build, Lint, Unit tests, the Pkl manifest
+      # eval and Verify schema all evaluate the schema WITHOUT rendering a forma.
+      # PR #144 shipped a schema change that left 113 of 371 fixtures
+      # unrenderable with every one of those steps green, and conformance for
+      # ~57 resource types was impossible until it was found by hand.
+      - name: Verify fixtures render
+        run: make verify-fixtures
+
       - name: Conformance scope self-check
         run: ./scripts/ci/conformance-scope_test.sh
 
@@ -103,6 +112,13 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Clean up test resources
+        # KEEP UNTIL pre-cleanup IS GREEN, then remove in this PR.
+        # clean-environment.sh has aborted at `GROUPS=$(list_groups)` through
+        # three attempted fixes (#147, #149). The set -x trace is the only thing
+        # that has produced a real diagnosis, and it was removed too early last
+        # time - before the fix was confirmed - which cost another round trip.
+        env:
+          CLEAN_DEBUG: "1"
         run: ./scripts/ci/clean-environment.sh
 
   # Conformance runs the full CRUD + discovery lifecycle against real Azure

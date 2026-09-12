@@ -66,6 +66,7 @@ class BackendAddressPool {
 }
 
 /// Health probe used by load balancing rules.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class Probe extends formae.SubResource {
     /// Probe name.
     name: String(length >= 1 && length <= 80)
@@ -89,6 +90,7 @@ class Probe extends formae.SubResource {
 }
 
 /// Load balancing rule mapping a frontend port to a backend port.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class LoadBalancingRule extends formae.SubResource {
     /// Rule name.
     name: String(length >= 1 && length <= 80)

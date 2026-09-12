@@ -108,6 +108,7 @@ class BackendAddressPool {
 }
 
 /// Backend HTTP settings governing how the gateway talks to the pool.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class BackendHTTPSettings extends formae.SubResource {
     /// Name of the backend HTTP settings.
     name: String(length >= 1 && length <= 80)
@@ -131,6 +132,7 @@ class BackendHTTPSettings extends formae.SubResource {
 }
 
 /// Health probe.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class Probe extends formae.SubResource {
     /// Probe name.
     name: String(length >= 1 && length <= 80)
@@ -162,6 +164,7 @@ class Probe extends formae.SubResource {
 
 /// SSL certificate served by the gateway. Provide either an inline PFX
 /// (`data` + `password`) or a Key Vault secret reference (`keyVaultSecretId`).
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class SSLCertificate extends formae.SubResource {
     /// Name of the SSL certificate.
     name: String(length >= 1 && length <= 80)

@@ -1,0 +1,50 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-service-test-rg"
+  name = "formae-plugin-sdk-test-apim-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Consumption is the only tier this test can use. A Developer, Basic,
+  // Standard or Premium instance takes 30 to 45 minutes to provision, which is
+  // longer than the CI credential lives; Consumption reaches Succeeded in about
+  // three minutes. It is also free at rest.
+  //
+  // The name is globally unique — it owns <name>.azure-api.net — and a delete
+  // leaves it soft-deleted for 48 hours, so it must be derived from the run id
+  // rather than fixed.
+  new apim.Service {
+    label = "plugin-sdk-test-apim-service"
+    name = "fpsdt-apim-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    publisherEmail = "conformance@platform.engineering"
+    publisherName = "Platform Engineering Labs"
+    skuName = "Consumption"
+    skuCapacity = 0
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

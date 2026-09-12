@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.management.managementgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Management::ManagementGroup"
+const apiVersion = "2021-04-01"
+
+open class ManagementGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagementGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ManagementGroupResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A container for subscriptions and other management groups. Policy and role
+/// assignments made on a management group are inherited by everything beneath it.
+///
+/// Free — management groups carry no charge.
+///
+/// TENANT-SCOPED, NOT SUBSCRIPTION-SCOPED. Unlike every other resource in this
+/// plugin, the ARM calls behind this type are made against
+/// `/providers/Microsoft.Management` rather than a subscription, so the client is
+/// built without a subscription id. Creating one needs a role assignment at the
+/// tenant root group (Owner, Contributor or Management Group Contributor); a
+/// principal that is only Owner of a subscription gets `AuthorizationFailed` on
+/// every verb, including read.
+///
+/// The `name` is the group ID that ARM addresses the group by and that appears in
+/// every child's resource ID — it cannot be changed after creation. `displayName`
+/// is the mutable friendly name and defaults to the group ID.
+///
+/// Not modelled: `children` (the service's own view of what is under the group —
+/// membership is expressed by the child, e.g.
+/// AZURE::Management::ManagementGroupSubscriptionAssociation), and hierarchy
+/// settings, which are a separate ARM resource.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+}
+open class ManagementGroup extends formae.Resource {
+
+    /// The group ID. Appears verbatim in the resource ID of the group and of
+    /// everything under it, and cannot be changed afterwards.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 90 && matches(Regex(#"^[A-Za-z0-9\-_.()]+$"#)))
+
+    /// Friendly name. ARM sets it to `name` when it is not supplied.
+    @azure.FieldHint { hasProviderDefault = true }
+    displayName: String(length >= 1 && length <= 90)?
+
+    /// Fully qualified ID of the parent management group, e.g.
+    /// `/providers/Microsoft.Management/managementGroups/my-parent`. Omitted means
+    /// the tenant root group, which ARM fills in. Changing it moves the group and
+    /// everything under it to a new parent.
+    @azure.FieldHint { hasProviderDefault = true }
+    parentId: (String|formae.Resolvable)?
+
+    /// The Entra tenant the group belongs to. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    tenantId: String?
+
+    hidden parent = this
+
+    hidden res: ManagementGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

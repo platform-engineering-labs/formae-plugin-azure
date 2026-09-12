@@ -1,0 +1,99 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/signalrservice/webpubsub.pkl" as wps
+import "@azure/insights/autoscalesetting.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "as-test-rg"
+  name = "formae-plugin-sdk-test-as-rg-\(vars.testRunID)"
+  location = "westeurope"
+}
+
+// The scale target. ARM validates targetResourceUri against the set of resources
+// Azure knows how to scale and rejects anything else with
+//   InvalidArgument: The property 'resourceId' has an invalid value.
+// so a storage account will not do. The obvious targets — a virtual machine scale
+// set and an App Service plan — both need dedicated-VM quota the conformance
+// subscription does not have (its "Total VMs" limit is 0, and F1 "Free" is not
+// exempt), so this fixture scales a Web PubSub instead: it is serverless-billed and
+// autoscalable at Premium_P1. Provisioning takes ~10-15 min, which is why
+// autoscale-setting carries its own timeout arm in
+// scripts/ci/run-conformance-phase.sh.
+local pubsub = new wps.WebPubSub {
+  label = "as-test-wps"
+  name = "fpsdt-as-wps-\(vars.testRunID)"
+  location = "westeurope"
+  resourceGroupName = rg.res.name
+  sku = new wps.SKU {
+    name = "Premium_P1"
+    capacity = 1
+  }
+  kind = "WebPubSub"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  pubsub
+
+  // One always-on profile: no fixedDate and no recurrence, so it applies at all
+  // times. Nothing connects to the Web PubSub during the run, so the trigger never
+  // fires and the instance count stays at the profile default of 1.
+  new autoscalesetting.AutoscaleSetting {
+    label = "plugin-sdk-test-autoscale-setting"
+    name = "fpsdt-as-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "westeurope"
+    targetResourceUri = pubsub.res.id
+    enabled = true
+    profiles {
+      new autoscalesetting.AutoscaleProfile {
+        name = "default"
+        // ARM carries the three bounds as strings, not numbers.
+        capacity = new autoscalesetting.ScaleCapacity {
+          minimum = "1"
+          maximum = "3"
+          default = "1"
+        }
+        rules {
+          new autoscalesetting.ScaleRule {
+            metricTrigger = new autoscalesetting.MetricTrigger {
+              metricName = "ConnectionQuotaUtilization"
+              metricResourceUri = pubsub.res.id
+              timeGrain = "PT1M"
+              statistic = "Average"
+              timeWindow = "PT5M"
+              timeAggregation = "Average"
+              operator = "GreaterThan"
+              threshold = 80
+            }
+            scaleAction = new autoscalesetting.ScaleAction {
+              direction = "Increase"
+              type = "ChangeCount"
+              value = "1"
+              cooldown = "PT5M"
+            }
+          }
+        }
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

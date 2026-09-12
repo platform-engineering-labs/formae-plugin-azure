@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storageblobcontainerimmutabilitypolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::BlobContainerImmutabilityPolicy"
+const apiVersion = "2024-01-01"
+
+open class BlobContainerImmutabilityPolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BlobContainerImmutabilityPolicyResolvable = (this) {
+        property = "id"
+    }
+    /// `Unlocked` or `Locked`. Set by ARM, never by this resource.
+    hidden state: BlobContainerImmutabilityPolicyResolvable = (this) {
+        property = "state"
+    }
+}
+
+/// Time-based retention (WORM) policy on a blob container
+/// (`.../containers/<container>/immutabilityPolicies/default`).
+///
+/// ARM exposes this through verbs rather than plain CRUD:
+/// `createOrUpdateImmutabilityPolicy`, which needs the current ETag as `If-Match`
+/// on every modification, and `deleteImmutabilityPolicy`, which needs it too. The
+/// provider reads the ETag itself before each write, so it is not a field here.
+///
+/// A policy is created `Unlocked` and this resource only ever manages unlocked
+/// policies. Locking is deliberately not modelled: a LOCKED policy can never be
+/// deleted or shortened, so the container — and with it the resource group — can
+/// never be torn down. Lock a policy by hand, outside Formae, once you accept
+/// that.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::BlobContainer"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "containerName" },
+        new formae.ListProperty { parentProperty = "storageAccountName" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BlobContainerImmutabilityPolicy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the storage account holding the container.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Name of the parent blob container.
+    @azure.FieldHint { required = true; createOnly = true }
+    containerName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// How long, in days, blobs stay immutable after they are written.
+    @azure.FieldHint { required = true }
+    immutabilityPeriodSinceCreationInDays: Int(this >= 1 && this <= 146000)
+
+    /// Allow new blocks to be appended to existing append blobs while the policy
+    /// holds. Changeable only while the policy is unlocked.
+    @azure.FieldHint { }
+    allowProtectedAppendWrites: Boolean = false
+
+    /// Allow new blocks to be appended to both append and block blobs. Mutually
+    /// exclusive with `allowProtectedAppendWrites`.
+    @azure.FieldHint { }
+    allowProtectedAppendWritesAll: Boolean?
+
+    hidden parent = this
+
+    hidden res: BlobContainerImmutabilityPolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

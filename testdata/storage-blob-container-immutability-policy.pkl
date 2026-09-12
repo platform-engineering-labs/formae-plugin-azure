@@ -1,0 +1,70 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/blobcontainer.pkl"
+import "@azure/storage/storageblobcontainerimmutabilitypolicy.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "imm-test-rg"
+  name = "formae-plugin-sdk-test-imm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "imm-test-sa"
+  name = "fpsdtimm\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local container = new blobcontainer.BlobContainer {
+  label = "imm-test-container"
+  name = "plugin-sdk-test-imm-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = sa.res.name
+  publicAccess = "None"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+  container
+
+  // Singleton child: ARM always names the immutability policy `default`, so this
+  // resource has no name property — one policy per container.
+  //
+  // There is deliberately no way to lock a policy from here. A LOCKED policy can
+  // never be deleted or shortened, so locking one would strand the container and
+  // its resource group forever.
+  new storageblobcontainerimmutabilitypolicy.BlobContainerImmutabilityPolicy {
+    label = "plugin-sdk-test-imm"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    containerName = container.res.name
+    // Unlocked policy, one day of retention: short enough that the container and
+    // its resource group can always be torn down again.
+    immutabilityPeriodSinceCreationInDays = 1
+    allowProtectedAppendWrites = false
+  }
+}

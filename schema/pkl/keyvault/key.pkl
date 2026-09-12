@@ -1,0 +1,106 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.keyvault.key
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::KeyVault::Key"
+// Data-plane API version (metadata only; the azkeys SDK pins its own).
+const apiVersion = "7.5"
+
+/// Key type. The `-HSM` variants require a Premium vault or a Managed HSM.
+typealias KeyType = "RSA"|"RSA-HSM"|"EC"|"EC-HSM"|"oct-HSM"
+
+/// Elliptic curve, for the EC key types only.
+typealias CurveName = "P-256"|"P-256K"|"P-384"|"P-521"
+
+/// Permitted cryptographic operations.
+typealias KeyOperation = "encrypt"|"decrypt"|"sign"|"verify"|"wrapKey"|"unwrapKey"|"import"
+
+open class KeyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: KeyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: KeyResolvable = (this) {
+        property = "name"
+    }
+    hidden keyVersion: KeyResolvable = (this) {
+        property = "keyVersion"
+    }
+}
+
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::KeyVault::Vault"
+    // Discovery passes the vault's vaultUri to List as AdditionalProperties["vaultUri"].
+    listParam = new formae.ListProperty {
+        parentProperty = "vaultUri"
+        listParameter = "vaultUri"
+    }
+}
+open class Key extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(matches(Regex("^[0-9a-zA-Z-]+$")) && length >= 1 && length <= 127)
+
+    /// Data-plane URI of the parent Key Vault, e.g. `vaultUri = kv.res.vaultUri`.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultUri: String(length >= 1)|formae.Resolvable
+
+    /// Key material type. Changing it means new key material, so it is createOnly.
+    @azure.FieldHint { required = true; createOnly = true }
+    keyType: KeyType
+
+    /// RSA key size in bits. Ignored for EC keys.
+    ///
+    /// Key Vault never echoes this parameter back on any response, so the plugin
+    /// recovers it on read from the length of the public modulus. It is marked
+    /// `hasProviderDefault` because leaving it unset lets the service pick (2048).
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    keySize: Int(this == 2048 || this == 3072 || this == 4096)?
+
+    /// Elliptic curve, for the EC key types. Ignored for RSA keys.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    curveName: CurveName?
+
+    /// Permitted operations. Unset lets Key Vault apply the defaults for the key type.
+    @azure.FieldHint { hasProviderDefault = true }
+    keyOps: Listing<KeyOperation>?
+
+    /// Set false to keep the key but refuse every cryptographic operation.
+    @azure.FieldHint { hasProviderDefault = true }
+    enabled: Boolean?
+
+    /// Expiry time, RFC 3339 in UTC, e.g. "2030-01-01T00:00:00Z".
+    @azure.FieldHint { }
+    expiresOn: String?
+
+    /// Activation time, RFC 3339 in UTC — the key cannot be used before it.
+    @azure.FieldHint { }
+    notBefore: String?
+
+    /// Version of the current key, minted by Key Vault on every create. Read-only:
+    /// the resource identity is the versionless key id, so a rotation keeps the
+    /// same resource and changes only this.
+    @azure.FieldHint { hasProviderDefault = true }
+    keyVersion: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: KeyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

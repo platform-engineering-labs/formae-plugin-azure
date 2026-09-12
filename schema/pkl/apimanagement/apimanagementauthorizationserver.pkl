@@ -1,0 +1,126 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementauthorizationserver
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::AuthorizationServer"
+const apiVersion = "2021-08-01"
+
+/// OAuth 2.0 grant flows the server offers.
+///
+/// Each flow has its own requirements: `authorizationCode`, `clientCredentials`
+/// and `resourceOwnerPassword` all need `tokenEndpoint` and `clientSecret`,
+/// while `implicit` needs neither because the token comes straight back from
+/// the authorization endpoint.
+typealias OAuthGrantType = "authorizationCode"|"implicit"|"resourceOwnerPassword"|"clientCredentials"
+
+open class AuthorizationServerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AuthorizationServerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AuthorizationServerResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An OAuth 2.0 authorization server registration — the endpoints and client
+/// credentials the developer portal uses to obtain a token when someone tries
+/// an API from the console.
+///
+/// Registering the server here does not make the gateway validate tokens: that
+/// is a policy (`validate-jwt`). This resource is the portal-facing half.
+///
+/// `clientSecret` is write-only. ARM accepts it but never returns it from a Get
+/// — it comes back only from a separate list-secrets call — so drift in it
+/// cannot be detected, though changing it in a forma still pushes the new
+/// value.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class AuthorizationServer extends formae.Resource {
+
+    /// Authorization-server identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 50)
+
+    /// OAuth authorization endpoint the portal sends the user to.
+    @azure.FieldHint { required = true }
+    authorizationEndpoint: String(length >= 1)
+
+    /// Page where a developer can register a client with this server. ARM
+    /// requires it even though it is purely informational.
+    @azure.FieldHint { required = true }
+    clientRegistrationEndpoint: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    clientId: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    grantTypes: Listing<OAuthGrantType>
+
+    /// Token endpoint. Required by ARM for every grant type except `implicit`.
+    @azure.FieldHint { }
+    tokenEndpoint: String?
+
+    /// Client secret. Write-only: see the note on this class.
+    @azure.FieldHint { writeOnly = true }
+    clientSecret: (formae.Value|String)?
+
+    /// Scope requested by default.
+    @azure.FieldHint { }
+    defaultScope: String?
+
+    @azure.FieldHint { }
+    description: String?
+
+    /// HTTP methods the authorization endpoint accepts. ARM defaults it to
+    /// GET only.
+    @azure.FieldHint { hasProviderDefault = true }
+    authorizationMethods: Listing<"HEAD"|"OPTIONS"|"TRACE"|"GET"|"POST"|"PUT"|"PATCH"|"DELETE">?
+
+    /// How the access token is sent to the API. ARM defaults it to the
+    /// Authorization header.
+    @azure.FieldHint { hasProviderDefault = true }
+    bearerTokenSendingMethods: Listing<"authorizationHeader"|"query">?
+
+    /// How the client authenticates to the token endpoint. ARM defaults it to
+    /// Basic.
+    @azure.FieldHint { hasProviderDefault = true }
+    clientAuthenticationMethod: Listing<"Basic"|"Body">?
+
+    /// Whether to send the OAuth `state` parameter, which the portal uses for
+    /// CSRF protection.
+    @azure.FieldHint { hasProviderDefault = true }
+    supportState: Boolean?
+
+    hidden parent = this
+
+    hidden res: AuthorizationServerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

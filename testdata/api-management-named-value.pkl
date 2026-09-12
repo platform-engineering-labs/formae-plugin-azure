@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementnamedvalue.pkl" as apimnv
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-namedvalue-test-rg"
+  name = "formae-plugin-sdk-test-apimnv-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing. Named values ARE
+// available on Consumption.
+local svc = new apim.Service {
+  label = "apim-namedvalue-test-service"
+  name = "fpsdt-apimnv-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // A plain, non-secret named value. `value` is write-only: ARM does not
+  // reliably return it — never for a secret, never for a Key Vault-backed
+  // value, and only sometimes for a plain one — so reporting it back would show
+  // drift on every sync.
+  //
+  // The Key Vault-backed shape is deliberately not what this fixture exercises:
+  // it needs the service to carry a system-assigned identity AND that identity
+  // to hold a Key Vault data-plane role on the vault, which is two more moving
+  // parts than the resource under test.
+  //
+  // `tags` here are API Management's own filter labels — a flat list of strings
+  // — not ARM resource tags, which a named value does not have.
+  new apimnv.NamedValue {
+    label = "plugin-sdk-test-apim-named-value"
+    name = "conformance-backend-url"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "conformance-backend-url"
+    value = "https://echo.platform.engineering"
+    secret = false
+    tags = new Listing { "conformance" }
+  }
+}

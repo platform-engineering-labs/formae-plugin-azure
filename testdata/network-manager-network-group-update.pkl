@@ -1,0 +1,55 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagernetworkgroup.pkl" as networkgroup
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmng-test-rg"
+  name = "formae-plugin-sdk-test-nmng-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+local manager = new netmanager.NetworkManager {
+  label = "nmng-test-manager"
+  name = "fpsdt-nmng-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "Connectivity"
+  }
+  networkManagerScopes = managerScopes
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+
+  // Update: redescribe. A group has no other mutable field — membership lives
+  // in its static members, not on the group itself.
+  new networkgroup.NetworkManagerNetworkGroup {
+    label = "plugin-sdk-test-network-manager-network-group"
+    name = "conformance-group"
+    resourceGroupName = rg.res.name
+    networkManagerName = manager.res.name
+    description = "Conformance network group, redescribed"
+  }
+}

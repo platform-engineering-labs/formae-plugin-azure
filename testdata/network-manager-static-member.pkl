@@ -1,0 +1,95 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagernetworkgroup.pkl" as networkgroup
+import "@azure/network/networkmanagerstaticmember.pkl" as staticmember
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmsm-test-rg"
+  name = "formae-plugin-sdk-test-nmsm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Two virtual networks so the update fixture can aim the member at the other
+// one. A virtual network with no gateway, peering or endpoint is free.
+local memberVnet = new virtualnetwork.VirtualNetwork {
+  label = "nmsm-test-vnet-a"
+  name = "formae-plugin-sdk-test-nmsm-vnet-a-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes {
+      "10.20.0.0/16"
+    }
+  }
+}
+
+local spareVnet = new virtualnetwork.VirtualNetwork {
+  label = "nmsm-test-vnet-b"
+  name = "formae-plugin-sdk-test-nmsm-vnet-b-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = new virtualnetwork.AddressSpace {
+    addressPrefixes {
+      "10.21.0.0/16"
+    }
+  }
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+local manager = new netmanager.NetworkManager {
+  label = "nmsm-test-manager"
+  name = "fpsdt-nmsm-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "Connectivity"
+  }
+  networkManagerScopes = managerScopes
+}
+
+local group = new networkgroup.NetworkManagerNetworkGroup {
+  label = "nmsm-test-group"
+  name = "conformance-group"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  memberVnet
+  spareVnet
+  manager
+  group
+
+  // A static member is nothing but a pointer at one virtual network, so every
+  // field is create-only: the update fixture aims it at the other vnet, which
+  // core has to satisfy by replacing the member.
+  new staticmember.NetworkManagerStaticMember {
+    label = "plugin-sdk-test-network-manager-static-member"
+    name = "conformance-member"
+    resourceGroupName = rg.res.name
+    networkManagerName = manager.res.name
+    networkGroupName = group.res.name
+    resourceId = memberVnet.res.id
+  }
+}

@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementcertificate.pkl" as apimcert
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-cert-test-rg"
+  name = "formae-plugin-sdk-test-apimcert-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing. Client
+// certificates ARE available on Consumption.
+local svc = new apim.Service {
+  label = "apim-cert-test-service"
+  name = "fpsdt-apimcert-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// A throwaway self-signed PKCS#12, generated once and pinned here. ARM parses
+// the blob on the way in — a malformed or expired certificate is rejected at
+// [Create] — so it has to be a real one:
+//
+//   openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem -days 10950 \
+//     -nodes -subj "/CN=conformance.formae.invalid/O=Platform Engineering Labs"
+//   openssl pkcs12 -export -out c.pfx -inkey k.pem -in c.pem \
+//     -passout pass:FormaeConformance1! -macalg sha1 \
+//     -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES
+//   base64 -i c.pfx | tr -d '\n'
+//
+// The 3DES/SHA-1 PBE is deliberate: it is the classic PKCS#12 encoding every
+// .NET version accepts, where OpenSSL 3's AES-256/PBKDF2 default is not
+// universally readable. The subject is on a .invalid domain, so the
+// certificate can never be mistaken for one that authenticates anything real,
+// and it expires in 2056 so it does not silently start failing.
+//
+// The local is `certificateBlob`, not `data`: a fixture local must not share a
+// name with a property of the class it is assigned to, or the reference
+// resolves to the property instead and Pkl recurses until the stack overflows.
+local certificateBlob = "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"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Both `data` and `password` are write-only — ARM validates the blob, stores
+  // it and never returns either — so what the conformance verify phase compares
+  // is `subject`, `thumbprint` and `expirationDate`, which ARM reads out of the
+  // certificate itself.
+  new apimcert.Certificate {
+    label = "plugin-sdk-test-apim-certificate"
+    name = "conformance-client-cert"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    data = certificateBlob
+    password = "FormaeConformance1!"
+  }
+}

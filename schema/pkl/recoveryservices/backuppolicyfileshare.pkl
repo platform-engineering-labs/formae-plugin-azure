@@ -1,0 +1,139 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.recoveryservices.backuppolicyfileshare
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::RecoveryServices::BackupPolicyFileShare"
+const apiVersion = "2025-02-01"
+
+typealias FileShareDayOfWeek = "Sunday"|"Monday"|"Tuesday"|"Wednesday"|"Thursday"|"Friday"|"Saturday"
+
+typealias FileShareWeekOfMonth = "First"|"Second"|"Third"|"Fourth"|"Last"
+
+typealias FileShareMonthOfYear =
+    "January"|"February"|"March"|"April"|"May"|"June"
+  |"July"|"August"|"September"|"October"|"November"|"December"
+
+/// Time of day the backup runs, as `HH:MM` in 24-hour form, on the hour or the
+/// half hour. The plugin supplies the date half ARM's wire format wants and
+/// discards it on read — see the note on the VM policy schema.
+typealias FileShareTimeOfDay = String(matches(Regex("^([01][0-9]|2[0-3]):(00|30)$")))
+
+/// When the file share snapshot is taken. Azure Files backup schedules daily.
+class FileShareBackupSchedule {
+    frequency: "Daily"
+
+    times: Listing<FileShareTimeOfDay>(length >= 1)
+}
+
+/// Keep daily snapshots for `count` days. Always required for a file share policy.
+class FileShareDailyRetention {
+    count: Int(this >= 1 && this <= 200)
+}
+
+class FileShareWeeklyRetention {
+    count: Int(this >= 1 && this <= 200)
+
+    daysOfWeek: Listing<FileShareDayOfWeek>(length >= 1)
+}
+
+class FileShareMonthlyRetention {
+    count: Int(this >= 1 && this <= 120)
+
+    daysOfWeek: Listing<FileShareDayOfWeek>(length >= 1)
+
+    weeksOfMonth: Listing<FileShareWeekOfMonth>(length >= 1)
+}
+
+class FileShareYearlyRetention {
+    count: Int(this >= 1 && this <= 10)
+
+    monthsOfYear: Listing<FileShareMonthOfYear>(length >= 1)
+
+    daysOfWeek: Listing<FileShareDayOfWeek>(length >= 1)
+
+    weeksOfMonth: Listing<FileShareWeekOfMonth>(length >= 1)
+}
+
+open class BackupPolicyFileShareResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupPolicyFileShareResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupPolicyFileShareResolvable = (this) {
+        property = "name"
+    }
+    hidden vaultName: BackupPolicyFileShareResolvable = (this) {
+        property = "vaultName"
+    }
+    hidden resourceGroupName: BackupPolicyFileShareResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure Files backup policy in a Recovery Services vault
+/// (Microsoft.RecoveryServices/vaults/backupPolicies with AzureStorage properties
+/// and the AzureFileShare workload type).
+///
+/// Same ARM resource as the VM policy, different polymorphic body — which is why
+/// discovery has to filter the vault's policy list by shape and not only by
+/// backup management type.
+///
+/// The vaulted (hardened) retention tier — `vaultRetentionPolicy` — is not
+/// modelled; this covers the snapshot tier only.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::RecoveryServices::Vault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BackupPolicyFileShare extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 150 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Recovery Services vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    backupSchedule: FileShareBackupSchedule
+
+    /// Windows time zone name, for example "UTC".
+    @azure.FieldHint { hasProviderDefault = true }
+    timeZone: String?
+
+    /// Required: ARM rejects a file share policy with no daily retention.
+    @azure.FieldHint { required = true }
+    dailyRetention: FileShareDailyRetention
+
+    @azure.FieldHint { }
+    weeklyRetention: FileShareWeeklyRetention?
+
+    @azure.FieldHint { }
+    monthlyRetention: FileShareMonthlyRetention?
+
+    @azure.FieldHint { }
+    yearlyRetention: FileShareYearlyRetention?
+
+    hidden parent = this
+
+    hidden res: BackupPolicyFileShareResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

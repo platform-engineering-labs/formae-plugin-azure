@@ -1,0 +1,42 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/management/managementgroup.pkl" as managementgroup
+import "vars.pkl"
+
+// TENANT-SCOPED, SO THIS FIXTURE IS ON .github/conformance-pr-skip.txt. Management
+// group operations run against /providers/Microsoft.Management, and no principal on
+// the conformance subscription holds a role above subscription scope:
+//
+//   az account management-group list
+//   -> AuthorizationFailed: ... does not have authorization to perform action
+//      'Microsoft.Management/managementGroups/read' over scope
+//      '/providers/Microsoft.Management'
+//
+// The handler is implemented and unit-tested; run this deliberately, against a
+// login with Management Group Contributor at the tenant root:
+//
+//   make conformance-test-crud TEST=management-group
+//
+// No parentId, so the group is created directly under the tenant root group. The
+// group is empty, which is what lets [Destroy] remove it — ARM refuses to delete a
+// management group that still has children.
+forma {
+  vars.stack
+
+  vars.target
+
+  new managementgroup.ManagementGroup {
+    label = "plugin-sdk-test-management-group"
+    name = "formae-plugin-sdk-test-mg-\(vars.testRunID)"
+    displayName = "formae plugin sdk test group \(vars.testRunID)"
+  }
+}

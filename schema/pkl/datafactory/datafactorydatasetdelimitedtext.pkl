@@ -1,0 +1,139 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorydatasetdelimitedtext
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::DatasetDelimitedText"
+const apiVersion = "2018-06-01"
+
+open class DatasetDelimitedTextResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatasetDelimitedTextResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatasetDelimitedTextResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A `DelimitedText` dataset — CSV and its relatives, stored in blob storage.
+///
+/// `linkedServiceName` must name an `AZURE::DataFactory::LinkedServiceAzureBlobStorage`
+/// in the same factory, and `container` names a container on that account.
+///
+/// ARM models the location as a discriminated union with a dozen members
+/// (`AzureBlobFSLocation`, `AmazonS3Location`, `HttpServerLocation`, ...). Only
+/// `AzureBlobStorageLocation` is expressible here — that is the one the plugin's
+/// only object-store linked service can address — so the three location fields are
+/// flattened into this class rather than nested. A dataset pointing anywhere else
+/// is not expressible and is not read back either.
+///
+/// Every dialect field has a documented service default (`,` for the column
+/// delimiter, `"` for the quote character, UTF-8 for the encoding, and so on), but
+/// the service does not write those defaults into the stored definition: an omitted
+/// field reads back absent, not filled in. They are therefore plain optionals rather
+/// than provider-defaults. Set the ones that matter to you explicitly.
+///
+/// Creating a dataset is a metadata write and costs nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DatasetDelimitedText extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Name of the blob-storage linked service in the same factory. Required: ARM
+    /// rejects a dataset without one.
+    @azure.FieldHint { required = true }
+    linkedServiceName: String(length >= 1 && length <= 260)|formae.Resolvable
+
+    /// Blob container the files live in. Required: ARM rejects a DelimitedText
+    /// dataset without a location, and a location without a container addresses
+    /// nothing.
+    @azure.FieldHint { required = true }
+    container: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Directory prefix within the container.
+    @azure.FieldHint { }
+    folderPath: (String|formae.Resolvable)?
+
+    /// File name within `folderPath`. Omit to address every file in the folder.
+    @azure.FieldHint { }
+    fileName: (String|formae.Resolvable)?
+
+    /// Column separator. Service default is `,`.
+    @azure.FieldHint { }
+    columnDelimiter: String(length >= 1 && length <= 2)?
+
+    /// Row separator. Service default detects `\r`, `\n` and `\r\n`.
+    @azure.FieldHint { }
+    rowDelimiter: String(length >= 1 && length <= 2)?
+
+    /// Quote character. Service default is `"`.
+    @azure.FieldHint { }
+    quoteChar: String(length <= 1)?
+
+    /// Escape character. Service default is `\`.
+    @azure.FieldHint { }
+    escapeChar: String(length <= 2)?
+
+    /// The string that stands for NULL in the file, e.g. `\N`.
+    @azure.FieldHint { }
+    nullValue: String(length >= 1)?
+
+    /// Code page the file is written in, as .NET names it, e.g. `UTF-8`.
+    @azure.FieldHint { }
+    encodingName: String(length >= 1)?
+
+    /// Compression applied to the file, e.g. `gzip`, `bzip2`, `snappy`,
+    /// `zipDeflate`. Left as a free string: the service accepts more codecs than a
+    /// union here could keep current, and it echoes exactly what was sent.
+    @azure.FieldHint { }
+    compressionCodec: String(length >= 1)?
+
+    /// Treat the first row as column names on read, and write one on output.
+    /// Service default is false.
+    @azure.FieldHint { }
+    firstRowAsHeader: Boolean?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Folder the dataset is filed under in the authoring UI. Purely cosmetic.
+    @azure.FieldHint { }
+    folderName: String(length >= 1)?
+
+    /// Free-form labels the authoring UI shows against the dataset. Unrelated to
+    /// ARM resource tags — a dataset is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: DatasetDelimitedTextResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

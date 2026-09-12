@@ -13,6 +13,7 @@ const type = "AZURE::Network::DnsForwardingRule"
 const apiVersion = "2023-07-01-preview"
 
 /// A DNS server to forward to.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class TargetDnsServer extends formae.SubResource {
     @azure.FieldHint { required = true }
     ipAddress: String(length >= 1)

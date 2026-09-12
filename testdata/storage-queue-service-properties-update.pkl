@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/storagequeueserviceproperties.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "qsp-test-rg"
+  name = "formae-plugin-sdk-test-qsp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+local sa = new storageaccount.StorageAccount {
+  label = "qsp-test-sa"
+  name = "fpsdtqsp\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+
+  new storagequeueserviceproperties.QueueServiceProperties {
+    label = "plugin-sdk-test-qsp"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    // Update: widen the preflight cache and allow one more method. ARM replaces
+    // the whole CORS set on every set-service-properties call.
+    corsRules = new Listing {
+      new storagequeueserviceproperties.QueueCorsRule {
+        allowedOrigins = new Listing { "https://example.com" }
+        allowedMethods = new Listing { "GET"; "PUT"; "POST" }
+        allowedHeaders = new Listing { "x-ms-meta-purpose" }
+        exposedHeaders = new Listing { "x-ms-meta-purpose" }
+        maxAgeInSeconds = 600
+      }
+    }
+  }
+}

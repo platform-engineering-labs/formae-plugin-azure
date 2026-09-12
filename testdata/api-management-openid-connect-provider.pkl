@@ -1,0 +1,59 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementopenidconnectprovider.pkl" as apimoidc
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-oidc-test-rg"
+  name = "formae-plugin-sdk-test-apimoidc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-oidc-test-service"
+  name = "fpsdt-apimoidc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Everything past the client id is read from the discovery document, so no
+  // endpoints are declared individually. The Microsoft common endpoint is used
+  // because it is guaranteed reachable from the agent. No client secret is
+  // declared, so this fixture carries no credential.
+  //
+  // Supported on the Consumption tier.
+  new apimoidc.OpenIdConnectProvider {
+    label = "plugin-sdk-test-apim-openid-connect-provider"
+    name = "conformance-oidc"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance OIDC provider"
+    metadataEndpoint = "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
+    clientId = "conformance-client"
+    description = "OpenID Connect provider registration for the developer portal"
+  }
+}

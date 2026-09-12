@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedserviceblobstorage.pkl" as lsblob
+import "@azure/datafactory/datafactorydatasetazureblob.pkl" as dsblob
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfdsblob-test-rg"
+  name = "formae-plugin-sdk-test-adfdsblob-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfdsblob-test-factory"
+  name = "fpsdt-adfdsblob-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Every dataset needs a linked service, so one comes along. The managed-identity
+// shape — `serviceEndpoint` and no credential anywhere — because a
+// `connectionString` is write-only and could never be verified. No storage account
+// is created: creating a linked service does not test the connection, so the
+// endpoint only has to be a well-formed blob service URI.
+local blobLinkedService = new lsblob.LinkedServiceAzureBlobStorage {
+  label = "adfdsblob-test-linked-service"
+  name = "conformance-blob"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  serviceEndpoint = "https://fpsdtdsblob\(vars.testRunID).blob.core.windows.net"
+  accountKind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  blobLinkedService
+
+  // Free: creating a dataset is a metadata write, and the service does not touch
+  // the storage it describes — a dataset naming a container that does not exist
+  // creates cleanly and only fails when an activity reads it.
+  //
+  // The legacy blob dataset: the path is a flat folderPath / fileName pair on
+  // typeProperties, with no location block and no container of its own.
+  new dsblob.DatasetAzureBlob {
+    label = "plugin-sdk-test-adf-dataset-azure-blob"
+    name = "conformance-ds-blob"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    linkedServiceName = blobLinkedService.res.name
+    folderPath = "landing/incoming"
+    fileName = "orders.csv"
+    tableRootLocation = "landing"
+    description = "conformance blob dataset"
+    folderName = "conformance"
+    annotations = new Listing { "conformance" }
+  }
+}

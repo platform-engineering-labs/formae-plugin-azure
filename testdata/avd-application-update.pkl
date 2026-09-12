@@ -1,0 +1,75 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/desktopvirtualization/avdhostpool.pkl"
+import "@azure/desktopvirtualization/avdapplicationgroup.pkl"
+import "@azure/desktopvirtualization/avdapplication.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "avd-app-test-rg"
+  name = "formae-plugin-sdk-test-avd-app-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local hostPool = new avdhostpool.HostPool {
+  label = "avd-app-test-host-pool"
+  name = "fpsdt-avd-app-hp-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  hostPoolType = "Pooled"
+  loadBalancerType = "BreadthFirst"
+  preferredAppGroupType = "RailApplications"
+  maxSessionLimit = 10
+  startVmOnConnect = false
+  validationEnvironment = false
+}
+
+// A Desktop group cannot hold applications at all, so this has to be RemoteApp.
+local appGroup = new avdapplicationgroup.ApplicationGroup {
+  label = "avd-app-test-application-group"
+  name = "fpsdt-avd-app-ag-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "eastus"
+  hostPoolArmPath = hostPool.res.id
+  applicationGroupType = "RemoteApp"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  hostPool
+
+  appGroup
+
+  // ARM never checks that filePath exists on any session host — it is just a
+  // string the client resolves at launch time — so this publishes fine against
+  // a pool with no hosts at all.
+  // Update: every mutable field is present in ApplicationPatchProperties, so a
+  // change to the launch behaviour is a PATCH rather than a replace.
+  new avdapplication.Application {
+    label = "plugin-sdk-test-avd-application"
+    name = "fpsdt-avd-app-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    applicationGroupName = appGroup.res.name
+    commandLineSetting = "Require"
+    commandLineArguments = "/nologo"
+    filePath = "C:\\Windows\\System32\\mspaint.exe"
+    description = "Conformance application, updated"
+    friendlyName = "Paint renamed"
+    showInPortal = false
+  }
+}

@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactoryintegrationruntimeazure.pkl" as azir
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfazir-test-rg"
+  name = "formae-plugin-sdk-test-adfazir-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfazir-test-factory"
+  name = "fpsdt-adfazir-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // No compute and no quota: an Azure integration runtime is a record, and the
+  // service allocates a cluster only when a pipeline activity actually runs.
+  // Nothing in this forma triggers one, so it costs nothing.
+  //
+  // `nodeSize` and `numberOfNodes` — the Azure-SSIS shape, which provisions a
+  // dedicated cluster billed per node-hour — are not expressible through this
+  // type at all, so a fixture cannot accidentally ask for one.
+  //
+  // `computeLocation` is declared rather than left to the provider default so
+  // there is one deterministic value to verify against; AutoResolve is echoed
+  // back verbatim, where a region is echoed spaced and capitalized.
+  new azir.IntegrationRuntimeAzure {
+    label = "plugin-sdk-test-adf-ir-azure"
+    name = "conformance-azir"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    description = "conformance Azure runtime"
+    computeLocation = "AutoResolve"
+    dataFlowComputeType = "General"
+    dataFlowCoreCount = 8
+    dataFlowTimeToLive = 10
+  }
+}

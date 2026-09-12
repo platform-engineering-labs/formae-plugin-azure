@@ -1,0 +1,56 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedservicesqldatabase.pkl" as lssql
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adflssql-test-rg"
+  name = "formae-plugin-sdk-test-adflssql-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adflssql-test-factory"
+  name = "fpsdt-adflssql-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // Free: creating a linked service is a metadata write.
+  //
+  // The connection string carries NO credentials, which is what tells Data
+  // Factory to authenticate with the factory's managed identity. It is sent as a
+  // SecureString and is write-only — the service returns only a mask — so it is
+  // never compared on read and drift in it cannot be detected.
+  //
+  // No SQL server or database is created. Creating a linked service does not test
+  // the connection — that is a separate data-plane call behind the authoring UI's
+  // "Test connection" button — and a real logical server would add several
+  // minutes per run to verify nothing this type owns.
+  new lssql.LinkedServiceAzureSqlDatabase {
+    label = "plugin-sdk-test-adf-ls-sql-database"
+    name = "conformance-sql"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    connectionString = "Data Source=tcp:fpsdt-sql-\(vars.testRunID).database.windows.net,1433;Initial Catalog=conformance;"
+    description = "conformance sql database reference"
+    annotations = new Listing { "conformance" }
+  }
+}

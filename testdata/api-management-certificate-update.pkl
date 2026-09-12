@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementcertificate.pkl" as apimcert
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-cert-test-rg"
+  name = "formae-plugin-sdk-test-apimcert-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing. Client
+// certificates ARE available on Consumption.
+local svc = new apim.Service {
+  label = "apim-cert-test-service"
+  name = "fpsdt-apimcert-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// A throwaway self-signed PKCS#12, generated once and pinned here. ARM parses
+// the blob on the way in — a malformed or expired certificate is rejected at
+// [Create] — so it has to be a real one:
+//
+//   openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem -days 10950 \
+//     -nodes -subj "/CN=conformance-updated.formae.invalid/O=Platform Engineering Labs"
+//   openssl pkcs12 -export -out c.pfx -inkey k.pem -in c.pem \
+//     -passout pass:FormaeConformance1! -macalg sha1 \
+//     -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES
+//   base64 -i c.pfx | tr -d '\n'
+//
+// The 3DES/SHA-1 PBE is deliberate: it is the classic PKCS#12 encoding every
+// .NET version accepts, where OpenSSL 3's AES-256/PBKDF2 default is not
+// universally readable. The subject is on a .invalid domain, so the
+// certificate can never be mistaken for one that authenticates anything real,
+// and it expires in 2056 so it does not silently start failing.
+//
+// The local is `certificateBlob`, not `data`: a fixture local must not share a
+// name with a property of the class it is assigned to, or the reference
+// resolves to the property instead and Pkl recurses until the stack overflows.
+local certificateBlob = "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"
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Update: a SECOND certificate under the same id. A certificate has no
+  // mutable field of its own — data and password are write-only and everything
+  // else is read out of the blob — so rotating the blob in place is the only
+  // real update there is, and it is exactly what a certificate rotation does:
+  // the native ID stays put and every backend naming it keeps working.
+  new apimcert.Certificate {
+    label = "plugin-sdk-test-apim-certificate"
+    name = "conformance-client-cert"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    data = certificateBlob
+    password = "FormaeConformance1!"
+  }
+}

@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementglobalschema
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::GlobalSchema"
+const apiVersion = "2021-08-01"
+
+open class GlobalSchemaResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: GlobalSchemaResolvable = (this) {
+        property = "id"
+    }
+    hidden name: GlobalSchemaResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A service-wide schema — type definitions any API in the instance can refer
+/// to, most often an XSD shared by several SOAP APIs.
+///
+/// Distinct from `AZURE::ApiManagement::ApiSchema`, which is scoped to one API
+/// and whose content type is constrained by that API's kind. A global schema is
+/// declared as either `xml` or `json` and belongs to no API.
+///
+/// ARM does not store a `json` document verbatim: it is parsed into a structured
+/// document and re-serialized, so key order and whitespace come back changed.
+/// The provider therefore reports the document you declared whenever it is
+/// semantically the same as the one ARM holds, and reports ARM's own rendering
+/// only when the two genuinely differ.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class GlobalSchema extends formae.Resource {
+
+    /// Schema identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// `xml` for an XSD, `json` for a JSON schema. ARM stores the two in
+    /// different places on the wire, so this is not a cosmetic label.
+    @azure.FieldHint { required = true; createOnly = true }
+    schemaType: ("xml"|"json")
+
+    /// The schema document itself, as text.
+    @azure.FieldHint { required = true }
+    value: String(length >= 1)
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: GlobalSchemaResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

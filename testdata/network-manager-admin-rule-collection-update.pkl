@@ -1,0 +1,81 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagernetworkgroup.pkl" as networkgroup
+import "@azure/network/networkmanagersecurityadminconfiguration.pkl" as securityadmin
+import "@azure/network/networkmanageradminrulecollection.pkl" as rulecollection
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmarc-test-rg"
+  name = "formae-plugin-sdk-test-nmarc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+local manager = new netmanager.NetworkManager {
+  label = "nmarc-test-manager"
+  name = "fpsdt-nmarc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "SecurityAdmin"
+  }
+  networkManagerScopes = managerScopes
+}
+
+local group = new networkgroup.NetworkManagerNetworkGroup {
+  label = "nmarc-test-group"
+  name = "conformance-group"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+}
+
+// Left UNCOMMITTED: a committed configuration cannot be deleted, and commits are
+// not modelled by this plugin.
+local config = new securityadmin.NetworkManagerSecurityAdminConfiguration {
+  label = "nmarc-test-config"
+  name = "conformance-securityadmin"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+  group
+  config
+
+  // Update: redescribe. appliesToGroups still names the one network group —
+  // dropping it would leave the collection bound to nothing, which ARM rejects.
+  new rulecollection.NetworkManagerAdminRuleCollection {
+    label = "plugin-sdk-test-network-manager-admin-rule-collection"
+    name = "conformance-collection"
+    resourceGroupName = rg.res.name
+    networkManagerName = manager.res.name
+    securityAdminConfigurationName = config.res.name
+    appliesToGroups {
+      new rulecollection.AdminRuleCollectionGroupItem {
+        networkGroupId = group.res.id
+      }
+    }
+    description = "Conformance admin rule collection, redescribed"
+  }
+}

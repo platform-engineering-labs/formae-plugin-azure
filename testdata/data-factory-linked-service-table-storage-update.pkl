@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedservicetablestorage.pkl" as lstable
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adflstable-test-rg"
+  name = "formae-plugin-sdk-test-adflstable-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adflstable-test-factory"
+  name = "fpsdt-adflstable-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // Free: creating a linked service is a metadata write.
+  //
+  // Unlike the blob connector there is no managed-identity endpoint form here —
+  // table storage authenticates through a connection string only. This one
+  // carries no account key, so it is not a credential; it is sent as a
+  // SecureString all the same, and is write-only, so it is never compared on
+  // read.
+  //
+  // No storage account is created, for the same reason as the blob fixture:
+  // creating a linked service does not test the connection.
+  new lstable.LinkedServiceAzureTableStorage {
+    label = "plugin-sdk-test-adf-ls-table-storage"
+    name = "conformance-table"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    connectionString = "DefaultEndpointsProtocol=https;AccountName=fpsdttable\(vars.testRunID);EndpointSuffix=core.windows.net"
+    // Update: retitle. The connection string is write-only, so changing it would
+    // be pushed but could never be verified — the description is the honest
+    // mutation for a lifecycle test.
+    description = "conformance table store, updated"
+    annotations = new Listing { "conformance" }
+  }
+}

@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/streamanalytics/streamanalyticsjob.pkl" as sajob
+import "@azure/streamanalytics/streamanalyticsfunctionjavascriptudf.pkl" as saudf
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "asa-udf-test-rg"
+  name = "formae-plugin-sdk-test-asaudf-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Provisioned stopped and left that way: Start/Stop is a separate ARM verb pair,
+// and a running job bills streaming units per hour.
+local job = new sajob.StreamingJob {
+  label = "asa-udf-test-job"
+  name = "fpsdt-asa-udf-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new sajob.StreamingJobSKU { name = "Standard" }
+  jobType = "Cloud"
+  compatibilityLevel = "1.2"
+  dataLocale = "en-US"
+  eventsLateArrivalMaxDelayInSeconds = 5
+  eventsOutOfOrderMaxDelayInSeconds = 0
+  eventsOutOfOrderPolicy = "Adjust"
+  outputErrorPolicy = "Stop"
+  transformation = new sajob.JobTransformation {
+    name = "Transformation"
+    query = "SELECT udf.fpsdtudf(1, 2) AS total INTO [asaoutput] FROM [asainput]"
+    streamingUnits = 3
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  job
+
+  new saudf.FunctionJavaScriptUdf {
+    label = "plugin-sdk-test-stream-analytics-function-javascript-udf"
+    name = "fpsdtudf"
+    resourceGroupName = rg.res.name
+    jobName = job.res.name
+    script = "function (x, y) { return x + y; }"
+    inputs = new Listing {
+      new saudf.FunctionArgument { dataType = "any" }
+      new saudf.FunctionArgument { dataType = "any" }
+    }
+    outputDataType = "any"
+  }
+}

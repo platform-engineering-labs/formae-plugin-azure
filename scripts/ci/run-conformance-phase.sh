@@ -40,10 +40,22 @@ case "$RESOURCE" in
     # OOB-delete) measures ~36 min clean, so cdn-* needs a wide margin.
     set_timeouts 25 75
     ;;
-  flux-configuration|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
+  flux-configuration|extension|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
     # An AKS cluster or a managed Grafana workspace takes ~5-10 min before the
     # resource under test can even be created.
+    #
+    # `extension` was missing from this list even though it stands up the same
+    # AKS cluster as its three siblings, so it inherited the harness default of
+    # 5 minutes against ~13 minutes of provisioning and could never pass, even
+    # locally.
     set_timeouts 20 50
+    ;;
+  managed-cluster)
+    # The cluster IS the resource under test, and this fixture is a replace, so
+    # the run stands up a cluster, tears it down, stands up a second under the
+    # new name, and the OOB-delete phase creates a third. ~6-8 min per
+    # provision plus deletes.
+    set_timeouts 30 90
     ;;
   virtual-machine-extension)
     set_timeouts 15 40
@@ -134,6 +146,18 @@ case "$RESOURCE" in
     # Quick control-plane creates, but the lifecycle does several of them and a
     # Key Vault delete has to clear soft-delete before the recreate.
     set_timeouts 10 30
+    ;;
+  api-management-service)
+    # The service itself, not its children: a Consumption instance provisions in
+    # ~3 min but DELETE takes far longer, and the CRUD lifecycle deletes twice -
+    # once for Destroy and once for the out-of-band delete phase. The job ran
+    # 10m23s and still failed on
+    #
+    #   [OOB Del] timeout waiting for resource ... removed from inventory
+    #
+    # The 28 APIM child fixtures each stand up their own service too, but they
+    # pass inside the default budget; only the parent's own lifecycle needs this.
+    set_timeouts 30 75
     ;;
   redis-cache)
     # Out of the matrix because a Basic C0 create is ~20 min and the lifecycle

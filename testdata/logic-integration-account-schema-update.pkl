@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountschema.pkl" as logicschema
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicsch-test-rg"
+  name = "formae-plugin-sdk-test-logicsch-rg-\(vars.testRunID)"
+  location = "eastus2"
+}
+
+// eastus2, not eastus: a subscription may hold only ONE Free integration
+// account per region, and logic-integration-account.pkl owns eastus.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicsch-test-account"
+  name = "fpsdt-logicsch-\(vars.testRunID)"
+  location = "eastus2"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+
+  // Update: one added element and a different file name. The whole document is
+  // re-PUT because a schema has no PATCH verb, and `schemaType` is unchanged.
+  // Nothing here can be verified by reading `content` back — it is write-only
+  // because ARM never returns it.
+  new logicschema.IntegrationAccountSchema {
+    label = "plugin-sdk-test-logic-integration-account-schema"
+    name = "conformance-order-schema"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    schemaType = "Xml"
+    fileName = "order-v2.xsd"
+    content = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://formae.test/order" xmlns="http://formae.test/order" elementFormDefault="qualified">
+        <xs:element name="Order">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="OrderId" type="xs:string" />
+              <xs:element name="OrderTotal" type="xs:decimal" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:schema>
+      """
+  }
+}

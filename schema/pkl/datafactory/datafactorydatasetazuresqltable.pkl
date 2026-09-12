@@ -1,0 +1,98 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorydatasetazuresqltable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::DatasetAzureSqlTable"
+const apiVersion = "2018-06-01"
+
+open class DatasetAzureSqlTableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatasetAzureSqlTableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatasetAzureSqlTableResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An `AzureSqlTable` dataset — one table or view in the database its linked
+/// service points at.
+///
+/// `linkedServiceName` must name an `AZURE::DataFactory::LinkedServiceAzureSqlDatabase`
+/// in the same factory.
+///
+/// Both `schemaName` and `tableName` are optional, matching ARM: a dataset with
+/// neither is a placeholder whose table is supplied by the copy activity that uses
+/// it, which is legal and is left expressible here.
+///
+/// They are named for what they are rather than for ARM's own `schema` and `table`:
+/// `schema` on a dataset already means the inherited column schema, and reusing the
+/// word for a SQL schema in the same property set would be unreadable. ARM's
+/// separate, retired `typeProperties.tableName` — which the service documents as
+/// superseded by `schema` + `table` — is neither sent nor read.
+///
+/// Creating a dataset is a metadata write and costs nothing. The service does not
+/// connect to the database, so a dataset naming a table that does not exist creates
+/// cleanly.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DatasetAzureSqlTable extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Name of the Azure SQL Database linked service in the same factory. Required:
+    /// ARM rejects a dataset without one.
+    @azure.FieldHint { required = true }
+    linkedServiceName: String(length >= 1 && length <= 260)|formae.Resolvable
+
+    /// SQL schema the table lives in, e.g. `dbo`.
+    @azure.FieldHint { }
+    schemaName: (String|formae.Resolvable)?
+
+    /// Table or view name within `schemaName`.
+    @azure.FieldHint { }
+    tableName: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Folder the dataset is filed under in the authoring UI. Purely cosmetic.
+    @azure.FieldHint { }
+    folderName: String(length >= 1)?
+
+    /// Free-form labels the authoring UI shows against the dataset. Unrelated to
+    /// ARM resource tags — a dataset is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: DatasetAzureSqlTableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

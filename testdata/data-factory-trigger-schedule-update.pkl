@@ -1,0 +1,79 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorypipeline.pkl" as adfpipeline
+import "@azure/datafactory/datafactorytriggerschedule.pkl" as trgsch
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adftrgsch-test-rg"
+  name = "formae-plugin-sdk-test-adftrgsch-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adftrgsch-test-factory"
+  name = "fpsdt-adftrgsch-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// A pipeline for the trigger to point at, so the factory -> pipeline -> trigger
+// resolvable chain is actually exercised. Data Factory bills per activity run and
+// this trigger is never started, so nothing ever runs: a single Wait activity is
+// the cheapest body that is still a real pipeline.
+local waitPipeline = new adfpipeline.Pipeline {
+  label = "adftrgsch-test-pipeline"
+  name = "conformance-pipeline"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  activities = #"[{"name":"pause","type":"Wait","typeProperties":{"waitTimeInSeconds":1}}]"#
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  waitPipeline
+
+  // Free: a trigger is created STOPPED and this provider never starts one, so it
+  // fires nothing and no activity run is ever billed.
+  //
+  // startTime is a fixed instant far in the future, written the only way the
+  // schema accepts — RFC-3339, UTC, whole seconds. ARM normalises these
+  // timestamps and drops the offset and sub-second precision, so anything else
+  // would come back different and read as drift. A fixed date rather than "now"
+  // also keeps two runs of this fixture comparable.
+  //
+  // interval and timeZone are stated for the same reason: the service fills them
+  // in when they are omitted, and startTime would become the moment of creation,
+  // which moves on every apply.
+  new trgsch.TriggerSchedule {
+    label = "plugin-sdk-test-adf-trigger-schedule"
+    name = "conformance-trigger-schedule"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    frequency = "Hour"
+    interval = 4
+    startTime = "2030-01-01T00:00:00Z"
+    timeZone = "UTC"
+    pipelineNames = new Listing { waitPipeline.res.name }
+    // Update: recur every four hours instead of every one, add an end date and
+    // retitle. Only name, resourceGroupName and factoryName are create-only —
+    // the whole recurrence is updatable in place.
+    endTime = "2031-01-01T00:00:00Z"
+    description = "conformance hourly trigger, updated"
+    annotations = new Listing { "conformance" }
+  }
+}

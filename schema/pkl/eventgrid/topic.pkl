@@ -23,6 +23,7 @@ typealias IPActionType = "Allow"
 
 /// An inbound IP firewall rule. Only meaningful when `publicNetworkAccess` is
 /// `Enabled`. Order is significant — the plugin preserves the list as written.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class InboundIPRule extends formae.SubResource {
     /// Single IP or CIDR, e.g. `"203.0.113.4"` or `"203.0.113.0/24"`.
     @azure.FieldHint { required = true }

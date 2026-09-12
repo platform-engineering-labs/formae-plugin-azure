@@ -1,0 +1,126 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.automation.automationrunbook
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Automation::Runbook"
+const apiVersion = "2024-10-23"
+
+/// Runbook languages Azure Automation accepts. `PowerShell72` is the PowerShell
+/// 7.2 runtime; the `Graph*` variants are the graphical designer's formats and
+/// cannot be authored as text.
+typealias RunbookType =
+    "PowerShell"
+    |"PowerShell72"
+    |"PowerShellWorkflow"
+    |"Python"
+    |"Python2"
+    |"Python3"
+    |"Script"
+    |"Graph"
+    |"GraphPowerShell"
+    |"GraphPowerShellWorkflow"
+
+open class AutomationRunbookResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutomationRunbookResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutomationRunbookResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A runbook in an Azure Automation account.
+///
+/// This is the runbook RECORD, not its script body. ARM models the body as a
+/// separate draft/publish flow, which is deliberately not modelled here:
+///
+///  - with `publishContentLinkUri` set, ARM downloads that URI at create time and
+///    publishes the runbook from it;
+///  - without it, the runbook is created with an empty draft — a valid, published
+///    -nothing record that costs nothing and needs no reachable URL.
+///
+/// `publishContentLinkUri` is write-only because publishing is a create-time act:
+/// ARM's Get does not return the link, so drift in it cannot be detected.
+/// Changing it is a replace.
+///
+/// Deliberately not modelled: `logActivityTrace` (an integer tracing level ARM
+/// always answers with, whose value is only meaningful together with a
+/// diagnostic setting), the draft body, the runtime environment, and every
+/// read-only counter — jobCount, outputTypes, parameters, state,
+/// provisioningState.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Automation::Account"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "automationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AutomationRunbook extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex("^[a-zA-Z][a-zA-Z0-9_-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    automationAccountName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// Must match the parent automation account's region.
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    /// The runbook's language. ARM will not change it on an existing runbook, so
+    /// a change here replaces the runbook.
+    @azure.FieldHint { required = true; createOnly = true }
+    runbookType: RunbookType
+
+    /// Write verbose-stream output to the job log.
+    ///
+    /// Required rather than optional-with-a-provider-default: ARM always answers
+    /// Get with both log flags, so an omitted flag would read back as drift.
+    @azure.FieldHint { required = true }
+    logVerbose: Boolean
+
+    /// Write progress records to the job log.
+    @azure.FieldHint { required = true }
+    logProgress: Boolean
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    /// HTTPS URI of the script to publish the runbook from — a raw `.ps1`,
+    /// `.py`, or graphical-runbook export. ARM fetches it server-side at create
+    /// time, so it must be reachable from Azure and anonymous (or carry its own
+    /// SAS token). Omit it to create the runbook with an empty draft.
+    ///
+    /// Write-only: ARM never returns it. See the note above.
+    @azure.FieldHint { createOnly = true; writeOnly = true }
+    publishContentLinkUri: (formae.Value|String)?
+
+    /// Optional version string recorded alongside the content link.
+    @azure.FieldHint { createOnly = true; writeOnly = true }
+    publishContentLinkVersion: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AutomationRunbookResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

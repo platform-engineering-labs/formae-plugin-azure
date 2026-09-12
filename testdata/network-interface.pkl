@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/resources/virtualnetwork.pkl"
+import "@azure/resources/subnet.pkl"
+import "@azure/network/networkinterface.pkl"
+import "vars.pkl"
+
+// Cost: nothing in this fixture is billed. A resource group, a virtual network
+// and a subnet are free, and a network interface is only billed through what it
+// attaches to — this one stays detached (no VM, no public IP), so it holds no
+// compute, no static IP and no data transfer.
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nic-test-rg"
+  name = "formae-plugin-sdk-test-nic-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vnetAddressSpace = new virtualnetwork.AddressSpace {
+  addressPrefixes = new Listing { "10.0.0.0/16" }
+}
+
+local vnet = new virtualnetwork.VirtualNetwork {
+  label = "nic-test-vnet"
+  name = "formae-plugin-sdk-test-nic-vnet-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  addressSpace = vnetAddressSpace
+}
+
+local snet = new subnet.Subnet {
+  label = "nic-test-snet"
+  name = "nic-snet"
+  resourceGroupName = rg.res.name
+  virtualNetworkName = vnet.res.name
+  addressPrefix = "10.0.1.0/24"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  vnet
+  snet
+
+  new networkinterface.NetworkInterface {
+    label = "plugin-sdk-test-nic"
+    name = "formae-plugin-sdk-test-nic-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    ipConfigurations = new Listing {
+      new networkinterface.IPConfiguration {
+        name = "nic-ipcfg"
+        subnet = snet.res.id
+        // Dynamic keeps privateIPAddress out of the serialized properties —
+        // the provisioner only reports it back for Static allocation, so a
+        // runtime-assigned address never has to round-trip.
+        privateIPAllocationMethod = "Dynamic"
+        primary = true
+      }
+    }
+    // Azure returns both of these on every GET (false when unset) and neither
+    // is annotated hasProviderDefault, so the fixture has to declare them or
+    // the harness flags them as unexpected properties.
+    enableAcceleratedNetworking = false
+    enableIPForwarding = false
+  }
+}

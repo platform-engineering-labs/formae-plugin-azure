@@ -1,0 +1,113 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.keyvault.managedhsm
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::KeyVault::ManagedHsm"
+const apiVersion = "2023-07-01"
+
+/// SKU name for a Managed HSM pool. Standard_B1 is the smallest.
+typealias ManagedHsmSKUName = "Standard_B1"|"Custom_B6"|"Custom_B32"|"Custom_C10"|"Custom_C42"
+
+/// SKU family for a Managed HSM pool.
+typealias ManagedHsmSKUFamily = "B"|"C"
+
+/// Whether the pool is reachable from public networks.
+typealias PublicNetworkAccess = "Enabled"|"Disabled"
+
+open class ManagedHsmResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ManagedHsmResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ManagedHsmResolvable = (this) {
+        property = "name"
+    }
+    hidden hsmUri: ManagedHsmResolvable = (this) {
+        property = "hsmUri"
+    }
+}
+
+/// SKU configuration for a Managed HSM pool.
+class ManagedHsmSKU {
+    /// SKU family.
+    family: ManagedHsmSKUFamily = "B"
+
+    /// SKU name.
+    name: ManagedHsmSKUName
+}
+
+/// A single-tenant, FIPS 140-2 Level 3 HSM pool.
+///
+/// Two operational facts matter before you declare one. It bills from creation
+/// at roughly $3.20/hour whether or not it holds a key, and provisioning takes
+/// 20-30 minutes. Soft delete is permanently on with a 7-day minimum retention,
+/// so a destroyed pool keeps its name reserved until it is purged by hand.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ManagedHsm extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 24 && matches(Regex("^[a-zA-Z][a-zA-Z0-9-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    tenantId: String
+
+    @azure.FieldHint { required = true; createOnly = true }
+    sku: ManagedHsmSKU
+
+    /// Object ids of the initial pool administrators. ARM requires at least one:
+    /// without an administrator nobody can activate the security domain, so the
+    /// pool would be created and billed but never usable.
+    @azure.FieldHint { required = true; createOnly = true }
+    initialAdminObjectIds: Listing<String|formae.Resolvable>
+
+    /// Always true on a Managed HSM - soft delete cannot be turned off. Present so
+    /// a read of an existing pool does not report drift.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    enableSoftDelete: Boolean?
+
+    /// Days a deleted pool stays recoverable. Defaults to 90 when unset.
+    @azure.FieldHint { createOnly = true; hasProviderDefault = true }
+    softDeleteRetentionInDays: Int(this >= 7 && this <= 90)?
+
+    /// Once true this cannot be turned off again, and a deleted pool then cannot
+    /// be purged before its retention expires.
+    @azure.FieldHint { hasProviderDefault = true }
+    enablePurgeProtection: Boolean?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: PublicNetworkAccess?
+
+    /// Data-plane endpoint of the pool, assigned by Azure. Read-only.
+    @azure.FieldHint { hasProviderDefault = true }
+    hsmUri: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ManagedHsmResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementopenidconnectprovider
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::OpenIdConnectProvider"
+const apiVersion = "2021-08-01"
+
+open class OpenIdConnectProviderResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OpenIdConnectProviderResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OpenIdConnectProviderResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An OpenID Connect provider registration — the discovery document and client
+/// id the developer portal uses to obtain an ID token when someone tries an API
+/// from the console.
+///
+/// Simpler than `AZURE::ApiManagement::AuthorizationServer`: everything the
+/// portal needs beyond the client id is read from the discovery document at
+/// `metadataEndpoint`, so no endpoints are declared individually.
+///
+/// `clientSecret` is write-only. ARM accepts it but never returns it from a Get
+/// — it comes back only from a separate list-secrets call — so drift in it
+/// cannot be detected, though changing it in a forma still pushes the new
+/// value.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class OpenIdConnectProvider extends formae.Resource {
+
+    /// Provider identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 50)
+
+    /// URL of the OpenID Connect discovery document, i.e. the
+    /// `.well-known/openid-configuration` endpoint.
+    @azure.FieldHint { required = true }
+    metadataEndpoint: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    clientId: String(length >= 1)
+
+    /// Client secret. Write-only: see the note on this class.
+    @azure.FieldHint { writeOnly = true }
+    clientSecret: (formae.Value|String)?
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: OpenIdConnectProviderResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

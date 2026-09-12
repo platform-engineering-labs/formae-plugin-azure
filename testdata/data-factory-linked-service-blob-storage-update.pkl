@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactoryintegrationruntimeazure.pkl" as azir
+import "@azure/datafactory/datafactorylinkedserviceblobstorage.pkl" as lsblob
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adflsblob-test-rg"
+  name = "formae-plugin-sdk-test-adflsblob-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adflsblob-test-factory"
+  name = "fpsdt-adflsblob-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// An Azure runtime purely so `connectViaIntegrationRuntimeName` is exercised
+// somewhere: it is a record, allocates no cluster and costs nothing, and it
+// proves the factory -> runtime -> linked service resolvable chain.
+local runtime = new azir.IntegrationRuntimeAzure {
+  label = "adflsblob-test-runtime"
+  name = "conformance-azir"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  computeLocation = "AutoResolve"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  runtime
+
+  // Free: creating a linked service is a metadata write.
+  //
+  // The managed-identity shape — `serviceEndpoint` and no credential anywhere.
+  // The alternative, `connectionString`, embeds an account key or SAS and is
+  // write-only, so a fixture using it could never be verified.
+  //
+  // No storage account is created. Creating a linked service does not test the
+  // connection — that is a separate data-plane call behind the authoring UI's
+  // "Test connection" button — so the endpoint only has to be a well-formed blob
+  // service URI. Standing up an account would add a minute per run and prove
+  // nothing this type is responsible for.
+  new lsblob.LinkedServiceAzureBlobStorage {
+    label = "plugin-sdk-test-adf-ls-blob-storage"
+    name = "conformance-blob"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    serviceEndpoint = "https://fpsdtblob\(vars.testRunID).blob.core.windows.net"
+    accountKind = "Storage"
+    // Update: retitle and drop back to the general-purpose v1 kind. Both are
+    // updatable in place; only name, resourceGroupName and factoryName are
+    // create-only.
+    description = "conformance blob store, updated"
+    connectViaIntegrationRuntimeName = runtime.res.name
+    annotations = new Listing { "conformance" }
+  }
+}

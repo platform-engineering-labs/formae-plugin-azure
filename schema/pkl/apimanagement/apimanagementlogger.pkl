@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementlogger
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Logger"
+const apiVersion = "2021-08-01"
+
+/// Where the logger sends what it collects.
+///
+///  - `applicationInsights` needs `credentials` carrying an
+///    `instrumentationKey`, and is the only kind available on the Consumption
+///    tier.
+///  - `azureEventHub` needs `credentials` carrying `name` and
+///    `connectionString`.
+///  - `azureMonitor` needs no credentials, but Azure Monitor / Log Analytics
+///    request logs are not available on Consumption.
+typealias LoggerType = "applicationInsights"|"azureEventHub"|"azureMonitor"
+
+open class LoggerResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LoggerResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LoggerResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A logger — the event sink a diagnostic writes to.
+///
+/// A logger on its own emits nothing. It is a destination; what actually starts
+/// sending is an `AZURE::ApiManagement::Diagnostic` (service-wide) or an
+/// `AZURE::ApiManagement::ApiDiagnostic` (per API) pointing at it.
+///
+/// `credentials` is write-only. ARM does not store the value inline: it moves
+/// each entry into a hidden secret named value and answers a Get with a
+/// `{{...}}` reference to it, so reading the map back reports drift on every
+/// sync rather than the key that was declared.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Logger extends formae.Resource {
+
+    /// Logger identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    loggerType: LoggerType
+
+    @azure.FieldHint { }
+    description: String(length <= 256)?
+
+    /// Credentials for the sink: `instrumentationKey` for Application Insights,
+    /// `name` plus `connectionString` for an Event Hub, nothing for Azure
+    /// Monitor. Write-only: see the note on this class.
+    @azure.FieldHint { writeOnly = true }
+    credentials: Mapping<String, String>?
+
+    /// ARM id of the log target — the Application Insights component or the
+    /// Event Hub namespace. Informational to ARM, but it is what makes the
+    /// portal link the two.
+    @azure.FieldHint { }
+    resourceId: (String|formae.Resolvable)?
+
+    /// Whether records are buffered before being published. ARM assumes true.
+    @azure.FieldHint { hasProviderDefault = true }
+    isBuffered: Boolean?
+
+    hidden parent = this
+
+    hidden res: LoggerResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

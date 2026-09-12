@@ -1,0 +1,77 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/authorization/policydefinition.pkl" as policydefinition
+import "@azure/authorization/policyassignment.pkl" as policyassignment
+import "@azure/authorization/policyexemption.pkl" as policyexemption
+import "vars.pkl"
+
+// An exemption needs an assignment to exempt, and an assignment needs a definition,
+// so the fixture builds all three. Everything is scoped to this group, so nothing
+// outside the test is ever evaluated or exempted.
+local rg = new resourcegroup.ResourceGroup {
+  label = "pe-test-rg"
+  name = "formae-plugin-sdk-test-pe-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local subscriptionScope = "/subscriptions/\(vars.subscriptionId)"
+local rgScope = "\(subscriptionScope)/resourceGroups/formae-plugin-sdk-test-pe-rg-\(vars.testRunID)"
+
+// Effect is `audit`, and the definition lives at subscription scope so the
+// group-scoped assignment can reference it.
+local definition = new policydefinition.PolicyDefinition {
+  label = "pe-test-policy-definition"
+  name = "formae-plugin-sdk-test-pe-pd-\(vars.testRunID)"
+  displayName = "formae plugin sdk test audit \(vars.testRunID)"
+  description = "conformance test policy definition"
+  mode = "Indexed"
+  policyRule = #"{"if":{"field":"location","notEquals":"eastus"},"then":{"effect":"audit"}}"#
+}
+
+// Doubly harmless: the effect is `audit`, and DoNotEnforce stops even that from
+// being applied.
+local assignment = new policyassignment.PolicyAssignment {
+  label = "pe-test-policy-assignment"
+  name = "formae-plugin-sdk-test-pe-pa-\(vars.testRunID)"
+  scope = rgScope
+  policyDefinitionId = definition.res.id
+  displayName = "formae plugin sdk test assignment \(vars.testRunID)"
+  description = "conformance test policy assignment"
+  enforcementMode = "DoNotEnforce"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  definition
+
+  assignment
+
+  // Exempting the same scope the assignment covers keeps assignmentScopeValidation
+  // happy without having to bypass it. The expiry is far enough out that the
+  // exemption cannot lapse mid-run and read as drift.
+  new policyexemption.PolicyExemption {
+    label = "plugin-sdk-test-policy-exemption"
+    name = "formae-plugin-sdk-test-pe-\(vars.testRunID)"
+    scope = rgScope
+    policyAssignmentId = assignment.res.id
+    exemptionCategory = "Mitigated"
+    displayName = "formae plugin sdk test exemption \(vars.testRunID)"
+    description = "conformance test policy exemption, revised"
+    expiresOn = "2031-06-30T12:00:00Z"
+  }
+}

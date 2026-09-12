@@ -1,0 +1,112 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.recoveryservices.backupprotectedfileshare
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::RecoveryServices::BackupProtectedFileShare"
+const apiVersion = "2025-02-01"
+
+open class BackupProtectedFileShareResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupProtectedFileShareResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupProtectedFileShareResolvable = (this) {
+        property = "name"
+    }
+    hidden containerName: BackupProtectedFileShareResolvable = (this) {
+        property = "containerName"
+    }
+}
+
+/// An Azure Files share protected by a Recovery Services vault
+/// (Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems).
+///
+/// This is one Formae resource over four ARM steps. Creating it registers the
+/// storage account with the vault as a protection container, asks that container
+/// to enumerate its shares, waits for the share to appear as a protectable item —
+/// under a service-generated name, not the share's own — and only then writes the
+/// protected item. Destroying it deletes the item and then unregisters the
+/// container, because a vault refuses its own delete while a container is still
+/// attached.
+///
+/// The storage account is addressed by resource group and name, and the policy by
+/// name, rather than by ARM ID: ARM re-cases the IDs it echoes back
+/// (`/resourcegroups/`, `/microsoft.storage/`), so an ID round-tripped through the
+/// read path would report drift on every sync. Point `storageAccountName` at the
+/// account's `name` and `backupPolicyName` at the policy's `name` to keep the
+/// dependency edges.
+///
+/// Registering the container takes an Azure Backup lock on the storage account,
+/// so the account cannot be deleted until this resource is destroyed.
+///
+/// Leave the vault's `softDeleteState` at `Disabled` for anything short-lived:
+/// with soft delete on, a deleted protected item lingers for its retention window
+/// and blocks both the unregister and the vault's own delete.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::RecoveryServices::Vault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BackupProtectedFileShare extends formae.Resource {
+
+    /// Resource group of the Recovery Services vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Recovery Services vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String|formae.Resolvable
+
+    /// Resource group of the storage account holding the share. It does not have
+    /// to be the vault's own resource group, but it must be in the same region.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountResourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// Name of the file share to protect, as it appears in the storage account.
+    @azure.FieldHint { required = true; createOnly = true }
+    fileShareName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Name of the AZURE::RecoveryServices::BackupPolicyFileShare that governs
+    /// this share. The only mutable field: rebinding the share to another policy
+    /// updates in place.
+    @azure.FieldHint { required = true }
+    backupPolicyName: String|formae.Resolvable
+
+    /// Service-generated protected item name, of the form
+    /// `AzureFileShare;<opaque id>`. Never supplied by the caller.
+    @azure.FieldHint { hasProviderDefault = true }
+    name: String?
+
+    /// Name of the protection container the storage account was registered as,
+    /// of the form `StorageContainer;Storage;<resource group>;<account>`.
+    @azure.FieldHint { hasProviderDefault = true }
+    containerName: String?
+
+    /// Backup state reported by the service — `Protected`, `IRPending`,
+    /// `ProtectionStopped` and so on.
+    @azure.FieldHint { hasProviderDefault = true }
+    protectionState: String?
+
+    hidden parent = this
+
+    hidden res: BackupProtectedFileShareResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

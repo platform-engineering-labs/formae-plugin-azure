@@ -1,0 +1,97 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorylinkedserviceweb
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::LinkedServiceWeb"
+const apiVersion = "2018-06-01"
+
+/// How the factory authenticates to the web endpoint. `ClientCertificate` is not
+/// expressible here: it needs a base64 PFX plus its password, neither of which ARM
+/// ever returns, so a certificate-authenticated web linked service would be a
+/// resource this provider could create but never verify.
+typealias WebAuthenticationType = "Anonymous"|"Basic"
+
+open class LinkedServiceWebResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LinkedServiceWebResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LinkedServiceWebResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A `Web` linked service — an HTTP endpoint a Web activity or WebTable dataset
+/// reads from.
+///
+/// `Anonymous` needs nothing but a URL. `Basic` additionally needs `username` and
+/// `password`; the password is sent as a `SecureString`, so the service stores it
+/// encrypted and returns only a mask — which is why it is declared `writeOnly`:
+/// it can never be compared on read, and drift in it cannot be detected.
+///
+/// Creating a linked service is a metadata write and costs nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LinkedServiceWeb extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Endpoint URL, e.g. `https://api.example.com/v1/rows`.
+    @azure.FieldHint { required = true }
+    url: (String|formae.Resolvable)
+
+    @azure.FieldHint { required = true }
+    authenticationType: WebAuthenticationType
+
+    /// User name for `Basic`. Rejected for `Anonymous`.
+    @azure.FieldHint { }
+    username: (String|formae.Resolvable)?
+
+    /// Password for `Basic`. Write-only — see the note above.
+    @azure.FieldHint { writeOnly = true }
+    password: (formae.Value|String|formae.SecretValue)?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Name of an integration runtime in the same factory to route through. Omit to
+    /// use the factory's default AutoResolve runtime.
+    @azure.FieldHint { }
+    connectViaIntegrationRuntimeName: (String|formae.Resolvable)?
+
+    /// Free-form labels the authoring UI shows against the linked service.
+    /// Unrelated to ARM resource tags — a linked service is not an ARM tracked
+    /// resource and cannot carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: LinkedServiceWebResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

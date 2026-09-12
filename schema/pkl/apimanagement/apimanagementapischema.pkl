@@ -1,0 +1,94 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapischema
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiSchema"
+const apiVersion = "2021-08-01"
+
+/// Media type of the schema document, which also decides how ARM stores it.
+///
+/// The content type has to match the kind of API it hangs off:
+///
+/// - `application/vnd.oai.openapi.components+json` — the OpenAPI components
+///   object, for a REST (`http`) API. This is the usual choice.
+/// - `application/vnd.ms-azure-apim.swagger.definitions+json` — the Swagger 2.0
+///   definitions object, also for a REST API.
+/// - `application/vnd.ms-azure-apim.xsd+xml` — an XSD, for a SOAP API.
+typealias ApiSchemaContentType =
+    "application/vnd.oai.openapi.components+json"
+  | "application/vnd.ms-azure-apim.swagger.definitions+json"
+  | "application/vnd.ms-azure-apim.xsd+xml"
+
+open class ApiSchemaResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiSchemaResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiSchemaResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A schema attached to one API — the type definitions its operations refer to
+/// when validating request or response bodies.
+///
+/// Distinct from `AZURE::ApiManagement::GlobalSchema`, which is service-wide and
+/// reusable across APIs. This one is scoped to a single API and its content type
+/// is constrained by that API's kind.
+///
+/// ARM does not store the document verbatim: a JSON content type is parsed into
+/// a structured document and re-serialized, so key order and whitespace come
+/// back changed. The provider therefore reports the document you declared
+/// whenever it is semantically the same as the one ARM holds, and reports ARM's
+/// own rendering only when the two genuinely differ.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Api"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "apiName" }
+    )
+}
+open class ApiSchema extends formae.Resource {
+
+    /// Schema identifier, unique within the API.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the API this schema belongs to — its ARM name, not its
+    /// display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    contentType: ApiSchemaContentType
+
+    /// The schema document itself, as text: a JSON object for the two JSON
+    /// content types, an XSD for the XML one.
+    @azure.FieldHint { required = true }
+    value: String(length >= 1)
+
+    hidden parent = this
+
+    hidden res: ApiSchemaResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

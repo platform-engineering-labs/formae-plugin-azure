@@ -1,0 +1,141 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/insights/component.pkl" as aicomponent
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementlogger.pkl" as apimlogger
+import "@azure/apimanagement/apimanagementapi.pkl" as apimapi
+import "@azure/apimanagement/apimanagementapidiagnostic.pkl" as apimapidiag
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-apidiag-test-rg"
+  name = "formae-plugin-sdk-test-apimapidiag-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Workspace-based components are the only kind Azure still creates, so the
+// workspace is a hard dependency rather than an option.
+local law = new workspace.Workspace {
+  label = "apim-apidiag-test-law"
+  name = "fpsdt-apimapidiag-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+}
+
+local telemetry = new aicomponent.Component {
+  label = "apim-apidiag-test-ai"
+  name = "fpsdt-apimapidiag-ai-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  workspaceResourceId = law.res.id
+  applicationType = "web"
+  kind = "web"
+  ingestionMode = "LogAnalytics"
+  retentionInDays = 30
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-apidiag-test-service"
+  name = "fpsdt-apimapidiag-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// See api-management-logger.pkl for why this is a placeholder rather than the
+// component's real instrumentation key: AZURE::Insights::Component deliberately
+// does not surface it, because this plugin has no sensitive-output mechanism.
+// APIM stores whatever it is given without validating it.
+local instrumentationKeyPlaceholder = "00000000-1111-2222-3333-444444444444"
+
+// Declared explicitly rather than imported: an import makes ARM synthesize one
+// operation per path in the document, and those then look like unmanaged
+// children of this API.
+local api = new apimapi.Api {
+  label = "apim-apidiag-test-api"
+  name = "conformance-api"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  displayName = "Conformance API"
+  path = "conformance"
+  protocols = new Listing { "https" }
+  serviceUrl = "https://echo.platform.engineering"
+}
+
+// The diagnostic writes to this. A logger on its own emits nothing, and a
+// diagnostic cannot be created before the logger it names exists — hence the
+// two, not one.
+local sink = new apimlogger.Logger {
+  label = "apim-apidiag-test-logger"
+  name = "conformance-appinsights"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  loggerType = "applicationInsights"
+  resourceId = telemetry.res.id
+  credentials {
+    ["instrumentationKey"] = instrumentationKeyPlaceholder
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  law
+  telemetry
+  svc
+  api
+  sink
+
+  // Update: verbosity, sampling rate, correlation protocol and the frontend
+  // recording all change, and a backend block is added. `name` and `apiName`
+  // stay put — both are part of the identity.
+  new apimapidiag.ApiDiagnostic {
+    label = "plugin-sdk-test-apim-api-diagnostic"
+    name = "applicationinsights"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    apiName = api.res.name
+    loggerId = sink.res.id
+    alwaysLog = "allErrors"
+    httpCorrelationProtocol = "Legacy"
+    logClientIp = false
+    operationNameFormat = "Name"
+    verbosity = "verbose"
+    sampling {
+      samplingType = "fixed"
+      percentage = 50
+    }
+    frontend {
+      request {
+        headers = new Listing { "x-formae-conformance"; "x-formae-updated" }
+        bodyBytes = 1024
+      }
+    }
+    backend {
+      response {
+        bodyBytes = 256
+      }
+    }
+  }
+}

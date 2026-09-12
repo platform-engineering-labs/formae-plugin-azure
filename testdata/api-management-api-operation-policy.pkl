@@ -1,0 +1,107 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementapi.pkl" as apimapi
+import "@azure/apimanagement/apimanagementapioperation.pkl" as apimop
+import "@azure/apimanagement/apimanagementapioperationpolicy.pkl" as apimoppol
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-oppol-test-rg"
+  name = "formae-plugin-sdk-test-apimoppol-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-oppol-test-service"
+  name = "fpsdt-apimoppol-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// Declared explicitly rather than imported: an import makes ARM synthesize one
+// operation per path in the document, and those then look like unmanaged
+// children of this API.
+local api = new apimapi.Api {
+  label = "apim-oppol-test-api"
+  name = "conformance-api"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  displayName = "Conformance API"
+  path = "conformance"
+  protocols = new Listing { "https" }
+  serviceUrl = "https://echo.platform.engineering"
+}
+
+// The URL template carries no path parameters: each one would need a matching
+// template parameter, and the request contract is not modelled by the
+// ApiOperation resource.
+local op = new apimop.ApiOperation {
+  label = "apim-oppol-test-operation"
+  name = "get-status"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  apiName = api.res.name
+  displayName = "Get status"
+  method = "GET"
+  urlTemplate = "/status"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+  api
+  op
+
+  // The document is written the way an author would write it. ARM does not
+  // store it verbatim: it reparses the XML and re-serializes it, so the
+  // indentation, the line endings and the attribute order all come back
+  // changed. The provider compares the two canonically and reports the
+  // document declared here, so that reformatting is not read as drift.
+  //
+  // An operation policy is the innermost scope; each section opens with
+  // <base /> so the API and service policies still run.
+  new apimoppol.ApiOperationPolicy {
+    label = "plugin-sdk-test-apim-api-operation-policy"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    apiName = api.res.name
+    operationName = op.res.name
+    format = "xml"
+    value = """
+      <policies>
+        <inbound>
+          <base />
+        </inbound>
+        <backend>
+          <base />
+        </backend>
+        <outbound>
+          <base />
+        </outbound>
+        <on-error>
+          <base />
+        </on-error>
+      </policies>
+      """
+  }
+}

@@ -1,0 +1,135 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.recoveryservices.recoveryservicesvault
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::RecoveryServices::Vault"
+const apiVersion = "2023-04-01"
+
+/// Both values mean the same billing tier. `Standard` is what the portal and
+/// `az backup vault create` send; `RS0` is the older spelling and pairs with
+/// `skuTier = "Standard"`.
+typealias VaultSKUName = "Standard"|"RS0"
+
+/// `AlwaysON` cannot be turned off again — the vault keeps soft delete for good.
+typealias VaultSoftDeleteState = "Enabled"|"Disabled"|"AlwaysON"
+
+/// `Locked` is irreversible; `Unlocked` can still be relaxed to `Disabled`.
+typealias VaultImmutabilityState = "Disabled"|"Unlocked"|"Locked"
+
+open class VaultResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: VaultResolvable = (this) {
+        property = "id"
+    }
+    hidden name: VaultResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: VaultResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A Recovery Services vault (Microsoft.RecoveryServices/vaults) — the classic
+/// Azure Backup and Azure Site Recovery vault, distinct from the newer
+/// `AZURE::DataProtection::BackupVault`.
+///
+/// Storage redundancy is NOT part of the vault body: it lives in the separate
+/// `backupstorageconfig` sub-resource, so `standardTierStorageRedundancy` and
+/// `crossRegionRestore` here are read-only reports of what the service chose.
+///
+/// A vault cannot be deleted while it still has a registered protection
+/// container or a protected item, so anything that backs up into it must be torn
+/// down first.
+///
+/// Identity, customer-managed-key encryption and private endpoint connections are
+/// not modelled yet.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class Vault extends formae.Resource {
+
+    /// 2-50 characters, starting with a letter; letters, digits and hyphens only.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 2 && length <= 50 && matches(Regex("^[A-Za-z][A-Za-z0-9-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// ARM rejects a vault body with no SKU, so this is required rather than
+    /// provider-defaulted.
+    @azure.FieldHint { required = true }
+    skuName: VaultSKUName
+
+    /// Only meaningful alongside `skuName = "RS0"`, where ARM echoes back
+    /// `"Standard"`. Leave unset with `skuName = "Standard"`.
+    @azure.FieldHint { hasProviderDefault = true }
+    skuTier: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    /// Retain deleted backup data for a recovery window. Leave this `Disabled` for
+    /// anything short-lived: with soft delete on, a deleted protected item stays
+    /// in the vault for its retention window and blocks the vault's own delete.
+    @azure.FieldHint { hasProviderDefault = true }
+    softDeleteState: VaultSoftDeleteState?
+
+    /// Days a soft-deleted item stays recoverable, 14-180.
+    @azure.FieldHint { hasProviderDefault = true }
+    softDeleteRetentionDays: Int(this >= 14 && this <= 180)?
+
+    /// Immutable vaults refuse operations that would shorten retention. `Locked`
+    /// can never be undone.
+    @azure.FieldHint { hasProviderDefault = true }
+    immutabilityState: VaultImmutabilityState?
+
+    /// Allow restore into a different subscription. `PermanentlyDisabled` is
+    /// irreversible.
+    @azure.FieldHint { hasProviderDefault = true }
+    crossSubscriptionRestoreState: ("Enabled"|"Disabled"|"PermanentlyDisabled")?
+
+    /// Azure Monitor alerts on every failed backup job.
+    @azure.FieldHint { hasProviderDefault = true }
+    alertsForAllJobFailures: ("Enabled"|"Disabled")?
+
+    /// Classic (email) alerts on critical operations.
+    @azure.FieldHint { hasProviderDefault = true }
+    alertsForCriticalOperations: ("Enabled"|"Disabled")?
+
+    /// Read-only. Set through the `backupstorageconfig` sub-resource, not here.
+    @azure.FieldHint { hasProviderDefault = true }
+    standardTierStorageRedundancy: ("LocallyRedundant"|"ZoneRedundant"|"GeoRedundant")?
+
+    /// Read-only. Follows from the storage redundancy setting.
+    @azure.FieldHint { hasProviderDefault = true }
+    crossRegionRestore: ("Enabled"|"Disabled")?
+
+    /// Service-reported provisioning state of the vault.
+    @azure.FieldHint { hasProviderDefault = true }
+    provisioningState: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: VaultResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

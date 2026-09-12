@@ -1,0 +1,91 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccountassembly
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccountAssembly"
+const apiVersion = "2019-05-01"
+
+open class IntegrationAccountAssemblyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountAssemblyResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountAssemblyResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A .NET assembly held in an integration account, so an XSLT map can call into
+/// custom code.
+///
+/// Free: assemblies are metadata on the parent account and are not billed
+/// separately.
+///
+/// `content` is the base64 of the `.dll` bytes, and is WRITE-ONLY: ARM answers a
+/// GET with a `contentLink` SAS URL to the blob it copied the assembly into,
+/// never with the bytes. There is nothing to compare on read. Changing `content`
+/// in a forma still pushes the new assembly; drift introduced elsewhere is not
+/// detected.
+///
+/// `assemblyVersion`, `assemblyCulture` and `assemblyPublicKeyToken` are the
+/// strong-name triple. ARM derives all three from the blob when they are left
+/// out — `0.0.0.0` for an unversioned assembly — which is why each is annotated
+/// `hasProviderDefault`.
+///
+/// `metadata` is arbitrary JSON the schema cannot express and is not read back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Logic::IntegrationAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "integrationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationAccountAssembly extends formae.Resource {
+
+    /// Name of the ARM child resource. Independent of `assemblyName`, which is
+    /// the .NET identity recorded inside it.
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// The .NET assembly's simple name, e.g. `"OrderTransforms"`. ARM requires
+    /// it and does not derive it.
+    @azure.FieldHint {  }
+    assemblyName: String(length >= 1)
+
+    /// Base64 of the `.dll` bytes. Write-only; see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    assemblyVersion: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    assemblyCulture: String?
+
+    @azure.FieldHint { hasProviderDefault = true }
+    assemblyPublicKeyToken: String?
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountAssemblyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

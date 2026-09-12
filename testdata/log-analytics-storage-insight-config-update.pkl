@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/loganalyticsstorageinsightconfig.pkl" as storageinsight
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lasic-test-rg"
+  name = "formae-plugin-sdk-test-lasic-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The account the workspace is pointed at. Standard_LRS is the cheapest
+// redundancy, and nothing is ever written here: the named container and table
+// stay empty because no diagnostics extension reports to this account.
+local sa = new storageaccount.StorageAccount {
+  label = "lasic-test-sa"
+  name = "fpsdtlasic\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new storageaccount.StorageAccountSKU { name = "Standard_LRS" }
+  kind = "StorageV2"
+}
+
+// 30-day retention is what the PerGB2018 base price includes; the 1 GB daily cap
+// bounds ingestion. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "lasic-test-law"
+  name = "fpsdt-lasic-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  sa
+
+  workspaceRes
+
+  // The config is free; what it reads bills the workspace's ingestion rate, and
+  // the named container and table receive nothing during the test.
+  //
+  // storageAccountKey is a PLACEHOLDER. ARM requires the field on every write
+  // and never returns it, and the account this fixture creates has no
+  // diagnostics data to read, so the key is never exercised — the same shape
+  // app-service-certificate uses for its pfx blob. Swap it for a real key only
+  // if a live run shows ARM validating it at PUT time.
+  new storageinsight.StorageInsightConfig {
+    label = "plugin-sdk-test-storage-insight-config"
+    name = "fpsdt-lasic-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    storageAccountId = sa.res.id
+    storageAccountKey = formae.value("cGxhY2Vob2xkZXItc3RvcmFnZS1hY2NvdW50LWtleS1yZXBsYWNlLW1lLXdpdGgtYS1yZWFsLWtleQ==").opaque
+    containers {
+      "wad-iis-logfiles"
+    }
+    tables {
+      "WADWindowsEventLogsTable"
+    }
+  }
+}

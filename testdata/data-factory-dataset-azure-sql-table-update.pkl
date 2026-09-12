@@ -1,0 +1,71 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedservicesqldatabase.pkl" as lssql
+import "@azure/datafactory/datafactorydatasetazuresqltable.pkl" as dssql
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfdssql-test-rg"
+  name = "formae-plugin-sdk-test-adfdssql-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfdssql-test-factory"
+  name = "fpsdt-adfdssql-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Every dataset needs a linked service, so one comes along. The connection string
+// carries NO credentials, which is what tells Data Factory to authenticate with the
+// factory's managed identity. No SQL server or database is created: creating a
+// linked service does not test the connection, and a real logical server would add
+// several minutes per run to verify nothing this dataset owns.
+local sqlLinkedService = new lssql.LinkedServiceAzureSqlDatabase {
+  label = "adfdssql-test-linked-service"
+  name = "conformance-sql"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  connectionString = "Data Source=tcp:fpsdt-dssql-\(vars.testRunID).database.windows.net,1433;Initial Catalog=conformance;"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  sqlLinkedService
+
+  // Free: creating a dataset is a metadata write. The service does not connect to
+  // the database, so a dataset naming a table that does not exist creates cleanly.
+  //
+  // `schemaName` and `tableName` map to ARM's `typeProperties.schema` and
+  // `typeProperties.table`. They are named for what they are because `schema` on a
+  // dataset already means the inherited column schema.
+  new dssql.DatasetAzureSqlTable {
+    label = "plugin-sdk-test-adf-dataset-azure-sql-table"
+    name = "conformance-ds-sql-table"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    linkedServiceName = sqlLinkedService.res.name
+    schemaName = "sales"
+    tableName = "invoices"
+    // Update: repoint at another table and retitle. Only name, resourceGroupName
+    // and factoryName are create-only.
+    description = "conformance sql table dataset, updated"
+    folderName = "conformance"
+    annotations = new Listing { "conformance" }
+  }
+}

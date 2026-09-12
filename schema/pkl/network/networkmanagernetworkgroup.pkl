@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanagernetworkgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerNetworkGroup"
+const apiVersion = "2023-05-01"
+
+open class NetworkManagerNetworkGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerNetworkGroupResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerNetworkGroupResolvable = (this) {
+        property = "name"
+    }
+    hidden networkManagerName: NetworkManagerNetworkGroupResolvable = (this) {
+        property = "networkManagerName"
+    }
+}
+
+/// A network group inside a virtual network manager — the membership set a
+/// configuration is applied to.
+///
+/// A group carries no settings beyond a description: membership is what makes it
+/// useful. Membership arrives one of two ways:
+///
+///   * STATIC — a `NetworkManagerStaticMember` per virtual network, which is what
+///     this provider models;
+///   * DYNAMIC — an Azure Policy definition with `Microsoft.Network/networkManagers
+///     /networkGroups` membership, which is authored as policy and not here.
+///
+/// `memberType` is not modelled: the 2023-05-01 `networkGroups` body has no such
+/// field (it was removed after the preview API versions), so the group's member
+/// kind is implied by which mechanism populates it.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkManager"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "networkManagerName" }
+    )
+}
+open class NetworkManagerNetworkGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkManagerName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerNetworkGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

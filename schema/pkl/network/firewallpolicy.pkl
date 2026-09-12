@@ -13,6 +13,7 @@ const type = "AZURE::Network::FirewallPolicy"
 const apiVersion = "2023-05-01"
 
 /// DNS behaviour for the firewalls using this policy.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class DnsSettings extends formae.SubResource {
     /// Let the firewall act as a DNS proxy for the vnets behind it. Required for
     /// FQDN filtering in network rules.

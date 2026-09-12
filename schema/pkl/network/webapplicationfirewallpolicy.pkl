@@ -75,6 +75,7 @@ class MatchVariable {
 }
 
 /// A single match condition inside a custom rule.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class MatchCondition extends formae.SubResource {
     /// Variables to match against.
     matchVariables: Listing<MatchVariable>

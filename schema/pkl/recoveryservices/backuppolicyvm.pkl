@@ -1,0 +1,155 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.recoveryservices.backuppolicyvm
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::RecoveryServices::BackupPolicyVM"
+const apiVersion = "2025-02-01"
+
+typealias DayOfWeek = "Sunday"|"Monday"|"Tuesday"|"Wednesday"|"Thursday"|"Friday"|"Saturday"
+
+typealias WeekOfMonth = "First"|"Second"|"Third"|"Fourth"|"Last"
+
+typealias MonthOfYear =
+    "January"|"February"|"March"|"April"|"May"|"June"
+  |"July"|"August"|"September"|"October"|"November"|"December"
+
+/// Time of day the backup runs, as `HH:MM` in 24-hour form. ARM only accepts the
+/// hour or the half hour.
+///
+/// The ARM wire format is a full timestamp, but the service ignores the date half
+/// and rewrites it unpredictably on read, so the plugin sends a fixed anchor date
+/// and keeps only the time when reading back. Modelling the date would report
+/// drift on every sync.
+typealias TimeOfDay = String(matches(Regex("^([01][0-9]|2[0-3]):(00|30)$")))
+
+/// When the backup runs.
+class BackupSchedule {
+    /// `Weekly` requires `daysOfWeek`; `Daily` forbids it.
+    frequency: "Daily"|"Weekly"
+
+    times: Listing<TimeOfDay>(length >= 1)
+
+    daysOfWeek: Listing<DayOfWeek>?
+}
+
+/// Keep daily recovery points for `count` days. Required when the schedule runs
+/// daily, and rejected when it runs weekly.
+class DailyRetention {
+    count: Int(this >= 7 && this <= 9999)
+}
+
+/// Keep one recovery point per listed weekday for `count` weeks.
+class WeeklyRetention {
+    count: Int(this >= 1 && this <= 5163)
+
+    daysOfWeek: Listing<DayOfWeek>(length >= 1)
+}
+
+/// Keep one recovery point per listed week-and-weekday for `count` months.
+class MonthlyRetention {
+    count: Int(this >= 1 && this <= 1188)
+
+    daysOfWeek: Listing<DayOfWeek>(length >= 1)
+
+    weeksOfMonth: Listing<WeekOfMonth>(length >= 1)
+}
+
+/// Keep one recovery point per listed month/week/weekday for `count` years.
+class YearlyRetention {
+    count: Int(this >= 1 && this <= 99)
+
+    monthsOfYear: Listing<MonthOfYear>(length >= 1)
+
+    daysOfWeek: Listing<DayOfWeek>(length >= 1)
+
+    weeksOfMonth: Listing<WeekOfMonth>(length >= 1)
+}
+
+open class BackupPolicyVMResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupPolicyVMResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupPolicyVMResolvable = (this) {
+        property = "name"
+    }
+    hidden vaultName: BackupPolicyVMResolvable = (this) {
+        property = "vaultName"
+    }
+    hidden resourceGroupName: BackupPolicyVMResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// An Azure VM backup policy in a Recovery Services vault
+/// (Microsoft.RecoveryServices/vaults/backupPolicies with AzureIaasVM properties).
+///
+/// Only the V1 policy shape (`SimpleSchedulePolicy`) is modelled. V2 — hourly
+/// schedules and enhanced-tier snapshots — uses a different schedule contract and
+/// is not supported here yet.
+///
+/// The retention times ARM stores on every retention schedule must equal the
+/// schedule's own run times, so they are modelled once, on `backupSchedule.times`,
+/// and copied onto each retention schedule by the plugin.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::RecoveryServices::Vault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BackupPolicyVM extends formae.Resource {
+
+    /// 3-150 characters, starting with a letter or digit; letters, digits and
+    /// hyphens only.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 150 && matches(Regex("^[A-Za-z0-9][A-Za-z0-9-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Recovery Services vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    backupSchedule: BackupSchedule
+
+    /// Windows time zone name, for example "UTC" or "Pacific Standard Time".
+    @azure.FieldHint { hasProviderDefault = true }
+    timeZone: String?
+
+    /// Days snapshots stay in the source subscription for instant restore, 1-5.
+    @azure.FieldHint { hasProviderDefault = true }
+    instantRpRetentionRangeInDays: Int(this >= 1 && this <= 30)?
+
+    @azure.FieldHint { }
+    dailyRetention: DailyRetention?
+
+    @azure.FieldHint { }
+    weeklyRetention: WeeklyRetention?
+
+    @azure.FieldHint { }
+    monthlyRetention: MonthlyRetention?
+
+    @azure.FieldHint { }
+    yearlyRetention: YearlyRetention?
+
+    hidden parent = this
+
+    hidden res: BackupPolicyVMResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

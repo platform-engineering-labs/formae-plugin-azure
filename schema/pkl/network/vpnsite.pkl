@@ -15,6 +15,7 @@ const apiVersion = "2023-05-01"
 /// Descriptive metadata about the on-premises appliance. Azure stores it and uses
 /// the link speed for load distribution across links; nothing here changes the
 /// data path.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class VpnSiteDeviceProperties extends formae.SubResource {
     /// Vendor of the on-premises device, e.g. "Cisco".
     @azure.FieldHint { }
@@ -30,6 +31,7 @@ class VpnSiteDeviceProperties extends formae.SubResource {
 }
 
 /// Provider-side description of one physical link into the site.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class VpnSiteLinkProperties extends formae.SubResource {
     /// Name of the ISP / carrier providing the link.
     @azure.FieldHint { }
@@ -42,6 +44,7 @@ class VpnSiteLinkProperties extends formae.SubResource {
 
 /// BGP speaker settings for one link. Both values are required together: Azure
 /// rejects a link that declares only one of them.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class VpnSiteLinkBgpProperties extends formae.SubResource {
     /// The on-premises device's autonomous system number for this link.
     @azure.FieldHint { required = true }
@@ -54,6 +57,7 @@ class VpnSiteLinkBgpProperties extends formae.SubResource {
 
 /// One physical link into the branch. A site needs at least one link before a
 /// VPN gateway connection can target it.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class VpnSiteLink extends formae.SubResource {
     /// Name of the link, unique within the site.
     @azure.FieldHint { required = true }

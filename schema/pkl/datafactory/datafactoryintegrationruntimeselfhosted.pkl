@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactoryintegrationruntimeselfhosted
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::IntegrationRuntimeSelfHosted"
+const apiVersion = "2018-06-01"
+
+open class IntegrationRuntimeSelfHostedResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationRuntimeSelfHostedResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationRuntimeSelfHostedResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A self-hosted integration runtime — the ARM half of a runtime that copies data
+/// from a private network.
+///
+/// Creating one provisions NO compute: it is a registration record that hands back
+/// a pair of auth keys. Nothing runs until somebody installs the Integration
+/// Runtime agent on a machine of their own and registers it with one of those keys,
+/// so the resource costs nothing and needs no VM quota.
+///
+/// The auth keys are NOT surfaced as properties: ARM returns them only from a
+/// separate ListAuthKeys call, so exposing them would persist live credentials in
+/// resource state. Fetch them with
+/// `az datafactory integration-runtime list-auth-key` when registering a node.
+///
+/// Linked self-hosted runtimes (`typeProperties.linkedInfo`, which share another
+/// factory's runtime) are not modelled: they are created through a different verb
+/// and are keyed by a sharing credential ARM never returns.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationRuntimeSelfHosted extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 63 && matches(Regex("^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    hidden parent = this
+
+    hidden res: IntegrationRuntimeSelfHostedResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

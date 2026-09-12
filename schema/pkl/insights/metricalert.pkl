@@ -14,6 +14,7 @@ const apiVersion = "2018-03-01"
 
 /// One static-threshold test against a metric. The alert fires when every
 /// criterion matches.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class MetricCriterion extends formae.SubResource {
     /// Label for this criterion, unique within the alert. ARM conventionally uses
     /// "Metric1", "Metric2", ...

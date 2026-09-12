@@ -1,0 +1,72 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/insights/actiongroup.pkl"
+import "@azure/alertsmanagement/alertprocessingruleactiongroup.pkl" as aprag
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apr-ag-test-rg"
+  name = "formae-plugin-sdk-test-apr-ag-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// The notification path the rule attaches. Action groups are global and free;
+// groupShortName is capped at 12 characters by ARM.
+local ag = new actiongroup.ActionGroup {
+  label = "apr-ag-test-ag"
+  name = "fpsdt-apr-ag-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  location = "Global"
+  groupShortName = "fpsdtapr"
+  enabled = true
+  emailReceivers = new Listing {
+    new actiongroup.EmailReceiver {
+      name = "oncall"
+      emailAddress = "oncall@example.com"
+      useCommonAlertSchema = true
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  ag
+
+  // ARM type Microsoft.AlertsManagement/actionRules. Scoped to the test resource
+  // group only, and conditioned on Sev4 so it can never touch a real alert on the
+  // shared subscription. Free, and location is the literal "Global".
+  new aprag.AlertProcessingRuleActionGroup {
+    label = "plugin-sdk-test-apr-action-group"
+    name = "fpsdt-apr-ag-rule-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    location = "Global"
+    scopes = new Listing { rg.res.id }
+    actionGroupIds = new Listing { ag.res.id }
+    description = "conformance test: add the on-call action group, revised"
+    enabled = true
+    conditions {
+      new aprag.AlertProcessingRuleCondition {
+        field = "Severity"
+        operator = "Equals"
+        values { "Sev3"; "Sev4" }
+      }
+    }
+    tags {
+      new azure.Tag { key = "environment"; value = "conformance-test" }
+    }
+  }
+}

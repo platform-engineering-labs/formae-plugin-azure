@@ -1,0 +1,101 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorydatasetparquet
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::DatasetParquet"
+const apiVersion = "2018-06-01"
+
+open class DatasetParquetResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatasetParquetResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatasetParquetResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A `Parquet` dataset — Parquet files in blob storage.
+///
+/// Parquet carries its own column schema in the file footer, so there is nothing to
+/// declare beyond the location and the codec pages are compressed with.
+///
+/// `linkedServiceName` must name an `AZURE::DataFactory::LinkedServiceAzureBlobStorage`
+/// in the same factory, and `container` names a container on that account. Only
+/// `AzureBlobStorageLocation` is expressible — see `DatasetDelimitedText` for why —
+/// so the three location fields are flattened into this class.
+///
+/// Creating a dataset is a metadata write and costs nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DatasetParquet extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Name of the blob-storage linked service in the same factory. Required: ARM
+    /// rejects a dataset without one.
+    @azure.FieldHint { required = true }
+    linkedServiceName: String(length >= 1 && length <= 260)|formae.Resolvable
+
+    /// Blob container the files live in. Required: ARM rejects a Parquet dataset
+    /// without a location, and a location without a container addresses nothing.
+    @azure.FieldHint { required = true }
+    container: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Directory prefix within the container.
+    @azure.FieldHint { }
+    folderPath: (String|formae.Resolvable)?
+
+    /// File name within `folderPath`. Omit to address every file in the folder.
+    @azure.FieldHint { }
+    fileName: (String|formae.Resolvable)?
+
+    /// Page compression codec, e.g. `snappy`, `gzip`, `lzo`, `none`. Left as a free
+    /// string: the service accepts more codecs than a union here could keep
+    /// current, and it echoes exactly what was sent.
+    @azure.FieldHint { }
+    compressionCodec: String(length >= 1)?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Folder the dataset is filed under in the authoring UI. Purely cosmetic.
+    @azure.FieldHint { }
+    folderName: String(length >= 1)?
+
+    /// Free-form labels the authoring UI shows against the dataset. Unrelated to
+    /// ARM resource tags — a dataset is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: DatasetParquetResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

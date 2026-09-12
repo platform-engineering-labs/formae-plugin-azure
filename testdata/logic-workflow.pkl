@@ -1,0 +1,51 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicworkflow.pkl" as logicworkflow
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicwf-test-rg"
+  name = "formae-plugin-sdk-test-logicwf-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Logic Apps (Consumption) bills per action execution. This workflow is
+  // created `Disabled`, so its recurrence trigger never fires and no action ever
+  // runs: it costs nothing to hold for the length of a conformance run.
+  //
+  // The definition is the smallest thing ARM accepts as a real workflow — one
+  // Recurrence trigger and one Compose action. A `Response` action is NOT
+  // allowed here: ARM rejects the pair with
+  // `WorkflowUnsupportedRecurrenceTriggerForResponseAction`, since a workflow
+  // that replies to a caller may not be started by a recurrence. It is compact JSON with sorted
+  // keys, and it is write-only: ARM injects `$schema`, `contentVersion` and an
+  // empty `parameters` block and rewrites the recurrence into its own canonical
+  // form, so comparing its echo would report drift on an untouched workflow.
+  //
+  // Triggers and actions are NOT separate resource types. ARM has no create or
+  // delete verb for either — `workflowTriggers` is read-only — so they live
+  // here, inside the parent's definition.
+  new logicworkflow.Workflow {
+    label = "plugin-sdk-test-logic-workflow"
+    name = "conformance-workflow"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    state = "Disabled"
+    definition = #"{"$schema":"https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#","actions":{"noop":{"inputs":"ok","runAfter":{},"type":"Compose"}},"contentVersion":"1.0.0.0","triggers":{"tick":{"recurrence":{"frequency":"Day","interval":1},"type":"Recurrence"}}}"#
+  }
+}

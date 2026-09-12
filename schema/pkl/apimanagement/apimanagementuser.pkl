@@ -1,0 +1,107 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementuser
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::User"
+const apiVersion = "2021-08-01"
+
+/// Whether the account can sign in and call APIs.
+///
+/// A `blocked` user keeps every subscription but can neither sign in to the
+/// portal nor call an API. `pending` waits on email confirmation, and `deleted`
+/// is what ARM reports for a closed account rather than something to declare.
+typealias UserState = "active"|"blocked"|"pending"|"deleted"
+
+open class UserResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: UserResolvable = (this) {
+        property = "id"
+    }
+    hidden name: UserResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A developer account in the API Management user store.
+///
+/// The user store is API Management's own, separate from Entra ID: a user here
+/// is who a subscription belongs to and who signs in to the developer portal.
+///
+/// `password` is write-only — ARM never returns it — and omitting it makes ARM
+/// generate one. `confirmation` asks ARM to send the new account an email; leave
+/// it unset to create the account silently, which is what an automated
+/// declaration wants.
+///
+/// NOT AVAILABLE ON THE CONSUMPTION TIER. The published service limits give the
+/// maximum number of users on Consumption as `N/A`, and the tier comparison
+/// marks the developer portal and its "related functionality such as users,
+/// groups, issues, applications" unavailable there
+/// (learn.microsoft.com/azure/api-management/api-management-features).
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class User extends formae.Resource {
+
+    /// User identifier, unique within the service. This is the ARM name, not
+    /// the email address.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Email address. Must be unique within the service instance.
+    @azure.FieldHint { required = true }
+    email: String(length >= 1 && length <= 254)
+
+    @azure.FieldHint { required = true }
+    firstName: String(length >= 1 && length <= 100)
+
+    @azure.FieldHint { required = true }
+    lastName: String(length >= 1 && length <= 100)
+
+    /// Administrator's note on the account.
+    @azure.FieldHint { }
+    note: String?
+
+    /// Sign-in password. Write-only: ARM accepts it and never returns it, so
+    /// drift in it cannot be detected, though changing it in a forma still
+    /// pushes the new value. ARM generates one when this is omitted.
+    @azure.FieldHint { writeOnly = true }
+    password: (formae.Value|String)?
+
+    /// Ask ARM to email the new account. `invite` sends a sign-up invitation and
+    /// `signup` a welcome message; unset sends nothing, which is what an
+    /// automated declaration wants. Create-time only, and never read back.
+    @azure.FieldHint { createOnly = true; writeOnly = true }
+    confirmation: ("invite"|"signup")?
+
+    /// Account state. ARM defaults a new account to `active`.
+    @azure.FieldHint { hasProviderDefault = true }
+    state: UserState?
+
+    hidden parent = this
+
+    hidden res: UserResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

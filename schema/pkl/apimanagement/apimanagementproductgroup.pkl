@@ -1,0 +1,66 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementproductgroup
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ProductGroup"
+const apiVersion = "2021-08-01"
+
+open class ProductGroupResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ProductGroupResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// The visibility of one product to one group.
+///
+/// A pure link, like `AZURE::ApiManagement::ProductApi`: the PUT carries no body,
+/// and a delete removes the group's visibility of the product without touching
+/// either end.
+///
+/// `groupName` may be a custom group (`AZURE::ApiManagement::Group`) or one of
+/// the three built-ins — `administrators`, `developers`, `guests`. Neither is
+/// available on the Consumption tier, which has no group store at all: see the
+/// note on `AZURE::ApiManagement::Group`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Product"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "productName" }
+    )
+}
+open class ProductGroup extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the product — its ARM name, not its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    productName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Identifier of the group — its ARM name, not its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    groupName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    hidden parent = this
+
+    hidden res: ProductGroupResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

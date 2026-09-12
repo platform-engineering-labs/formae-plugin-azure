@@ -1,0 +1,73 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementproduct.pkl" as apimproduct
+import "@azure/apimanagement/apimanagementproductgroup.pkl" as apimproductgroup
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-productgroup-test-rg"
+  name = "formae-plugin-sdk-test-apimproductgroup-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+//
+// NOTE: this fixture cannot pass on Consumption. Groups are part of the
+// developer-portal feature set, which the Consumption tier does not have (see
+// the tier feature matrix: "Developer portal ❌ ... including related
+// functionality such as users, groups, issues, applications"), so neither a
+// custom group nor the three built-ins exist to link a product to. The handler
+// and schema are complete; the SKU is not changed to make this pass.
+local svc = new apim.Service {
+  label = "apim-productgroup-test-service"
+  name = "fpsdt-apimproductgroup-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+local product = new apimproduct.Product {
+  label = "apim-productgroup-test-product"
+  name = "conformance-product"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  displayName = "Conformance Product"
+  subscriptionRequired = false
+  state = "published"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+  product
+
+  // `developers` is one of the three groups a dedicated-tier service creates
+  // for itself, alongside `administrators` and `guests`. Naming a built-in
+  // rather than creating an AZURE::ApiManagement::Group keeps this fixture down
+  // to one blocker instead of two.
+  new apimproductgroup.ProductGroup {
+    label = "plugin-sdk-test-apim-product-group"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    productName = product.res.name
+    groupName = "developers"
+  }
+}

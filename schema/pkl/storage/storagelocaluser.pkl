@@ -1,0 +1,146 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.storage.storagelocaluser
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Storage::LocalUser"
+const apiVersion = "2024-01-01"
+
+/// One container or file share the local user may reach, and with which rights.
+///
+/// `permissions` is a set of single letters: `r` read, `w` write, `d` delete,
+/// `l` list, `c` create, `o` modify ownership, `p` modify permissions.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class PermissionScope extends formae.SubResource {
+    @azure.FieldHint { required = true }
+    permissions: String(length >= 1 && length <= 7 && matches(Regex("[rwdlcop]+")))
+
+    /// Container name (for `blob`) or file-share name (for `file`).
+    @azure.FieldHint { required = true }
+    resourceName: String(length >= 1)
+
+    @azure.FieldHint { required = true }
+    service: ("blob"|"file")
+}
+
+/// An SSH public key authorised for SFTP as this local user. Public halves only —
+/// ARM never accepts or returns a private key here.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class SshPublicKey extends formae.SubResource {
+    /// Base64-encoded key with its algorithm prefix, e.g. `ssh-rsa AAAAB3Nz...`.
+    @azure.FieldHint { required = true }
+    key: String(length >= 1)
+
+    /// Free-text note recording what the key is for.
+    @azure.FieldHint { }
+    description: String?
+}
+
+open class LocalUserResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LocalUserResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LocalUserResolvable = (this) {
+        property = "name"
+    }
+    /// Server-generated Security Identifier for the user.
+    hidden sid: LocalUserResolvable = (this) {
+        property = "sid"
+    }
+    /// Server-generated POSIX user id.
+    hidden userId: LocalUserResolvable = (this) {
+        property = "userId"
+    }
+}
+
+/// A local user of a storage account
+/// (`Microsoft.Storage/storageAccounts/<account>/localUsers/<username>`), used for
+/// SFTP and NFSv3 access.
+///
+/// The parent account must have a hierarchical namespace (`isHnsEnabled`) and, for
+/// SFTP, `isSftpEnabled`; ARM rejects a local user on a flat account.
+///
+/// The generated SSH password and the auto-generated shared key are returned only
+/// from the separate `listKeys` / `regeneratePassword` operations, never from
+/// `Get`, so this resource never carries them: `hasSshPassword` and `hasSharedKey`
+/// only say whether ARM should mint them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Storage::StorageAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "storageAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LocalUser extends formae.Resource {
+
+    /// The user name. Lowercase alphanumeric, 3-64 characters.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 3 && length <= 64 && matches(Regex("[a-z0-9]+")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent storage account.
+    @azure.FieldHint { required = true; createOnly = true }
+    storageAccountName: String(length >= 3 && length <= 24)|formae.Resolvable
+
+    /// What the user may reach. Required for `blob`/`file` access; an NFSv3-only
+    /// user may leave it unset.
+    @azure.FieldHint { }
+    permissionScopes: Listing<PermissionScope>?
+
+    /// SSH public keys authorised for SFTP.
+    @azure.FieldHint { }
+    sshAuthorizedKeys: Listing<SshPublicKey>?
+
+    /// Directory the user lands in, e.g. `mycontainer/mydirectory`.
+    @azure.FieldHint { }
+    homeDirectory: String?
+
+    /// Ask ARM to mint a shared key for this user. The key itself is readable only
+    /// through the account's `listKeys` operation, never from here.
+    @azure.FieldHint { }
+    hasSharedKey: Boolean = false
+
+    /// Ask ARM to mint an SSH password for this user. The password is returned only
+    /// once, from `regeneratePassword`, and never from `Get` — so it is never part
+    /// of this resource.
+    @azure.FieldHint { }
+    hasSshPassword: Boolean = false
+
+    /// Let POSIX ACLs on the filesystem grant this user access beyond
+    /// `permissionScopes`. ARM defaults this on, so it is always sent explicitly.
+    @azure.FieldHint { }
+    allowAclAuthorization: Boolean = true
+
+    /// Enable NFSv3 access for this user. Only meaningful on an account with NFSv3
+    /// enabled.
+    @azure.FieldHint { }
+    isNfsV3Enabled: Boolean?
+
+    /// POSIX group id, for associating several users. NFSv3 only.
+    @azure.FieldHint { }
+    groupId: Int?
+
+    /// Supplementary POSIX group ids. NFSv3 only.
+    @azure.FieldHint { }
+    extendedGroups: Listing<Int>?
+
+    hidden parent = this
+
+    hidden res: LocalUserResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

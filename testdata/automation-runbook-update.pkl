@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/automation/automationaccount.pkl"
+import "@azure/automation/automationrunbook.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aarb-test-rg"
+  name = "formae-plugin-sdk-test-aarb-rg-\(vars.testRunID)"
+  location = "eastus2"
+}
+
+local acct = new automationaccount.AutomationAccount {
+  label = "aarb-test-account"
+  name = "fpsdt-aarb-\(vars.testRunID)"
+  location = "eastus2"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  acct
+
+  // publishContentLinkUri is deliberately omitted: the runbook is created with an
+  // empty draft, which needs no reachable URL and no outbound fetch by ARM. This
+  // exercises the runbook RECORD, which is what the resource models; publishing
+  // from a content link is exercised by automation-job-schedule.pkl, which needs
+  // a published runbook to attach a schedule to.
+  new automationrunbook.AutomationRunbook {
+    label = "plugin-sdk-test-automation-runbook"
+    name = "fpsdt-runbook-\(vars.testRunID)"
+    location = "eastus2"
+    resourceGroupName = rg.res.name
+    automationAccountName = acct.res.name
+    runbookType = "PowerShell"
+    // Update: RunbookUpdateParameters reaches only the description, the two log
+    // flags and the tags. runbookType and the content link are createOnly.
+    logVerbose = true
+    logProgress = false
+    description = "Conformance runbook updated"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance-updated" }
+    }
+  }
+}

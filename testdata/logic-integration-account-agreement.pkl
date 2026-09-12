@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "@azure/logic/logicintegrationaccountpartner.pkl" as logicpartner
+import "@azure/logic/logicintegrationaccountagreement.pkl" as logicagreement
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicagr-test-rg"
+  name = "formae-plugin-sdk-test-logicagr-rg-\(vars.testRunID)"
+  location = "centralus"
+}
+
+// centralus: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one.
+local iaccount = new logicaccount.IntegrationAccount {
+  label = "logicagr-test-account"
+  name = "fpsdt-logicagr-\(vars.testRunID)"
+  location = "centralus"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+// The locals are hostTradingPartner / guestTradingPartner, NOT hostPartner /
+// guestPartner: a local that shares its name with a property of the class it is
+// assigned to resolves to the PROPERTY, so `hostPartner = hostPartner.res.name`
+// self-references and Pkl blows the stack ~6000 frames deep with no useful
+// message.
+//
+// ORDER MATTERS. ARM rejects an agreement whose host or guest partner does not
+// already exist, and it matches each on BOTH qualifier and value — the pairs
+// below are reproduced exactly in hostIdentity/guestIdentity and again inside
+// the AS2 content. Referencing the partners through res.name is what makes
+// formae create them first.
+local hostTradingPartner = new logicpartner.IntegrationAccountPartner {
+  label = "logicagr-test-host-partner"
+  name = "conformance-host"
+  resourceGroupName = rg.res.name
+  integrationAccountName = iaccount.res.name
+  partnerType = "B2B"
+  businessIdentities = new Listing {
+    new logicpartner.BusinessIdentity {
+      qualifier = "AS2Identity"
+      value = "FORMAE-HOST"
+    }
+  }
+}
+
+local guestTradingPartner = new logicpartner.IntegrationAccountPartner {
+  label = "logicagr-test-guest-partner"
+  name = "conformance-guest"
+  resourceGroupName = rg.res.name
+  integrationAccountName = iaccount.res.name
+  partnerType = "B2B"
+  businessIdentities = new Listing {
+    new logicpartner.BusinessIdentity {
+      qualifier = "AS2Identity"
+      value = "FORMAE-GUEST"
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  iaccount
+  hostTradingPartner
+  guestTradingPartner
+
+  // Free: an agreement is metadata on the parent account and is not billed
+  // separately. Nothing runs until a workflow invokes it.
+  //
+  // `content` carries only the AS2-specific settings block, not ARM's
+  // one-member AgreementContent wrapper: `agreementType` already names the
+  // protocol, and the SDK marshals that wrapper's AS2 member under the key
+  // `aS2`, which no hand-written document would guess.
+  //
+  // It is compact JSON with sorted keys, and it is write-only: AS2 protocol
+  // settings are around seventy required leaves across nine nested objects, and
+  // ARM fills in every optional one it did not receive and reorders the result,
+  // so comparing its echo would report drift on an untouched agreement.
+  //
+  // The identities inside `content` mirror the two partners above: the receive
+  // direction has the guest as sender and the host as receiver, and the send
+  // direction is the reverse.
+  new logicagreement.IntegrationAccountAgreement {
+    label = "plugin-sdk-test-logic-integration-account-agreement"
+    name = "conformance-as2-agreement"
+    resourceGroupName = rg.res.name
+    integrationAccountName = iaccount.res.name
+    agreementType = "AS2"
+    hostPartner = hostTradingPartner.res.name
+    guestPartner = guestTradingPartner.res.name
+    hostIdentity = new logicagreement.BusinessIdentity {
+      qualifier = "AS2Identity"
+      value = "FORMAE-HOST"
+    }
+    guestIdentity = new logicagreement.BusinessIdentity {
+      qualifier = "AS2Identity"
+      value = "FORMAE-GUEST"
+    }
+    content = #"{"receiveAgreement":{"protocolSettings":{"acknowledgementConnectionSettings":{"ignoreCertificateNameMismatch":false,"keepHttpConnectionAlive":true,"supportHttpStatusCodeContinue":true,"unfoldHttpHeaders":true},"envelopeSettings":{"autogenerateFileName":false,"fileNameTemplate":"%MessageID%.txt","messageContentType":"text/plain","suspendMessageOnFileNameGenerationError":true,"transmitFileNameInMimeHeader":true},"errorSettings":{"resendIfMDNNotReceived":false,"suspendDuplicateMessage":false},"mdnSettings":{"micHashingAlgorithm":"SHA2256","needMDN":false,"sendInboundMDNToMessageBox":false,"sendMDNAsynchronously":false,"signMDN":false,"signOutboundMDNIfOptional":false},"messageConnectionSettings":{"ignoreCertificateNameMismatch":false,"keepHttpConnectionAlive":true,"supportHttpStatusCodeContinue":true,"unfoldHttpHeaders":true},"securitySettings":{"enableNRRForInboundDecodedMessages":false,"enableNRRForInboundEncodedMessages":false,"enableNRRForInboundMDN":false,"enableNRRForOutboundDecodedMessages":false,"enableNRRForOutboundEncodedMessages":false,"enableNRRForOutboundMDN":false,"overrideGroupSigningCertificate":false},"validationSettings":{"checkCertificateRevocationListOnReceive":false,"checkCertificateRevocationListOnSend":false,"checkDuplicateMessage":false,"compressMessage":false,"encryptMessage":false,"encryptionAlgorithm":"AES256","interchangeDuplicatesValidityDays":5,"overrideMessageProperties":false,"signMessage":false}},"receiverBusinessIdentity":{"qualifier":"AS2Identity","value":"FORMAE-HOST"},"senderBusinessIdentity":{"qualifier":"AS2Identity","value":"FORMAE-GUEST"}},"sendAgreement":{"protocolSettings":{"acknowledgementConnectionSettings":{"ignoreCertificateNameMismatch":false,"keepHttpConnectionAlive":true,"supportHttpStatusCodeContinue":true,"unfoldHttpHeaders":true},"envelopeSettings":{"autogenerateFileName":false,"fileNameTemplate":"%MessageID%.txt","messageContentType":"text/plain","suspendMessageOnFileNameGenerationError":true,"transmitFileNameInMimeHeader":true},"errorSettings":{"resendIfMDNNotReceived":false,"suspendDuplicateMessage":false},"mdnSettings":{"micHashingAlgorithm":"SHA2256","needMDN":false,"sendInboundMDNToMessageBox":false,"sendMDNAsynchronously":false,"signMDN":false,"signOutboundMDNIfOptional":false},"messageConnectionSettings":{"ignoreCertificateNameMismatch":false,"keepHttpConnectionAlive":true,"supportHttpStatusCodeContinue":true,"unfoldHttpHeaders":true},"securitySettings":{"enableNRRForInboundDecodedMessages":false,"enableNRRForInboundEncodedMessages":false,"enableNRRForInboundMDN":false,"enableNRRForOutboundDecodedMessages":false,"enableNRRForOutboundEncodedMessages":false,"enableNRRForOutboundMDN":false,"overrideGroupSigningCertificate":false},"validationSettings":{"checkCertificateRevocationListOnReceive":false,"checkCertificateRevocationListOnSend":false,"checkDuplicateMessage":false,"compressMessage":false,"encryptMessage":false,"encryptionAlgorithm":"AES256","interchangeDuplicatesValidityDays":5,"overrideMessageProperties":false,"signMessage":false}},"receiverBusinessIdentity":{"qualifier":"AS2Identity","value":"FORMAE-GUEST"},"senderBusinessIdentity":{"qualifier":"AS2Identity","value":"FORMAE-HOST"}}}"#
+  }
+}

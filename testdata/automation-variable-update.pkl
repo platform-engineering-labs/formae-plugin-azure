@@ -1,0 +1,55 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/automation/automationaccount.pkl"
+import "@azure/automation/automationvariable.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aavar-test-rg"
+  name = "formae-plugin-sdk-test-aavar-rg-\(vars.testRunID)"
+  location = "centralus"
+}
+
+local acct = new automationaccount.AutomationAccount {
+  label = "aavar-test-account"
+  name = "fpsdt-aavar-\(vars.testRunID)"
+  location = "centralus"
+  resourceGroupName = rg.res.name
+  skuName = "Basic"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  acct
+
+  // isEncrypted = false so the variable is readable through ARM at all, but the
+  // value is still write-only in the schema: a runbook may assign to it at
+  // runtime, so the service is a legitimate co-writer and comparing it would
+  // report drift the plugin cannot own. The embedded quotes are ARM's convention
+  // — variable values are stored as JSON.
+  new automationvariable.AutomationVariable {
+    label = "plugin-sdk-test-automation-variable"
+    name = "fpsdt-variable-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    automationAccountName = acct.res.name
+    isEncrypted = false
+    // Update: VariableUpdateProperties reaches the value and the description.
+    // isEncrypted is createOnly, so flipping it would be a replace.
+    value = "\"conformance-updated\""
+    description = "Conformance variable updated"
+  }
+}

@@ -1,0 +1,65 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementproductapi
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ProductApi"
+const apiVersion = "2021-08-01"
+
+open class ProductApiResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ProductApiResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// The membership of one API in one product.
+///
+/// This is a pure link: ARM's PUT carries no body and the resource has no
+/// properties of its own beyond the four names that identify the two ends. A
+/// delete unlinks the API from the product and leaves both intact.
+///
+/// Because every field is part of the identity, every field is `createOnly` —
+/// pointing this resource at a different API is a replace, not an update, which
+/// is exactly right for a link.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Product"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "productName" }
+    )
+}
+open class ProductApi extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the product — its ARM name, not its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    productName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Identifier of the API — its ARM name, not its display name.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    hidden parent = this
+
+    hidden res: ProductApiResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

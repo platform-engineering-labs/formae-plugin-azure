@@ -14,6 +14,7 @@ const apiVersion = "2023-05-01"
 
 /// One L3/L4 filtering rule. Addresses accept CIDR, ranges, single IPs, `*` for
 /// any, and Azure service tags in the destination.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class NetworkRule extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: String(length >= 1 && length <= 80)
@@ -38,6 +39,7 @@ class NetworkRule extends formae.SubResource {
 }
 
 /// A named, prioritised set of rules that share one Allow/Deny verdict.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class RuleCollection extends formae.SubResource {
     @azure.FieldHint { required = true }
     name: String(length >= 1 && length <= 80)

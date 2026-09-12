@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/recoveryservices/recoveryservicesvault.pkl" as rsv
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "rsv-test-rg"
+  name = "formae-plugin-sdk-test-rsv-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  new rsv.Vault {
+    label = "plugin-sdk-test-rsv"
+    name = "fpsdt-rsv-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    skuName = "Standard"
+    softDeleteState = "Disabled"
+    // Update: silence the job-failure alerts and pin public network access.
+    // Both ride the same PUT the create used - ARM's PATCH for a Recovery
+    // Services vault would leave omitted settings in place, which is not what
+    // reconcile means.
+    alertsForAllJobFailures = "Disabled"
+    publicNetworkAccess = "Enabled"
+  }
+}

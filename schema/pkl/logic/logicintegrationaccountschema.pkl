@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccountschema
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccountSchema"
+const apiVersion = "2019-05-01"
+
+/// `Xml` (an XSD) is the only usable value. ARM also accepts `NotSpecified`,
+/// which produces a schema nothing can validate against, so it is not offered.
+typealias SchemaType = "Xml"
+
+open class IntegrationAccountSchemaResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountSchemaResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountSchemaResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An XSD held in an integration account, used by a Logic Apps XML validation
+/// action or as the source or target of a map.
+///
+/// Free: schemas are metadata on the parent account and are not billed
+/// separately.
+///
+/// `content` is WRITE-ONLY, and not because of formatting: ARM does not return
+/// it at all. A GET answers with a `contentLink` — a short-lived SAS URL to the
+/// blob ARM copied the document into — and never the document itself. There is
+/// therefore nothing to compare on read: changing `content` in a forma still
+/// pushes the new document, but drift introduced elsewhere is not detected.
+///
+/// `documentName` and `targetNamespace` are deliberately not modelled: ARM
+/// derives both from the XSD's root element and echoes its own values, so
+/// declaring them would report drift on a schema nobody touched. `metadata` is
+/// arbitrary JSON the schema cannot express and is not read back either.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Logic::IntegrationAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "integrationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationAccountSchema extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    @azure.FieldHint {  }
+    schemaType: SchemaType
+
+    /// The XSD itself. Write-only; see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
+
+    /// File name recorded against the schema, e.g. `"order.xsd"`. Cosmetic — ARM
+    /// stores it verbatim and never derives it.
+    @azure.FieldHint { }
+    fileName: String(length >= 1)?
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountSchemaResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

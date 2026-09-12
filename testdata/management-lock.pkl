@@ -1,0 +1,57 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networksecuritygroup.pkl"
+import "@azure/authorization/managementlock.pkl" as managementlock
+import "vars.pkl"
+
+// THE LOCK IS SCOPED TO ONE RESOURCE INSIDE THIS FIXTURE'S OWN RESOURCE GROUP,
+// never to the resource group and never to the subscription. A `CanNotDelete` lock
+// at subscription scope would make `az group delete` fail for every other fixture
+// and for CI, and only Owner or User Access Administrator can clear it again.
+//
+// A run that is killed between [Create] and [Destroy] leaves the lock behind and
+// wedges this group until it is cleared; scripts/ci/clean-environment.sh removes
+// locks in prefixed test groups before deleting them, which is the recovery path.
+local rg = new resourcegroup.ResourceGroup {
+  label = "lock-test-rg"
+  name = "formae-plugin-sdk-test-lock-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// A network security group is the cheapest thing to lock: free, created in seconds,
+// and it holds no data that the lock could get in the way of.
+local nsg = new networksecuritygroup.NetworkSecurityGroup {
+  label = "lock-test-nsg"
+  name = "formae-plugin-sdk-test-lock-nsg-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  nsg
+
+  new managementlock.ManagementLock {
+    label = "plugin-sdk-test-management-lock"
+    name = "formae-plugin-sdk-test-lock-\(vars.testRunID)"
+    // Resource scope, so the lock protects the security group and nothing else.
+    scope = nsg.res.id
+    level = "CanNotDelete"
+    notes = "conformance test lock"
+  }
+}

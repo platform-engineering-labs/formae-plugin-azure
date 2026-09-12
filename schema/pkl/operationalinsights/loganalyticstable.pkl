@@ -1,0 +1,81 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.loganalyticstable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::Table"
+const apiVersion = "2020-08-01"
+
+open class TableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: TableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: TableResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Per-table data retention on a Log Analytics workspace.
+///
+/// This type ADOPTS a table the workspace already has and owns only its
+/// retention. At api-version 2020-08-01 — the version `armoperationalinsights`
+/// v1.2.0 speaks — the tables API has a GET, a PATCH and a list, and no PUT and no
+/// DELETE at all. So:
+///
+///   - `name` must be a table the workspace already exposes (`Heartbeat`,
+///     `Usage`, `AzureActivity`, …). A table that does not exist cannot be
+///     created from here.
+///   - Destroying this resource does not remove the table. It resets the
+///     retention to the workspace default and stops managing it — the table
+///     stays, and stays readable.
+///
+/// Retention above the 30 days included in the workspace's base price is billed
+/// extra, per GB retained, so raising this on a high-volume table is the expensive
+/// direction.
+///
+/// `totalRetentionInDays` (the archive tier) is NOT modelled: it does not exist in
+/// this API version's table model, and cannot be set through this SDK.
+///
+/// The API is fully synchronous — no operation ever reports as in progress.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Table extends formae.Resource {
+
+    /// The table's Log Analytics name, exactly as the workspace exposes it.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// Retention for this table alone, in days, overriding the workspace's own
+    /// setting. The service rejects anything outside 30-730.
+    @azure.FieldHint { required = true }
+    retentionInDays: Int(this >= 30 && this <= 730)
+
+    hidden parent = this
+
+    hidden res: TableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

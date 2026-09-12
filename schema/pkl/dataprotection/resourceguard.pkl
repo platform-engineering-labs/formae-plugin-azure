@@ -1,0 +1,84 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dataprotection.resourceguard
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataProtection::ResourceGuard"
+const apiVersion = "2024-04-01"
+
+open class ResourceGuardResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ResourceGuardResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ResourceGuardResolvable = (this) {
+        property = "name"
+    }
+    hidden resourceGroupName: ResourceGuardResolvable = (this) {
+        property = "resourceGroupName"
+    }
+}
+
+/// A Resource Guard (Microsoft.DataProtection/resourceGuards).
+///
+/// A Resource Guard is the multi-user-authorization control for Azure Backup: a
+/// Backup vault or Recovery Services vault linked to one (through a
+/// resourceGuardProxy) can no longer perform its critical operations — disabling
+/// soft delete, shortening retention, deleting a protected item — without a
+/// second principal approving in the guard's own subscription.
+///
+/// The guard itself is only the policy object. Binding it to a vault is a separate
+/// ARM sub-resource (`backupResourceGuardProxies`) and is not modelled here, so
+/// creating one of these is inert until a proxy points at it.
+///
+/// `resourceGuardOperations`, `description` and `allowAutoApprovals` are all
+/// read-only on the ARM contract and are deliberately not surfaced.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class ResourceGuard extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex("^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Critical operations this guard does NOT protect, as ARM operation names —
+    /// for example `Microsoft.RecoveryServices/vaults/backupconfig/write`. Every
+    /// critical operation not listed here needs multi-user authorization once a
+    /// vault is bound to the guard.
+    ///
+    /// Sent on every write: ARM's PATCH body for a Resource Guard carries tags and
+    /// nothing else, so the plugin updates this list through PUT.
+    @azure.FieldHint { }
+    vaultCriticalOperationExclusionList: Listing<String>?
+
+    /// Service-reported provisioning state of the guard.
+    @azure.FieldHint { hasProviderDefault = true }
+    provisioningState: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: ResourceGuardResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,105 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/blobcontainer.pkl"
+import "@azure/storage/storageobjectreplicationpolicy.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "orp-test-rg"
+  name = "formae-plugin-sdk-test-orp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// Object replication needs the blob change feed on the source account and blob
+// versioning on the destination. NEITHER IS EXPRESSIBLE: both live on the blob
+// service (Microsoft.Storage/storageAccounts/blobServices/default), the
+// StorageAccount schema on this branch carries no changeFeed or isVersioning
+// field, and there is no BlobServiceProperties resource type to set them with.
+// Until one exists this fixture builds both accounts and both containers and
+// then fails at [Create] with ARM's own ChangeFeedNotEnabled.
+local srcAccount = new storageaccount.StorageAccount {
+  label = "orp-test-source"
+  name = "fpsdtorps\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local dstAccount = new storageaccount.StorageAccount {
+  label = "orp-test-destination"
+  name = "fpsdtorpd\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+local srcContainer = new blobcontainer.BlobContainer {
+  label = "orp-test-source-container"
+  name = "plugin-sdk-test-orps-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = srcAccount.res.name
+  publicAccess = "None"
+}
+
+local dstContainer = new blobcontainer.BlobContainer {
+  label = "orp-test-destination-container"
+  name = "plugin-sdk-test-orpd-\(vars.testRunID)"
+  resourceGroupName = rg.res.name
+  storageAccountName = dstAccount.res.name
+  publicAccess = "None"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  srcAccount
+  dstAccount
+  srcContainer
+  dstContainer
+
+  // One logical policy, two ARM resources. It is created on the DESTINATION
+  // account first, which mints the policy id and a rule id per rule, and the
+  // provider then echoes the same document onto the SOURCE account under that
+  // minted id. resourceGroupName and storageAccountName therefore name the
+  // destination — the side this resource hangs off — and sourceStorageAccountId
+  // names the other half.
+  new storageobjectreplicationpolicy.ObjectReplicationPolicy {
+    label = "plugin-sdk-test-orp"
+    resourceGroupName = rg.res.name
+    storageAccountName = dstAccount.res.name
+    // ARM wants the full resource ID rather than a bare name whenever
+    // cross-tenant replication is disallowed, which is the default today.
+    sourceStorageAccountId = srcAccount.res.id
+    
+    metricsEnabled = false
+    rules = new Listing {
+      new storageobjectreplicationpolicy.ReplicationRule {
+        sourceContainer = srcContainer.res.name
+        destinationContainer = dstContainer.res.name
+        filters = new storageobjectreplicationpolicy.ReplicationFilters {
+          prefixMatch = new Listing { "data/" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementnamedvalue
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::NamedValue"
+const apiVersion = "2021-08-01"
+
+open class NamedValueResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NamedValueResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NamedValueResolvable = (this) {
+        property = "name"
+    }
+    /// The `displayName`, which is what a policy interpolates as
+    /// `{{displayName}}` — NOT the ARM name.
+    hidden displayName: NamedValueResolvable = (this) {
+        property = "displayName"
+    }
+}
+
+/// A named value — the service's own key/value store, interpolated into policy
+/// documents as `{{displayName}}`.
+///
+/// Named values are how a policy avoids carrying a literal backend URL or
+/// credential. Three shapes exist:
+///
+///  - a plain value: `value` set, `secret` false. Readable in the portal.
+///  - a secret: `value` set, `secret` true. ARM encrypts it and never returns
+///    it; it comes back only from a separate list-value call.
+///  - Key Vault-backed: `keyVaultSecretIdentifier` set instead of `value`. The
+///    service fetches the secret itself and auto-refreshes it, which needs the
+///    service to have an identity (`identityType` on
+///    `AZURE::ApiManagement::Service`) and that identity to hold a Key Vault
+///    data-plane role on the vault.
+///
+/// `value` is write-only in every shape. ARM does not reliably return it, so
+/// reading it back would report drift on every sync; declaring a new one still
+/// pushes it.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class NamedValue extends formae.Resource {
+
+    /// Named-value identifier, unique within the service. This is the ARM name,
+    /// not the token a policy interpolates — that is `displayName`.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// The token a policy interpolates as `{{displayName}}`. Letters, digits,
+    /// period, dash and underscore only.
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 256 && matches(Regex("^[A-Za-z0-9._-]+$")))
+
+    /// The value itself. Write-only: see the note on this class. Leave unset
+    /// when the value comes from Key Vault.
+    @azure.FieldHint { writeOnly = true }
+    value: (formae.Value|String)?
+
+    /// Whether ARM encrypts the value at rest. A secret named value is never
+    /// shown in the portal and never returned by a Get.
+    @azure.FieldHint { hasProviderDefault = true }
+    secret: Boolean?
+
+    /// Labels used only to filter the named-value list in the portal. These are
+    /// API Management's own tags, a flat list of strings — not ARM resource
+    /// tags, which a named value does not have.
+    @azure.FieldHint { }
+    tags: Listing<String>?
+
+    /// Key Vault secret id the service fetches the value from, e.g.
+    /// `https://<vault>.vault.azure.net/secrets/<name>`. Setting a version
+    /// pins the secret and turns auto-refresh off. Mutually exclusive with
+    /// `value`.
+    ///
+    /// Flattened out of ARM's nested `keyVault` block rather than modelled as a
+    /// nested class: the third field in that block, `lastStatus`, is the
+    /// service's own refresh bookkeeping and has no place in desired state.
+    @azure.FieldHint { }
+    keyVaultSecretIdentifier: (String|formae.Resolvable)?
+
+    /// Client id of the user-assigned identity used to reach the vault. Leave
+    /// unset to use the service's system-assigned identity.
+    @azure.FieldHint { }
+    keyVaultIdentityClientId: (String|formae.Resolvable)?
+
+    hidden parent = this
+
+    hidden res: NamedValueResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,43 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/logic/logicintegrationaccount.pkl" as logicaccount
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "logicia-test-rg"
+  name = "formae-plugin-sdk-test-logicia-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // `Free` is the only tier that is not billed per hour. Note the quota: a
+  // subscription may hold exactly ONE Free integration account PER REGION, so
+  // every fixture in this group that needs an account puts it in a DIFFERENT
+  // region. This one owns eastus.
+  new logicaccount.IntegrationAccount {
+    label = "plugin-sdk-test-logic-integration-account"
+    name = "fpsdt-logicia-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    skuName = "Basic"
+    tags = new Listing {
+      new azure.Tag { key = "purpose"; value = "conformance" }
+    }
+  }
+}

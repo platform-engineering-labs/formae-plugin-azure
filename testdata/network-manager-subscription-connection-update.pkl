@@ -1,0 +1,54 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagersubscriptionconnection.pkl" as nmconnection
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmsc-test-rg"
+  name = "formae-plugin-sdk-test-nmsc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+local manager = new netmanager.NetworkManager {
+  label = "nmsc-test-manager"
+  name = "fpsdt-nmsc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "Connectivity"
+  }
+  networkManagerScopes = managerScopes
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+
+  // Update: redescribe. networkManagerId is the only other mutable field and
+  // repointing it would be a different pairing, not an edit of this one.
+  new nmconnection.NetworkManagerSubscriptionConnection {
+    label = "plugin-sdk-test-network-manager-subscription-connection"
+    name = "conformance-connection"
+    networkManagerId = manager.res.id
+    description = "Conformance subscription connection, redescribed"
+  }
+}

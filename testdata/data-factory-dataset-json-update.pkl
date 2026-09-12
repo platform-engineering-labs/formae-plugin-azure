@@ -1,0 +1,74 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorylinkedserviceblobstorage.pkl" as lsblob
+import "@azure/datafactory/datafactorydatasetjson.pkl" as dsjson
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfdsjson-test-rg"
+  name = "formae-plugin-sdk-test-adfdsjson-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfdsjson-test-factory"
+  name = "fpsdt-adfdsjson-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+// Every dataset needs a linked service, so one comes along. The managed-identity
+// shape — `serviceEndpoint` and no credential anywhere — because a
+// `connectionString` is write-only and could never be verified. No storage account
+// is created: creating a linked service does not test the connection, so the
+// endpoint only has to be a well-formed blob service URI.
+local blobLinkedService = new lsblob.LinkedServiceAzureBlobStorage {
+  label = "adfdsjson-test-linked-service"
+  name = "conformance-blob"
+  resourceGroupName = rg.res.name
+  factoryName = factory.res.name
+  serviceEndpoint = "https://fpsdtdsjson\(vars.testRunID).blob.core.windows.net"
+  accountKind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+  blobLinkedService
+
+  // Free: creating a dataset is a metadata write, and the service does not touch
+  // the storage it describes.
+  //
+  // The thinnest of the four file formats: a location and the code page. Whether
+  // the file holds one document, an array or newline-delimited records is decided
+  // by the activity that reads it, not by the dataset.
+  new dsjson.DatasetJson {
+    label = "plugin-sdk-test-adf-dataset-json"
+    name = "conformance-ds-json"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    linkedServiceName = blobLinkedService.res.name
+    container = "landing"
+    folderPath = "events/archive"
+    fileName = "events.json"
+    encodingName = "UTF-8"
+    // Update: repoint the folder and retitle. Only name, resourceGroupName and
+    // factoryName are create-only.
+    description = "conformance json dataset, updated"
+    folderName = "conformance"
+    annotations = new Listing { "conformance" }
+  }
+}

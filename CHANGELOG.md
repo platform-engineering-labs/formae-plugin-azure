@@ -8,21 +8,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
-## [Unreleased]
-
-## [0.1.13]
+## [0.1.12]
 
 ### Fixed
 
-- Removing the last tag now sends an explicit empty tag set to Azure instead of
-  omitting tags from the update request. This applies to storage accounts and
-  other resources with Azure tags. Updates use the desired tag values and the
-  patch document to distinguish removal from an unrelated change, preserving
-  tags when an unset collection is rendered as empty.
+- A list the target's credential is not authorized for reports nothing instead of
+  failing the whole discovery run, and says so in the plugin log. A credential
+  rarely covers every one of the plugin's resource types — `Management::ManagementGroup`
+  is tenant-scoped, so a subscription-scoped service principal gets
+  `403 AuthorizationFailed` on the entire tree. Reads keep the opposite rule: there
+  the resource is known to exist, so a permission failure stays a failure.
+- `Authorization::RoleAssignment` discovery no longer picks up assignments
+  inherited from a management group or the tenant root. Azure returns them
+  alongside the ones at and below the requested scope, and reading one needs
+  permission at that ancestor scope, so discovery failed on a resource the target
+  does not own.
+- A failed read is logged with its resource type, native ID and error code. Reads
+  report failure through `ErrorCode` and `ReadResult` carries no message, so the
+  agent previously recorded only `finished_with_error` with no reason anywhere.
 
-## [0.1.12]
+## [0.1.11]
+
+### Added
+
+- Resources formae created in order to reach this subscription are no longer
+  offered for import. The connect resource group and managed identity carry an
+  ownership marker that discovery now excludes, so a reconcile can no longer
+  take away formae's own access. The federated identity credential, which has
+  no tags at all, is matched on the credential name, the formae issuer and a
+  subject in formae's namespace together, so a credential a customer pointed at
+  the same issuer stays visible. Role assignments are deliberately left visible:
+  destroying one revokes a grant that re-running connect restores, without
+  touching the trust itself.
+
+
+- 100 new Azure resource types, taking the plugin to 292:
+
+  | Namespace | Types |
+  |---|---|
+  | `AZURE::ApiManagement` | 28 |
+  | `AZURE::DataFactory` | 17 |
+  | `AZURE::StreamAnalytics` | 9 |
+  | `AZURE::Logic` | 8 |
+  | `AZURE::Network` (virtual network manager) | 8 |
+  | `AZURE::Automation` | 7 |
+  | `AZURE::DataProtection` | 6 |
+  | `AZURE::OperationalInsights` | 6 |
+  | `AZURE::Storage` | 6 |
+  | `AZURE::DesktopVirtualization` | 5 |
+
+  Every type ships with a PKL schema, a provisioner, mock-based integration
+  tests and conformance fixtures.
+
+- 58 conformance fixtures in `.github/conformance-matrix.txt`, so nightly now
+  covers the new resources as well as CI. Each one passed CRUD *and* discovery
+  against a live subscription before being listed; none was added on the
+  strength of a local run.
+
+- `TestNoFieldIsBothWriteOnlyAndRequired`, guarding a combination that makes a
+  resource permanently undiscoverable. `writeOnly` says the provider never
+  returns the value and `required` makes core reject anything lacking it, so
+  discovery finds the resource and then throws it away — reported as a bare
+  `[Discover] timeout` with nothing pointing at the cause. Twenty fields had
+  both; `verify-schema` cannot see it and neither can any other gate.
+
+- `make verify-fixtures`, which renders every `testdata/*.pkl`. `verify-schema`,
+  `test-unit`, `go vet`, `golangci-lint` and `pkl eval` all evaluate the schema
+  without rendering a forma, so none of them catches a fault that only appears
+  when one is rendered.
+
+
+- **25 new resource types**, taking the plugin from 148 to 173.
+  - **Microsoft.Web (7)** — `Web::ServicePlan`, `Web::WebApp`, `Web::FunctionApp`,
+    `Web::WebAppSlot`, `Web::Certificate`, `Web::CustomHostnameBinding`,
+    `Web::StaticSite`. The plugin had no PaaS compute coverage at all before this.
+  - **Cosmos DB children (11)** — `DocumentDB::Sql{Database,Container,RoleDefinition,RoleAssignment}`,
+    `DocumentDB::Mongo{Database,Collection}`, `DocumentDB::Cassandra{Keyspace,Table}`,
+    `DocumentDB::Gremlin{Database,Graph}`, `DocumentDB::Table`. The account type
+    already existed but none of its per-API child resources did, so it could not
+    express a usable database.
+  - **Virtual WAN, gateways and Bastion (7)** — `Network::VirtualWan`,
+    `Network::VirtualHub`, `Network::VpnGateway`, `Network::VpnSite`,
+    `Network::VirtualNetworkGateway`, `Network::VirtualNetworkGatewayConnection`,
+    `Network::BastionHost`. First hybrid-connectivity coverage in the plugin.
+- `DocumentDB::DatabaseAccount` gained `capabilities`. Cassandra, Gremlin and Table
+  children cannot be declared without it — `kind` only separates NoSQL from MongoDB,
+  and the API family comes from a capability.
+- Conformance now runs on pull requests, scoped to the fixtures the PR changed, so a
+  new fixture is verified before it reaches main instead of after.
+- A scheduled reaper sweeps leaked conformance resource groups every 6 hours.
+
+
+- Optional `auth` block on `Config`, with one variant, `OidcAuth`: workload
+  identity federation for a hosted formae agent that has no ambient Azure
+  credentials of its own. The agent exchanges a short-lived OIDC identity
+  token for Azure credentials against the tenant and managed-identity
+  client id `formae connect azure` registers - no client secret or static
+  credential is ever stored. Omitting `auth` keeps today's behaviour:
+  `DefaultAzureCredential` (environment variables, managed identity, `az
+  login`, etc). `createOnly = false`, so a target can move onto or off
+  federation without replacing its resources.
 
 ### Changed
+
+
+- Azure operation failures now log the provider's own message. All four failure
+  helpers in `pkg/prov/wrap.go` set `ErrorCode` and discarded `err.Error()`, so
+  every ARM error arrived as a bare code with no reason attached.
+
+- `scripts/ci/clean-environment.sh` purges soft-deleted API Management services
+  with `az rest` rather than `az apim deletedservice purge --no-wait` — a flag
+  that does not exist, so every purge had been failing silently and the
+  soft-deletes were exhausting the 20-service Consumption cap.
+
 
 - 86 nested classes across the schema now `extend formae.SubResource` instead of
   being plain classes. Schema extraction only walks nested classes that formally
@@ -46,53 +144,6 @@ formae agent.
   - `required` validation now fires for 118 previously-unenforced nested fields,
     and eval may reject a forma that omitted one of them.
 
-## [0.1.11]
-
-### Added
-
-- **25 new resource types**, taking the plugin from 148 to 173.
-  - **Microsoft.Web (7)** — `Web::ServicePlan`, `Web::WebApp`, `Web::FunctionApp`,
-    `Web::WebAppSlot`, `Web::Certificate`, `Web::CustomHostnameBinding`,
-    `Web::StaticSite`. The plugin had no PaaS compute coverage at all before this.
-  - **Cosmos DB children (11)** — `DocumentDB::Sql{Database,Container,RoleDefinition,RoleAssignment}`,
-    `DocumentDB::Mongo{Database,Collection}`, `DocumentDB::Cassandra{Keyspace,Table}`,
-    `DocumentDB::Gremlin{Database,Graph}`, `DocumentDB::Table`. The account type
-    already existed but none of its per-API child resources did, so it could not
-    express a usable database.
-  - **Virtual WAN, gateways and Bastion (7)** — `Network::VirtualWan`,
-    `Network::VirtualHub`, `Network::VpnGateway`, `Network::VpnSite`,
-    `Network::VirtualNetworkGateway`, `Network::VirtualNetworkGatewayConnection`,
-    `Network::BastionHost`. First hybrid-connectivity coverage in the plugin.
-- `DocumentDB::DatabaseAccount` gained `capabilities`. Cassandra, Gremlin and Table
-  children cannot be declared without it — `kind` only separates NoSQL from MongoDB,
-  and the API family comes from a capability.
-- Conformance now runs on pull requests, scoped to the fixtures the PR changed, so a
-  new fixture is verified before it reaches main instead of after.
-- A scheduled reaper sweeps leaked conformance resource groups every 6 hours.
-
-### Fixed
-
-- `Network::VirtualHub` delete no longer fails while the hub router is still
-  programming. ARM refuses `DeleteVirtualHub` while `routingState` is
-  `Provisioning`, which runs ~11 minutes past the point the create LRO reports
-  `Succeeded`; the delete now waits for the router instead of erroring.
-- Conformance cleanup verifies its deletions instead of firing and forgetting. It
-  previously ran `az group delete --no-wait || true` and reported success
-  unconditionally, so a refused delete or a group created mid-sweep leaked silently.
-
-### Added
-
-- Optional `auth` block on `Config`, with one variant, `OidcAuth`: workload
-  identity federation for a hosted formae agent that has no ambient Azure
-  credentials of its own. The agent exchanges a short-lived OIDC identity
-  token for Azure credentials against the tenant and managed-identity
-  client id `formae connect azure` registers - no client secret or static
-  credential is ever stored. Omitting `auth` keeps today's behaviour:
-  `DefaultAzureCredential` (environment variables, managed identity, `az
-  login`, etc). `createOnly = false`, so a target can move onto or off
-  federation without replacing its resources.
-
-### Changed
 
 - Every `hasProviderDefault` schema annotation now carries a recorded
   disposition in `schema/provider-default-dispositions.json`, enforced by a
@@ -103,6 +154,30 @@ formae agent.
 - `KeyVault::Secret` Read now includes the secret value in the returned properties,
   enabling the `value` resolvable to resolve for downstream resources. The value is
   protected at rest by formae's `SecretValue` hashing (introduced in v0.1.9).
+
+### Fixed
+
+
+- `Network::VirtualHub` delete no longer fails while the hub router is still
+  programming. ARM refuses `DeleteVirtualHub` while `routingState` is
+  `Provisioning`, which runs ~11 minutes past the point the create LRO reports
+  `Succeeded`; the delete now waits for the router instead of erroring.
+- Conformance cleanup verifies its deletions instead of firing and forgetting. It
+  previously ran `az group delete --no-wait || true` and reported success
+  unconditionally, so a refused delete or a group created mid-sweep leaked silently.
+
+### Removed
+
+
+- `schema/provider-default-dispositions.json` and its `TestProviderDefaultDispositionsManifest`
+  guard. The manifest required a recorded disposition for every
+  `hasProviderDefault` annotation, classified as `pending`, `keep`, `co-owned` or
+  `referenced-output`. In practice all 426 rows were `pending` and none carried a
+  pin, so it recorded no audit decision that the annotation itself did not already
+  state, while requiring every schema change to touch a second single-owner file.
+  The `hasProviderDefault` annotations are unchanged and continue to drive
+  provider-default tolerance in the conformance runner; only the ledger and its
+  test are gone.
 
 ## [0.1.10]
 

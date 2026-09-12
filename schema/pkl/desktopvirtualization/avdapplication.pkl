@@ -1,0 +1,103 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.desktopvirtualization.avdapplication
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DesktopVirtualization::Application"
+const apiVersion = "2021-07-12"
+
+open class ApplicationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApplicationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApplicationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A single published application inside a `RemoteApp` application group.
+///
+/// ARM does not validate that `filePath` exists on any session host — it is
+/// just a string handed to the client, which resolves it at launch time. A
+/// `Desktop` application group cannot hold applications at all, so the parent
+/// group must be `RemoteApp`.
+///
+/// This resource carries no location and no tags: ARM's Application model has
+/// neither. It is a proxy-only child of the application group.
+///
+/// Deliberately not modelled:
+///
+///  - `applicationType` and the two `msixPackage*` fields. MSIX app attach
+///    needs a package image on an SMB share plus an
+///    `AZURE::DesktopVirtualization::MsixPackage`-shaped record this plugin does
+///    not have; leaving `applicationType` unset gets the `InBuilt` behaviour a
+///    `filePath` application wants.
+///  - `iconPath` and `iconIndex`. ARM answers Get with `iconIndex: 0` whether or
+///    not either was declared, along with a service-computed `iconHash` and the
+///    icon bytes; none of it is desired state.
+///  - `objectId`. Internal service bookkeeping.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DesktopVirtualization::ApplicationGroup"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "applicationGroupName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class Application extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// The `RemoteApp` application group that publishes this application.
+    @azure.FieldHint { required = true; createOnly = true }
+    applicationGroupName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    /// Whether the client may pass command-line arguments at launch.
+    /// `DoNotAllow` ignores anything the client sends, `Require` demands
+    /// arguments, `Allow` accepts them. `Require` needs
+    /// `commandLineArguments`.
+    @azure.FieldHint { required = true }
+    commandLineSetting: ("Allow"|"DoNotAllow"|"Require")
+
+    /// Path to the executable on the session host, e.g.
+    /// `C:\\Windows\\System32\\mspaint.exe`. Never validated by ARM.
+    @azure.FieldHint { required = true }
+    filePath: String(length >= 1)
+
+    /// Arguments baked in at publish time. Only meaningful when
+    /// `commandLineSetting` is `Require`.
+    @azure.FieldHint { }
+    commandLineArguments: String(length <= 271)?
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    @azure.FieldHint { }
+    friendlyName: String(length <= 260)?
+
+    /// Show the application in the user's feed. ARM echoes it back as `false`
+    /// when it is not declared.
+    @azure.FieldHint { hasProviderDefault = true }
+    showInPortal: Boolean?
+
+    hidden parent = this
+
+    hidden res: ApplicationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

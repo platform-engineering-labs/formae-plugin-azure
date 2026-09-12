@@ -1,0 +1,85 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.operationalinsights.loganalyticslinkedservice
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::OperationalInsights::LinkedService"
+const apiVersion = "2020-08-01"
+
+open class LinkedServiceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LinkedServiceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LinkedServiceResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Binds a Log Analytics workspace to another resource by ARM ID: an Automation
+/// account (`name = "Automation"`), or a dedicated Log Analytics cluster
+/// (`name = "Cluster"`).
+///
+/// The link is free. What it enables is not: a `Cluster` link moves the
+/// workspace's ingestion onto that cluster's capacity reservation.
+///
+/// `name` is the link's kind, not a free-form name — ARM uses it as the
+/// resource's path segment, so a workspace holds at most one link per kind and
+/// changing it addresses a different resource entirely. ARM also answers with a
+/// workspace-qualified name (`myworkspace/Cluster`) and a fully lower-cased
+/// resource ID; the plugin derives `name` from the ID's leaf and restores the
+/// declared casing, so neither leaks into state.
+///
+/// Exactly which of the two ID fields to set depends on the kind: an Automation
+/// account is linked through `resourceId` (read access), a cluster through
+/// `writeAccessResourceId`. At least one must be set.
+///
+/// Create, update and delete are all long-running operations.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::OperationalInsights::Workspace"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "workspaceName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LinkedService extends formae.Resource {
+
+    /// The kind of link. `Automation` binds an Automation account for Update
+    /// Management and Change Tracking; `Cluster` moves the workspace onto a
+    /// dedicated cluster.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: ("Automation"|"Cluster")
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    workspaceName: String(length >= 4 && length <= 63)|formae.Resolvable
+
+    /// ARM ID of a resource the workspace needs READ access to — an Automation
+    /// account.
+    @azure.FieldHint { }
+    resourceId: (String|formae.Resolvable)?
+
+    /// ARM ID of a resource the workspace needs WRITE access to — a dedicated
+    /// Log Analytics cluster.
+    @azure.FieldHint { }
+    writeAccessResourceId: (String|formae.Resolvable)?
+
+    hidden parent = this
+
+    hidden res: LinkedServiceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

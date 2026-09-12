@@ -1,0 +1,104 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorydatasetazureblob
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::DatasetAzureBlob"
+const apiVersion = "2018-06-01"
+
+open class DatasetAzureBlobResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DatasetAzureBlobResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DatasetAzureBlobResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An `AzureBlob` dataset — a blob path described for a copy activity to read or
+/// write.
+///
+/// This is the legacy blob dataset. It predates ARM's `DatasetLocation` union and
+/// carries the path as a flat `folderPath` / `fileName` pair, which is why it looks
+/// different from `DatasetDelimitedText`, `DatasetJson` and `DatasetParquet` even
+/// though all four point at the same storage. Prefer one of those for new work;
+/// this type exists because factories in the wild are full of it.
+///
+/// `linkedServiceName` must name an `AZURE::DataFactory::LinkedServiceAzureBlobStorage`
+/// in the same factory.
+///
+/// Creating a dataset is a metadata write and costs nothing. The service does not
+/// touch the storage: a dataset naming a container that does not exist creates
+/// cleanly and only fails when an activity reads it.
+///
+/// `format`, `compression`, `modifiedDatetimeStart` and `modifiedDatetimeEnd` are
+/// not modelled — `format` is a second discriminated union nested inside this one,
+/// and the two datetimes are read filters rather than a description of the data.
+/// `structure`, `schema` and `parameters` are not modelled either, and are not read
+/// back: a dataset authored in the Data Factory UI reads without them.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class DatasetAzureBlob extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Name of the blob-storage linked service in the same factory. Required: ARM
+    /// rejects a dataset without one.
+    @azure.FieldHint { required = true }
+    linkedServiceName: String(length >= 1 && length <= 260)|formae.Resolvable
+
+    /// Container-and-directory prefix, e.g. `landing/incoming`.
+    @azure.FieldHint { }
+    folderPath: (String|formae.Resolvable)?
+
+    /// Blob name within `folderPath`. Omit to address the whole folder.
+    @azure.FieldHint { }
+    fileName: (String|formae.Resolvable)?
+
+    /// Root of the blob path, used when the dataset stands in for a table.
+    @azure.FieldHint { }
+    tableRootLocation: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Folder the dataset is filed under in the authoring UI. Purely cosmetic.
+    @azure.FieldHint { }
+    folderName: String(length >= 1)?
+
+    /// Free-form labels the authoring UI shows against the dataset. Unrelated to
+    /// ARM resource tags — a dataset is not an ARM tracked resource and cannot
+    /// carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: DatasetAzureBlobResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

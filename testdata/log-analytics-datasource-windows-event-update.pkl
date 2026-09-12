@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/operationalinsights/workspace.pkl"
+import "@azure/operationalinsights/loganalyticsdatasourcewindowsevent.pkl" as windowsevent
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "lawe-test-rg"
+  name = "formae-plugin-sdk-test-lawe-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// 30-day retention is what the PerGB2018 base price includes; the 1 GB daily cap
+// bounds ingestion. Destroy soft-deletes the workspace for 14 days, hence the
+// run-ID suffix.
+local workspaceRes = new workspace.Workspace {
+  label = "lawe-test-law"
+  name = "fpsdt-lawe-law-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = new workspace.SKU { name = "PerGB2018" }
+  retentionInDays = 30
+  dailyQuotaGb = 1
+  publicNetworkAccessForIngestion = "Enabled"
+  publicNetworkAccessForQuery = "Enabled"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  workspaceRes
+
+  // The data source is free and ingests nothing here: it configures the legacy
+  // Log Analytics agent, and no agent reports to this workspace.
+  new windowsevent.DataSourceWindowsEvent {
+    label = "plugin-sdk-test-datasource-windows-event"
+    name = "fpsdt-lawe-\(vars.testRunID)"
+    resourceGroupName = rg.res.name
+    workspaceName = workspaceRes.res.name
+    eventLogName = "Application"
+    eventTypes {
+      "Error"
+      "Warning"
+    }
+  }
+}

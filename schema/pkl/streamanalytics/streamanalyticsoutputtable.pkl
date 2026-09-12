@@ -1,0 +1,102 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsoutputtable
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::OutputTable"
+const apiVersion = "2020-03-01"
+
+open class OutputTableResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: OutputTableResolvable = (this) {
+        property = "id"
+    }
+    hidden name: OutputTableResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An Azure Table storage output on a Stream Analytics job.
+///
+/// Azure *Table storage*, not Azure SQL: ARM's discriminator here is
+/// `Microsoft.Storage/Table`, and the table lives in a storage account. A SQL
+/// Database output is `Microsoft.Sql/Server/Database` and a different resource
+/// type.
+///
+/// `name` is the alias the job's query writes to — `INTO [<name>]`.
+///
+/// This is the one output with no `serialization` block: the row shape comes from
+/// the query's SELECT list plus `partitionKey` and `rowKey`, which name the two
+/// columns Table storage uses as its composite primary key. Both are required.
+///
+/// The credential is write-only. ARM accepts `storageAccountKey` on every PUT and
+/// PATCH but strips it from every response, so its value is not part of resource
+/// state and drift in it cannot be detected. Nothing validates it at create time
+/// either: Stream Analytics checks a datasource only when the job starts, or
+/// through the separate Test operation.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class OutputTable extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    @azure.FieldHint {  }
+    storageAccountName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. An access key for the storage account.
+    @azure.FieldHint { ; writeOnly = true}
+    storageAccountKey: (formae.Value|String)?
+
+    /// The table inside the storage account. Stream Analytics creates it on first
+    /// write if it does not exist.
+    @azure.FieldHint { required = true }
+    table: (String|formae.Resolvable)
+
+    /// Column from the query's SELECT list to use as the table's PartitionKey.
+    @azure.FieldHint { required = true }
+    partitionKey: String
+
+    /// Column from the query's SELECT list to use as the table's RowKey. It must
+    /// be unique within a partition.
+    @azure.FieldHint { required = true }
+    rowKey: String
+
+    /// Rows per batched write, 1-100. Table storage caps an entity-group
+    /// transaction at 100.
+    @azure.FieldHint { }
+    batchSize: Int(this >= 1 && this <= 100)?
+
+    /// Columns to drop from each written entity — useful for stripping a column
+    /// that is only there to compute the partition or row key.
+    @azure.FieldHint { }
+    columnsToRemove: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: OutputTableResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

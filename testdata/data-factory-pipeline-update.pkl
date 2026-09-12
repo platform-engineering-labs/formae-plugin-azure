@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/datafactory/datafactoryfactory.pkl" as datafactory
+import "@azure/datafactory/datafactorypipeline.pkl" as pipeline
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "adfpl-test-rg"
+  name = "formae-plugin-sdk-test-adfpl-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local factory = new datafactory.Factory {
+  label = "adfpl-test-factory"
+  name = "fpsdt-adfpl-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  factory
+
+  // Free: Data Factory bills per activity run, and nothing triggers this
+  // pipeline. A single Wait activity is the cheapest body that is still a real
+  // pipeline — it needs no linked service, no dataset and no integration
+  // runtime, so the fixture stands alone.
+  //
+  // `activities` is compact JSON with sorted keys. It is write-only: the service
+  // re-serialises the activity list through its own model and fills in
+  // per-activity defaults, so the echo is not byte-stable against what was
+  // authored and comparing it would report drift on an untouched pipeline.
+  new pipeline.Pipeline {
+    label = "plugin-sdk-test-adf-pipeline"
+    name = "conformance-pipeline"
+    resourceGroupName = rg.res.name
+    factoryName = factory.res.name
+    description = "conformance pipeline, updated"
+    activities = #"[{"name":"pause","type":"Wait","typeProperties":{"waitTimeInSeconds":1}}]"#
+    // Update: allow four runs at once instead of one. Concurrency is a queueing
+    // limit, so raising it provisions nothing.
+    concurrency = 4
+    folderName = "conformance"
+    annotations = new Listing { "conformance" }
+  }
+}

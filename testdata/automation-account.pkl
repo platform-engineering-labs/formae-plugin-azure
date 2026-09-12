@@ -1,0 +1,42 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/automation/automationaccount.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "aa-test-rg"
+  name = "formae-plugin-sdk-test-aa-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Free is the right tier for a lifecycle test: it includes 500 job minutes a
+  // month at no cost and this account never runs a job. It is quota-limited per
+  // subscription, so the account must be torn down with the resource group.
+  new automationaccount.AutomationAccount {
+    label = "plugin-sdk-test-automation-account"
+    name = "fpsdt-aa-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    skuName = "Basic"
+    tags = new Listing {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

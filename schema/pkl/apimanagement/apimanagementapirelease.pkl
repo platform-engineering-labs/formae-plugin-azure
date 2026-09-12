@@ -1,0 +1,78 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementapirelease
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::ApiRelease"
+const apiVersion = "2021-08-01"
+
+open class ApiReleaseResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: ApiReleaseResolvable = (this) {
+        property = "id"
+    }
+    hidden name: ApiReleaseResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A release of an API revision — the record that makes one revision the one
+/// the gateway serves, with a note saying what changed.
+///
+/// `apiId` is the full ARM id of the API being released, and it may name a
+/// specific revision with a `;rev=N` suffix. Naming the API without a suffix
+/// releases its current revision, which is what a single-revision API wants.
+///
+/// The created and updated timestamps ARM keeps on a release are not read back:
+/// they move on their own and would show as drift on every sync.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Api"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "serviceName" listParameter = "serviceName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "apiName" }
+    )
+}
+open class ApiRelease extends formae.Resource {
+
+    /// Release identifier, unique within the API.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 80 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Identifier of the API this release belongs to — its ARM name, which is
+    /// the path segment the release hangs off.
+    @azure.FieldHint { required = true; createOnly = true }
+    apiName: String(length >= 1 && length <= 256)|formae.Resolvable
+
+    /// Full ARM id of the API revision being released, optionally with a
+    /// `;rev=N` suffix.
+    @azure.FieldHint { required = true }
+    apiId: String|formae.Resolvable
+
+    /// Release notes.
+    @azure.FieldHint { }
+    notes: String?
+
+    hidden parent = this
+
+    hidden res: ApiReleaseResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

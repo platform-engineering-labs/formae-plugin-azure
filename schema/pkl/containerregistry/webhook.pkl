@@ -52,22 +52,22 @@ open class WebhookResolvable extends formae.Resolvable {
 }
 open class Webhook extends formae.Resource {
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     name: String(length >= 5 && length <= 50 && matches(Regex("^[a-zA-Z0-9]+$")))
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
 
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     registryName: String(length >= 5 && length <= 50)|formae.Resolvable
 
     /// Must match the registry's region.
-    @azure.FieldHint { required = true; createOnly = true }
+    @azure.FieldHint { ; createOnly = true }
     location: azure.Location
 
     /// Endpoint the registry POSTs to. Write-only — see the note above.
-    @azure.FieldHint { required = true; writeOnly = true }
-    serviceUri: (formae.Value|String)
+    @azure.FieldHint { ; writeOnly = true}
+    serviceUri: (formae.Value|String)?
 
     @azure.FieldHint { required = true }
     actions: Listing<WebhookAction>

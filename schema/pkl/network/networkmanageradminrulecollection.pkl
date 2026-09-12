@@ -1,0 +1,87 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanageradminrulecollection
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerAdminRuleCollection"
+const apiVersion = "2023-05-01"
+
+/// One network group an admin rule collection is applied to.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class AdminRuleCollectionGroupItem extends formae.SubResource {
+    /// ARM ID of the network group.
+    @azure.FieldHint { required = true }
+    networkGroupId: String|formae.Resolvable
+}
+
+open class NetworkManagerAdminRuleCollectionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerAdminRuleCollectionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerAdminRuleCollectionResolvable = (this) {
+        property = "name"
+    }
+    hidden networkManagerName: NetworkManagerAdminRuleCollectionResolvable = (this) {
+        property = "networkManagerName"
+    }
+    hidden securityAdminConfigurationName: NetworkManagerAdminRuleCollectionResolvable = (this) {
+        property = "securityAdminConfigurationName"
+    }
+}
+
+/// A rule collection inside a security admin configuration — the middle level of
+/// the configuration → collection → rule chain.
+///
+/// The collection carries no verdict of its own. Its job is to bind a set of admin
+/// rules to the network groups in `appliesToGroups`; the rules themselves supply
+/// access, direction, priority and protocol.
+///
+/// Like its parent configuration, a collection is inert until the configuration is
+/// committed, and this provider leaves configurations uncommitted so they stay
+/// deletable.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkManagerSecurityAdminConfiguration"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "networkManagerName" listParameter = "networkManagerName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "securityAdminConfigurationName" }
+    )
+}
+open class NetworkManagerAdminRuleCollection extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkManagerName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    securityAdminConfigurationName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true }
+    appliesToGroups: Listing<AdminRuleCollectionGroupItem>
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerAdminRuleCollectionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

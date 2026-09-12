@@ -1,0 +1,109 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.dataprotection.dataprotectionbackupinstanceblobstorage
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataProtection::BackupInstanceBlobStorage"
+const apiVersion = "2024-04-01"
+
+open class BackupInstanceBlobStorageResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: BackupInstanceBlobStorageResolvable = (this) {
+        property = "id"
+    }
+    hidden name: BackupInstanceBlobStorageResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Puts one storage account's blobs under a Backup vault policy
+/// (`Microsoft.DataProtection/backupVaults/backupInstances`, datasource
+/// `Microsoft.Storage/storageAccounts/blobServices`).
+///
+/// PREREQUISITES ARM ENFORCES, AND WHICH THIS PLUGIN CANNOT YET SATISFY:
+/// the vault must carry a managed identity, and that identity must hold
+/// `Storage Account Backup Contributor` on the storage account. Role propagation is
+/// eventually consistent, so ARM answers `UserErrorMissingRequiredPermissions`
+/// until it settles. `AZURE::DataProtection::BackupVault` does not model an
+/// `identity` block, so a vault created through formae has no principal to grant
+/// the role to, and a create will fail. The type is modelled so an instance
+/// configured out-of-band can be discovered, read and extracted; declaring a new
+/// one needs vault identity support first.
+///
+/// Free — the instance is a record; the cost is in the backups it writes, billed
+/// against the vault's storage settings.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataProtection::BackupVault"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "vaultName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class BackupInstanceBlobStorage extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 150 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9\-_]*$"#)))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    /// Name of the parent Backup vault.
+    @azure.FieldHint { required = true; createOnly = true }
+    vaultName: String(length >= 2 && length <= 50)|formae.Resolvable
+
+    /// ARM ID of the storage account whose blobs are protected. ARM also wants the
+    /// account's own name and type alongside it; both are derived from this ID
+    /// rather than asked for, because ARM rejects the pair when they disagree.
+    @azure.FieldHint { required = true; createOnly = true }
+    dataSourceId: String|formae.Resolvable
+
+    /// Region of the storage account. Must match it — ARM does not look it up.
+    @azure.FieldHint { required = true; createOnly = true }
+    dataSourceLocation: azure.Location
+
+    /// ARM ID of an `AZURE::DataProtection::BackupPolicyBlobStorage` in the same
+    /// vault. Changing it re-points the instance at another policy in place.
+    @azure.FieldHint { required = true }
+    policyId: String|formae.Resolvable
+
+    /// Display name in the portal. ARM derives one from the datasource when it is
+    /// omitted.
+    @azure.FieldHint { hasProviderDefault = true }
+    friendlyName: String?
+
+    /// Containers to protect in the VAULT tier. Leave unset for an
+    /// operational-tier-only policy, which covers the whole account and takes no
+    /// container list.
+    @azure.FieldHint { }
+    containersList: Listing<String(length > 0)>?
+
+    /// ARM ID of a user-assigned identity already attached to the vault. Unset
+    /// means the vault's system-assigned identity, which is ARM's own default.
+    @azure.FieldHint { }
+    userAssignedIdentityArmUrl: (String|formae.Resolvable)?
+
+    /// Service-reported protection state, e.g. `ProtectionConfigured`. Read-only:
+    /// it reflects whether the backup pipeline is healthy, not anything declared.
+    @azure.FieldHint { hasProviderDefault = true }
+    currentProtectionState: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: BackupInstanceBlobStorageResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

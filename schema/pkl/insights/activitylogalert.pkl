@@ -19,6 +19,7 @@ const apiVersion = "2020-10-01"
 /// "Security", "Recommendation", "Policy", "ResourceHealth"), `operationName`
 /// (e.g. "Microsoft.Compute/virtualMachines/delete"), `level`, `status`,
 /// `resourceType`, `caller`.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
 class Condition extends formae.SubResource {
     @azure.FieldHint { required = true }
     field: String(length >= 1)

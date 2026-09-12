@@ -1,0 +1,125 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.network.networkmanageradminrule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Network::NetworkManagerAdminRule"
+const apiVersion = "2023-05-01"
+
+/// One entry in a rule's source or destination list: either a CIDR/IP range or an
+/// Azure service tag.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class AdminRuleAddressPrefix extends formae.SubResource {
+    /// A CIDR block, an IP range, a single address, or `*` — or, when
+    /// `addressPrefixType` is `ServiceTag`, a service tag name such as `Internet`
+    /// or `Storage`.
+    @azure.FieldHint { required = true }
+    addressPrefix: String
+
+    @azure.FieldHint { required = true }
+    addressPrefixType: ("IPPrefix"|"ServiceTag")
+}
+
+open class NetworkManagerAdminRuleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: NetworkManagerAdminRuleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: NetworkManagerAdminRuleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A security admin rule — the leaf of the security admin configuration →
+/// collection → rule chain, and the thing that actually permits or blocks traffic.
+///
+/// Admin rules outrank network security groups: `Deny` cannot be overridden by an
+/// NSG rule on a member subnet, and `AlwaysAllow` cannot be blocked by one.
+/// `Allow` is the polite form — it permits the traffic but leaves NSGs free to
+/// deny it.
+///
+/// Rules are evaluated by ascending `priority` within their collection, and the
+/// number must be unique across the collection.
+///
+/// Scope: CUSTOM rules only. ARM's `rules` endpoint is polymorphic on a resource-
+/// level `kind` discriminator of `Custom` or `Default`; `Default` rules are the
+/// service-authored baseline rules a collection gains on its own, every field of
+/// them is read-only, and they cannot be created. This provider always sends
+/// `Custom` and refuses to read a `Default` rule back rather than presenting one as
+/// managed desired state.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Network::NetworkManagerAdminRuleCollection"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "networkManagerName" listParameter = "networkManagerName" },
+        new formae.ListProperty { parentProperty = "securityAdminConfigurationName" listParameter = "securityAdminConfigurationName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "ruleCollectionName" }
+    )
+}
+open class NetworkManagerAdminRule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 64)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    networkManagerName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    securityAdminConfigurationName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    ruleCollectionName: String(length >= 1 && length <= 64)|formae.Resolvable
+
+    /// `Allow` permits the traffic but leaves NSGs free to deny it; `AlwaysAllow`
+    /// and `Deny` cannot be overridden by an NSG.
+    @azure.FieldHint { required = true }
+    access: ("Allow"|"AlwaysAllow"|"Deny")
+
+    @azure.FieldHint { required = true }
+    direction: ("Inbound"|"Outbound")
+
+    /// Evaluation order within the collection; lower runs first. Must be unique
+    /// across the collection's rules.
+    @azure.FieldHint { required = true }
+    priority: Int(this >= 1 && this <= 4096)
+
+    @azure.FieldHint { required = true }
+    protocol: ("Ah"|"Any"|"Esp"|"Icmp"|"Tcp"|"Udp")
+
+    @azure.FieldHint { }
+    sources: Listing<AdminRuleAddressPrefix>?
+
+    @azure.FieldHint { }
+    destinations: Listing<AdminRuleAddressPrefix>?
+
+    /// Single ports or ranges, e.g. `"443"` or `"8000-8999"`.
+    @azure.FieldHint { }
+    sourcePortRanges: Listing<String>?
+
+    /// Single ports or ranges, e.g. `"443"` or `"8000-8999"`.
+    @azure.FieldHint { }
+    destinationPortRanges: Listing<String>?
+
+    @azure.FieldHint { }
+    description: String(length <= 140)?
+
+    hidden parent = this
+
+    hidden res: NetworkManagerAdminRuleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

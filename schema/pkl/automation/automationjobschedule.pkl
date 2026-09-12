@@ -1,0 +1,86 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.automation.automationjobschedule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Automation::JobSchedule"
+const apiVersion = "2024-10-23"
+
+open class AutomationJobScheduleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutomationJobScheduleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutomationJobScheduleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// The link between a runbook and a schedule — what actually makes a runbook run
+/// on a recurrence.
+///
+/// IMMUTABLE. armautomation offers Create, Get and Delete and no update verb at
+/// all, so every field below is createOnly and any change is applied as a
+/// delete-and-recreate. The same shape AZURE::Authorization::RoleAssignment uses.
+///
+/// `name` is a GUID, not a friendly name: ARM uses the jobScheduleId both as the
+/// URL segment and as the resource's name, and it has to be supplied — there is
+/// no provider-generated form that could be read back without reporting drift.
+///
+/// The runbook must be PUBLISHED. A runbook created with an empty draft (no
+/// publishContentLinkUri) has nothing to run, and ARM rejects scheduling it.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Automation::Account"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "automationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AutomationJobSchedule extends formae.Resource {
+
+    /// The job schedule's GUID. ARM validates the format.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    automationAccountName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// Name of the published runbook to run.
+    @azure.FieldHint { required = true; createOnly = true }
+    runbookName: String(length >= 1)|formae.Resolvable
+
+    /// Name of the schedule that drives it.
+    @azure.FieldHint { required = true; createOnly = true }
+    scheduleName: String(length >= 1)|formae.Resolvable
+
+    /// Hybrid Runbook Worker group to run the job on. Omit to run in the Azure
+    /// sandbox.
+    @azure.FieldHint { createOnly = true }
+    runOn: String?
+
+    /// Parameters passed to the runbook on every scheduled run, as name/value
+    /// pairs. Values are strings; a runbook that takes a typed parameter receives
+    /// the string and casts it.
+    @azure.FieldHint { createOnly = true; outputField = "parameters"; updateMethod = "EntitySet"; indexField = "Key" }
+    parameters: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: AutomationJobScheduleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

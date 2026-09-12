@@ -1,0 +1,62 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/storage/storageaccount.pkl"
+import "@azure/storage/storagequeueserviceproperties.pkl"
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "qsp-test-rg"
+  name = "formae-plugin-sdk-test-qsp-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local saSku = new storageaccount.StorageAccountSKU {
+  name = "Standard_LRS"
+}
+
+// The Queue service only exists on a general-purpose account; a BlobStorage or
+// FileStorage account has none for this resource to configure.
+local sa = new storageaccount.StorageAccount {
+  label = "qsp-test-sa"
+  name = "fpsdtqsp\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  sku = saSku
+  kind = "StorageV2"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  sa
+
+  // Singleton child: ARM always names the queue service `default`, so this
+  // resource has no name property — one per storage account.
+  new storagequeueserviceproperties.QueueServiceProperties {
+    label = "plugin-sdk-test-qsp"
+    resourceGroupName = rg.res.name
+    storageAccountName = sa.res.name
+    corsRules = new Listing {
+      new storagequeueserviceproperties.QueueCorsRule {
+        allowedOrigins = new Listing { "https://example.com" }
+        allowedMethods = new Listing { "GET"; "PUT" }
+        allowedHeaders = new Listing { "x-ms-meta-purpose" }
+        exposedHeaders = new Listing { "x-ms-meta-purpose" }
+        maxAgeInSeconds = 300
+      }
+    }
+  }
+}

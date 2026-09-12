@@ -1,0 +1,113 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagernetworkgroup.pkl" as networkgroup
+import "@azure/network/networkmanagersecurityadminconfiguration.pkl" as securityadmin
+import "@azure/network/networkmanageradminrulecollection.pkl" as rulecollection
+import "@azure/network/networkmanageradminrule.pkl" as adminrule
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmar-test-rg"
+  name = "formae-plugin-sdk-test-nmar-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+local manager = new netmanager.NetworkManager {
+  label = "nmar-test-manager"
+  name = "fpsdt-nmar-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "SecurityAdmin"
+  }
+  networkManagerScopes = managerScopes
+}
+
+local group = new networkgroup.NetworkManagerNetworkGroup {
+  label = "nmar-test-group"
+  name = "conformance-group"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+}
+
+// Left UNCOMMITTED: a committed configuration cannot be deleted, and commits are
+// not modelled by this plugin.
+local config = new securityadmin.NetworkManagerSecurityAdminConfiguration {
+  label = "nmar-test-config"
+  name = "conformance-securityadmin"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+}
+
+local collection = new rulecollection.NetworkManagerAdminRuleCollection {
+  label = "nmar-test-collection"
+  name = "conformance-collection"
+  resourceGroupName = rg.res.name
+  networkManagerName = manager.res.name
+  securityAdminConfigurationName = config.res.name
+  appliesToGroups {
+    new rulecollection.AdminRuleCollectionGroupItem {
+      networkGroupId = group.res.id
+    }
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+  group
+  config
+  collection
+
+  // Update: widen the rule to SSH as well as RDP, move it later in the
+  // collection and redescribe. access and direction are left alone — flipping
+  // a Deny to an Allow is a different rule, not an edit of this one.
+  new adminrule.NetworkManagerAdminRule {
+    label = "plugin-sdk-test-network-manager-admin-rule"
+    name = "conformance-deny-rdp"
+    resourceGroupName = rg.res.name
+    networkManagerName = manager.res.name
+    securityAdminConfigurationName = config.res.name
+    ruleCollectionName = collection.res.name
+    access = "Deny"
+    direction = "Inbound"
+    priority = 200
+    protocol = "Tcp"
+    sources {
+      new adminrule.AdminRuleAddressPrefix {
+        addressPrefix = "Internet"
+        addressPrefixType = "ServiceTag"
+      }
+    }
+    destinations {
+      new adminrule.AdminRuleAddressPrefix {
+        addressPrefix = "10.20.0.0/16"
+        addressPrefixType = "IPPrefix"
+      }
+    }
+    destinationPortRanges {
+      "22"
+      "3389"
+    }
+    description = "Deny inbound RDP and SSH from the internet"
+  }
+}

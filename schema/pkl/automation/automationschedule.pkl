@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.automation.automationschedule
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Automation::Schedule"
+const apiVersion = "2024-10-23"
+
+/// How often the schedule fires. `OneTime` fires once at startTime and takes no
+/// interval; `Minute` has a service floor of 15.
+typealias ScheduleFrequency = "OneTime"|"Minute"|"Hour"|"Day"|"Week"|"Month"
+
+open class AutomationScheduleResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: AutomationScheduleResolvable = (this) {
+        property = "id"
+    }
+    hidden name: AutomationScheduleResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A schedule in an Azure Automation account — a recurrence a job schedule can
+/// attach a runbook to. On its own it starts nothing.
+///
+/// Two service-normalisation traps to know about:
+///
+///  1. ARM truncates `startTime` and `expiryTime` to the minute. Declare whole
+///     minutes (`2030-01-01T00:00:00Z`), or the read comes back rounded and reads
+///     as drift.
+///  2. `startTime` must be at least five minutes in the future at the moment of
+///     the create call. ARM rejects a past start outright, so a forma with a
+///     hard-coded start eventually stops applying.
+///
+/// A schedule created without an `expiryTime` is answered with a year-9999
+/// sentinel rather than a null; the plugin drops that sentinel so an unset expiry
+/// stays unset.
+///
+/// The `advancedSchedule` block (monthDays, weekDays, monthlyOccurrences) is
+/// deliberately not modelled: it is a nested object whose members ARM fills in
+/// from the frequency, and a provider default inside a plain nested class is not
+/// honoured, so those service-chosen members would read back as unexplained
+/// drift.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Automation::Account"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "automationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class AutomationSchedule extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 128)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    automationAccountName: String(length >= 6 && length <= 50)|formae.Resolvable
+
+    /// ARM has no verb that reschedules in place: ScheduleUpdateProperties
+    /// carries only the description and isEnabled, so every recurrence field
+    /// below is createOnly and a change to any of them replaces the schedule.
+    @azure.FieldHint { required = true; createOnly = true }
+    frequency: ScheduleFrequency
+
+    /// First fire time, RFC 3339, whole minutes, at least five minutes in the
+    /// future when the create runs. See the notes above.
+    @azure.FieldHint { required = true; createOnly = true }
+    startTime: String(length >= 1)
+
+    /// IANA/Windows time-zone name the recurrence is interpreted in. ARM always
+    /// answers Get with a time zone, so this is required rather than
+    /// optional-with-a-provider-default; `"UTC"` is the conventional value.
+    @azure.FieldHint { required = true; createOnly = true }
+    timeZone: String(length >= 1)
+
+    /// Whether the schedule fires. Required for the same reason as timeZone: ARM
+    /// always returns it. Unlike the recurrence fields it IS updatable.
+    @azure.FieldHint { required = true }
+    isEnabled: Boolean
+
+    /// How many `frequency` units between fires — every 2 hours, every 3 days.
+    /// Must be omitted for `OneTime`, and ARM supplies its own value for a
+    /// recurring frequency that omits it, so set it whenever frequency is not
+    /// `OneTime`.
+    @azure.FieldHint { createOnly = true }
+    interval: Int(this >= 1)?
+
+    /// Last fire time, same precision rules as startTime. Omit for a schedule
+    /// that never expires.
+    @azure.FieldHint { createOnly = true }
+    expiryTime: String?
+
+    @azure.FieldHint { }
+    description: String(length <= 512)?
+
+    hidden parent = this
+
+    hidden res: AutomationScheduleResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

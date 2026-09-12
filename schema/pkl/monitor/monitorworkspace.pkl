@@ -1,0 +1,101 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.monitor.monitorworkspace
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Monitor::MonitorWorkspace"
+const apiVersion = "2025-10-03"
+
+open class MonitorWorkspaceResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: MonitorWorkspaceResolvable = (this) {
+        property = "id"
+    }
+    hidden name: MonitorWorkspaceResolvable = (this) {
+        property = "name"
+    }
+    /// Endpoint Grafana and other Prometheus clients query the workspace through.
+    hidden prometheusQueryEndpoint: MonitorWorkspaceResolvable = (this) {
+        property = "prometheusQueryEndpoint"
+    }
+    /// Data collection endpoint the service creates alongside the workspace.
+    hidden defaultDataCollectionEndpointId: MonitorWorkspaceResolvable = (this) {
+        property = "defaultDataCollectionEndpointId"
+    }
+}
+
+/// An Azure Monitor workspace — the managed Prometheus metrics store that
+/// Prometheus rule groups are scoped to and that managed Grafana queries.
+///
+/// Despite the name this is NOT a Microsoft.Insights resource: its ARM namespace is
+/// `Microsoft.Monitor` and the ARM type is `accounts`, so its id ends in
+/// `/providers/Microsoft.Monitor/accounts/<name>`. It is also unrelated to
+/// `AZURE::OperationalInsights::Workspace`, which is the Log Analytics workspace.
+///
+/// Creating one also creates a data collection endpoint and a data collection rule
+/// in a service-managed resource group; both are surfaced read-only here.
+///
+/// Billed on ingested and queried metric samples. A workspace nothing writes to
+/// costs nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Resources::ResourceGroup"
+    listParam = new formae.ListProperty { parentProperty = "name" listParameter = "resourceGroupName" }
+}
+open class MonitorWorkspace extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 4 && length <= 255)
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    location: azure.Location
+
+    /// Whether the workspace answers ingestion and queries from the public internet.
+    @azure.FieldHint { hasProviderDefault = true }
+    publicNetworkAccess: ("Enabled"|"Disabled")?
+
+    /// Immutable id of the workspace. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    accountId: String?
+
+    /// PromQL query endpoint. Assigned by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    prometheusQueryEndpoint: String?
+
+    /// Metrics ingestion endpoint of the default data collection endpoint. Assigned
+    /// by the service.
+    @azure.FieldHint { hasProviderDefault = true }
+    metricsIngestionEndpoint: String?
+
+    /// ARM id of the data collection endpoint the service creates alongside the
+    /// workspace.
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultDataCollectionEndpointId: String?
+
+    /// ARM id of the data collection rule the service creates alongside the
+    /// workspace.
+    @azure.FieldHint { hasProviderDefault = true }
+    defaultDataCollectionRuleId: String?
+
+    @azure.FieldHint { outputField = "Tags"; updateMethod = "EntitySet"; indexField = "Key" }
+    tags: Listing<azure.Tag>?
+
+    hidden parent = this
+
+    hidden res: MonitorWorkspaceResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

@@ -1,0 +1,53 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nm-test-rg"
+  name = "formae-plugin-sdk-test-nm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // Update: redescribe and retag. The scopes and scope accesses are left alone —
+  // narrowing them would orphan any configuration of the family removed.
+  new netmanager.NetworkManager {
+    label = "plugin-sdk-test-network-manager"
+    name = "fpsdt-nm-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    networkManagerScopeAccesses {
+      "Connectivity"
+      "SecurityAdmin"
+    }
+    networkManagerScopes = managerScopes
+    description = "Conformance network manager, redescribed"
+    tags {
+      new azure.Tag { key = "env"; value = "conformance" }
+      new azure.Tag { key = "phase"; value = "update" }
+    }
+  }
+}

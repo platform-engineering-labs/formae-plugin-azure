@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementpolicy
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Policy"
+const apiVersion = "2021-08-01"
+
+/// How the `value` document is encoded.
+///
+/// `xml` is a well-formed XML document in which policy expressions are
+/// XML-escaped. `rawxml` is the same document with the expressions left
+/// unescaped, which is more readable but is not necessarily well-formed XML.
+///
+/// ARM converts a `rawxml` submission to `xml` on the way in and answers a Get
+/// with `xml` either way, so declaring `rawxml` means the format ARM reports
+/// will not match the format declared. The provider handles that (see the note
+/// on `value`), but `xml` is the lower-friction choice.
+typealias PolicyContentFormat = "xml"|"rawxml"
+
+open class PolicyResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: PolicyResolvable = (this) {
+        property = "id"
+    }
+}
+
+/// The service-wide policy of an API Management instance — the outermost scope,
+/// applied to every request before any API, product or operation policy.
+///
+/// ARM models a policy as a singleton child named `policy`, so this resource
+/// carries no `name` field: there is exactly one service policy per instance.
+///
+/// ARM does not store the document verbatim. It reparses the XML and
+/// re-serializes it, so indentation, line endings and attribute order all come
+/// back changed, and `rawxml` comes back as `xml`. The provider therefore
+/// reports the document you declared whenever it is semantically the same as
+/// the one ARM holds, and reports ARM's own rendering only when the two
+/// genuinely differ — which is what an out-of-band edit in the portal looks
+/// like.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Policy extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// The policy document. Must have a `<policies>` root with `<inbound>`,
+    /// `<backend>`, `<outbound>` and `<on-error>` sections.
+    @azure.FieldHint { required = true }
+    value: String(length >= 1)
+
+    @azure.FieldHint { hasProviderDefault = true }
+    format: PolicyContentFormat?
+
+    hidden parent = this
+
+    hidden res: PolicyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

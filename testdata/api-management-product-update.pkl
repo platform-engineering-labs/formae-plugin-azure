@@ -1,0 +1,58 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementproduct.pkl" as apimproduct
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-product-test-rg"
+  name = "formae-plugin-sdk-test-apimproduct-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+local svc = new apim.Service {
+  label = "apim-product-test-service"
+  name = "fpsdt-apimproduct-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // Update: display name, description and portal visibility all change. The
+  // product stays open (subscriptionRequired = false) because the Consumption
+  // tier has no subscription store, and approvalRequired / subscriptionsLimit
+  // stay unset because ARM rejects either one on an open product.
+  new apimproduct.Product {
+    label = "plugin-sdk-test-apim-product"
+    name = "conformance-product"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance Product v2"
+    description = "Updated description: still an open product."
+    terms = "No terms. This product exists for an automated test."
+    subscriptionRequired = false
+    state = "notPublished"
+  }
+}

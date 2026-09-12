@@ -1,0 +1,115 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementsubscription
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Subscription"
+const apiVersion = "2021-08-01"
+
+/// Lifecycle state of the subscription.
+///
+/// Only `active` and `suspended` are useful to declare. `submitted`, `rejected`,
+/// `cancelled` and `expired` describe what the approval workflow did to a
+/// subscription a developer requested, and ARM reports them rather than taking
+/// them as intent.
+typealias SubscriptionState = "active"|"suspended"|"submitted"|"rejected"|"cancelled"|"expired"
+
+open class SubscriptionResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: SubscriptionResolvable = (this) {
+        property = "id"
+    }
+    hidden name: SubscriptionResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A subscription — the thing that issues the pair of keys a caller puts in
+/// `Ocp-Apim-Subscription-Key`.
+///
+/// `scope` says what the keys unlock: a product
+/// (`/products/{productId}` or the product's full ARM id), a single API
+/// (`/apis/{apiId}`), or every API in the service (`/apis`). An all-APIs
+/// subscription is how the built-in "master" subscription works.
+///
+/// The two keys are service-generated and never compared. ARM does not return
+/// them from a Get — they come back only from a separate list-secrets call — so
+/// both are write-only here: supplying one pins it, and omitting it lets ARM
+/// generate a random one.
+///
+/// NOT AVAILABLE ON THE CONSUMPTION TIER. The published service limits give the
+/// maximum number of subscriptions on Consumption as `N/A`
+/// (learn.microsoft.com/azure/api-management/service-limits); the tier has no
+/// subscription store, which is also why every APIM fixture in this plugin
+/// declares its products with `subscriptionRequired = false`.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Subscription extends formae.Resource {
+
+    /// Subscription identifier, unique within the service. ARM calls this
+    /// parameter `sid`.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Name shown in the portal.
+    @azure.FieldHint { required = true }
+    displayName: String(length >= 1 && length <= 100)
+
+    /// What the keys unlock. Either a relative scope (`/apis`,
+    /// `/apis/{apiId}`, `/products/{productId}`) or the full ARM id of the
+    /// product or API, which is what a reference to a sibling resource yields.
+    @azure.FieldHint { required = true }
+    scope: String(length >= 1)|formae.Resolvable
+
+    /// ARM id path of the owning user, `/users/{userId}`. Optional: a
+    /// subscription created by an administrator need not belong to anyone.
+    @azure.FieldHint { }
+    ownerId: (String|formae.Resolvable)?
+
+    /// Whether a caller may turn on request tracing with this key.
+    @azure.FieldHint { hasProviderDefault = true }
+    allowTracing: Boolean?
+
+    /// Lifecycle state. ARM creates a subscription in `submitted` when the
+    /// state is omitted, so declare `active` to have it usable immediately.
+    @azure.FieldHint { hasProviderDefault = true }
+    state: SubscriptionState?
+
+    /// Pin the primary key instead of letting ARM generate one. Write-only:
+    /// see the note on this class.
+    @azure.FieldHint { writeOnly = true }
+    primaryKey: (formae.Value|String)?
+
+    /// Pin the secondary key instead of letting ARM generate one. Write-only:
+    /// see the note on this class.
+    @azure.FieldHint { writeOnly = true }
+    secondaryKey: (formae.Value|String)?
+
+    hidden parent = this
+
+    hidden res: SubscriptionResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

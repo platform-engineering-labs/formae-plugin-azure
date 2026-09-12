@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nm-test-rg"
+  name = "formae-plugin-sdk-test-nm-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Scopes are hoisted to a local so the resource under test stays the last
+// `new <module>.<Type> {` block in the file, which is where the SDK test harness
+// patches tags.
+//
+// SUBSCRIPTIONS ONLY. A management-group scope needs a role assignment above
+// subscription level, which the conformance principal does not hold, so the
+// schema does not model one.
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+
+  // A manager on its own changes nothing and costs nothing: membership comes
+  // from network groups and intent from configurations, and no configuration is
+  // committed anywhere by this fixture.
+  new netmanager.NetworkManager {
+    label = "plugin-sdk-test-network-manager"
+    name = "fpsdt-nm-\(vars.testRunID)"
+    location = "eastus"
+    resourceGroupName = rg.res.name
+    networkManagerScopeAccesses {
+      "Connectivity"
+      "SecurityAdmin"
+    }
+    networkManagerScopes = managerScopes
+    description = "Conformance network manager"
+    tags {
+      new azure.Tag { key = "env"; value = "conformance" }
+    }
+  }
+}

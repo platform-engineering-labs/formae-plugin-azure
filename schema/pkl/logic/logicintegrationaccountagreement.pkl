@@ -1,0 +1,128 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.logic.logicintegrationaccountagreement
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Logic::IntegrationAccountAgreement"
+const apiVersion = "2019-05-01"
+
+/// Protocol the agreement governs. ARM also accepts `NotSpecified`, which
+/// produces an agreement nothing can run, so it is not offered. `content` must
+/// be the settings block for whichever protocol is named here.
+typealias AgreementType = "AS2"|"X12"|"Edifact"
+
+/// One business identity, matching the qualifier/value pair declared on the
+/// partner this agreement names. ARM matches host and guest by BOTH halves: a
+/// qualifier or value that does not appear on the referenced partner fails the
+/// create with an opaque 400.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class BusinessIdentity extends formae.SubResource {
+    @azure.FieldHint {  }
+    qualifier: String(length >= 1)
+
+    @azure.FieldHint {  }
+    value: String(length >= 1)
+}
+
+open class IntegrationAccountAgreementResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: IntegrationAccountAgreementResolvable = (this) {
+        property = "id"
+    }
+    hidden name: IntegrationAccountAgreementResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A trading-partner agreement held in an integration account: which two
+/// partners exchange messages, under which protocol, with which settings.
+///
+/// Free: agreements are metadata on the parent account and are not billed
+/// separately.
+///
+/// ORDER MATTERS. Both `hostPartner` and `guestPartner` must already exist as
+/// `AZURE::Logic::IntegrationAccountPartner` resources, and each must carry the
+/// exact qualifier/value pair given in `hostIdentity` / `guestIdentity`. ARM
+/// rejects the create otherwise, with a message that names neither the partner
+/// nor the field. Declare the partners first and reference their names through
+/// `res.name` so formae orders the create for you.
+///
+/// `content` is the protocol settings block for the type named in
+/// `agreementType` — for `AS2`, an object with `receiveAgreement` and
+/// `sendAgreement`, each carrying `senderBusinessIdentity`,
+/// `receiverBusinessIdentity` and a fully populated `protocolSettings`. That
+/// tree is around seventy required leaves across nine nested objects, none of
+/// which ARM defaults, so it is carried as a JSON string rather than modelled:
+/// no PKL class of a workable size describes it, and the same field means
+/// different things under X12 and EDIFACT.
+///
+/// `content` is additionally `writeOnly`. ARM normalises the settings block
+/// heavily on read — it fills in every optional leaf it did not receive and
+/// reorders the object — so comparing its echo against what was authored would
+/// report drift on an agreement nobody touched. Changing it in a forma still
+/// pushes the new block; drift introduced elsewhere is not detected.
+///
+/// `metadata` is arbitrary JSON the schema cannot express and is not read back.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Logic::IntegrationAccount"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "integrationAccountName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class IntegrationAccountAgreement extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 80)
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    integrationAccountName: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    @azure.FieldHint {  }
+    agreementType: AgreementType
+
+    /// Name of the partner acting as host. Must already exist in the same
+    /// integration account.
+    @azure.FieldHint {  }
+    hostPartner: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Name of the partner acting as guest. Must already exist in the same
+    /// integration account.
+    @azure.FieldHint {  }
+    guestPartner: String(length >= 1 && length <= 80)|formae.Resolvable
+
+    /// Identity the host partner is recognised by. Must match one of that
+    /// partner's own business identities exactly.
+    @azure.FieldHint {  }
+    hostIdentity: BusinessIdentity
+
+    /// Identity the guest partner is recognised by. Must match one of that
+    /// partner's own business identities exactly.
+    @azure.FieldHint {  }
+    guestIdentity: BusinessIdentity
+
+    /// Protocol settings for `agreementType`, as compact JSON with sorted keys.
+    /// Write-only; see the note above.
+    @azure.FieldHint { ; writeOnly = true}
+    content: (formae.Value|String)?
+
+    hidden parent = this
+
+    hidden res: IntegrationAccountAgreementResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

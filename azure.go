@@ -11,6 +11,7 @@ import (
 
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/client"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/config"
+	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/prov"
 	"github.com/platform-engineering-labs/formae-plugin-azure/pkg/registry"
 	"github.com/platform-engineering-labs/formae/pkg/model"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
@@ -68,8 +69,52 @@ func (p *Plugin) RateLimit() model.RateLimitConfig {
 
 // DiscoveryFilters returns filters to exclude certain resources from discovery.
 func (p *Plugin) DiscoveryFilters() []model.MatchFilter {
-	// TODO: Implement match filters for discovery
-	return []model.MatchFilter{}
+	return []model.MatchFilter{
+		{
+			// Anything formae created in order to run in this subscription or
+			// to reach it: the connect resource group and managed identity, and
+			// an agent's own substrate. Discovered like any other resource,
+			// these could be imported and then reconciled away, which severs
+			// formae's own access.
+			//
+			// The marker answers one question, whether formae created the
+			// thing. It says nothing about who may delete it.
+			// Tags serialize as an array of {Key, Value} objects under an
+			// uppercase "Tags", not as the lowercase map the ARM API uses.
+			// See azureTagsToFormaeTags in pkg/resources/common.go.
+			Conditions: []model.FilterCondition{
+				{
+					PropertyPath:  `$.Tags[?(@.Key=='formae-owned')].Value`,
+					PropertyValue: "true",
+				},
+			},
+		},
+		{
+			// A federated identity credential carries no tags at all, so it is
+			// identified by what connect actually mints. All three conditions
+			// must hold: conditions within one filter are AND'd.
+			//
+			// The issuer alone would be too broad. A customer may legitimately
+			// point their own credential at the same issuer, and hiding it
+			// would take their resource out of their own inventory.
+			ResourceTypes: []string{"AZURE::ManagedIdentity::FederatedIdentityCredential"},
+			Conditions: []model.FilterCondition{
+				{
+					PropertyPath:  `$.name`,
+					PropertyValue: "formae-ai",
+				},
+				{
+					PropertyPath:  `$.issuer`,
+					PropertyValue: "https://oidc.cloud.formae.ai",
+				},
+				{
+					// Subjects are per-installation, so the namespace prefix is
+					// the most that can be pinned statically.
+					PropertyPath: `$[?search(@, "^fai:")]`,
+				},
+			},
+		},
+	}
 }
 
 // LabelConfig returns the configuration for extracting human-readable labels
@@ -129,8 +174,26 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	return prov.Read(ctx, request)
+	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := provisioner.Read(ctx, request)
+	// Unlike List, a read we are not authorized for stays a failure: the resource
+	// exists and formae is tracking it, so silently reporting nothing would look
+	// like drift. Reads carry that failure in ErrorCode and ReadResult has no
+	// message field, so log the reason here or it is lost — the agent would record
+	// only "finished_with_error".
+	if err != nil || (result != nil && result.ErrorCode != "") {
+		errorCode := resource.OperationErrorCode("")
+		if result != nil {
+			errorCode = result.ErrorCode
+		}
+		plugin.LoggerFromContext(ctx).Error("Read failed",
+			"resourceType", request.ResourceType,
+			"nativeID", request.NativeID,
+			"errorCode", errorCode,
+			"error", err,
+		)
+	}
+	return result, err
 }
 
 // Update modifies an existing Azure resource.
@@ -214,11 +277,10 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		return nil, fmt.Errorf("unsupported resource type: %s", request.ResourceType)
 	}
 
-	prov := registry.Get(request.ResourceType, azureClient, targetConfig)
-	result, err := prov.List(ctx, request)
+	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
+	result, err := provisioner.List(ctx, request)
 	if err != nil {
-		log.Error("List failed", "resourceType", request.ResourceType, "error", err)
-		return result, err
+		return listOutcome(log, request.ResourceType, result, err)
 	}
 
 	log.Debug("List completed",
@@ -226,4 +288,26 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 		"nativeIDCount", len(result.NativeIDs),
 	)
 	return result, nil
+}
+
+// listOutcome decides what discovery sees when a List fails.
+//
+// A target's credential rarely covers every resource type the plugin knows —
+// tenant-scoped types in particular are unreadable to a subscription-scoped
+// service principal. There is nothing to discover where we cannot look, so an
+// authorization failure yields an empty listing rather than failing the whole
+// discovery run. It is still logged: an unexpected 403 is worth seeing.
+//
+// This is the opposite of Read, where the resource is known to exist and a
+// permission failure has to stay a failure.
+func listOutcome(log plugin.Logger, resourceType string, result *resource.ListResult, err error) (*resource.ListResult, error) {
+	if code, ok := prov.AzureErrorCode(err); ok && code == resource.OperationErrorCodeAccessDenied {
+		log.Warn("List skipped: the credential is not authorized for this resource type",
+			"resourceType", resourceType,
+			"error", err,
+		)
+		return &resource.ListResult{}, nil
+	}
+	log.Error("List failed", "resourceType", resourceType, "error", err)
+	return result, err
 }

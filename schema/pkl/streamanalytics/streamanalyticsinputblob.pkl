@@ -1,0 +1,130 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.streamanalytics.streamanalyticsinputblob
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::StreamAnalytics::InputBlob"
+const apiVersion = "2020-03-01"
+
+/// How the events in the blobs are encoded. `Avro` is self-describing and takes no
+/// further settings.
+typealias InputSerializationType = "Json"|"Csv"|"Avro"
+
+/// How Stream Analytics parses each event.
+@azure.SubResourceHint { apiVersion = module.apiVersion }
+class InputSerialization extends formae.SubResource {
+    @azure.FieldHint {  }
+    type: InputSerializationType
+
+    /// The only value ARM accepts is "UTF8". Required for Json and Csv.
+    @azure.FieldHint { }
+    encoding: ("UTF8")?
+
+    /// Csv only. Common values: "," (comma), "\t" (tab), "|" (pipe), " " (space).
+    @azure.FieldHint { }
+    fieldDelimiter: String?
+}
+
+open class InputBlobResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: InputBlobResolvable = (this) {
+        property = "id"
+    }
+    hidden name: InputBlobResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A blob storage stream input on a Stream Analytics job.
+///
+/// `name` is the alias the job's query reads from — `FROM [<name>]`.
+///
+/// The credential is write-only. ARM accepts `storageAccountKey` on every PUT and
+/// PATCH but strips it from every response, so its value is not part of resource
+/// state and drift in it cannot be detected: rotating the key in a forma still
+/// pushes the new value, but formae cannot tell you the key on the account changed
+/// underneath. Nothing validates the key at create time either — Stream Analytics
+/// checks a datasource only when the job starts, or through the separate Test
+/// operation.
+///
+/// ARM models the storage account as a one-element `storageAccounts` array; this
+/// schema flattens it, because the array is single-valued in practice and a nested
+/// list would bury the credential inside a nested class where write-only semantics
+/// do not apply.
+///
+/// `authenticationMode` is not modelled: this type always authenticates with the
+/// account key. Use the managed-identity form once it is a separate resource type.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::StreamAnalytics::StreamingJob"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "jobName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class InputBlob extends formae.Resource {
+
+    @azure.FieldHint { ; createOnly = true }
+    name: String(length >= 1 && length <= 63 && matches(Regex(#"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$"#)))
+
+    @azure.FieldHint { ; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { ; createOnly = true }
+    jobName: (String|formae.Resolvable)
+
+    @azure.FieldHint {  }
+    storageAccountName: (String|formae.Resolvable)
+
+    /// Write-only — see the note above. An access key for the storage account.
+    @azure.FieldHint { ; writeOnly = true}
+    storageAccountKey: (formae.Value|String)?
+
+    @azure.FieldHint { required = true }
+    container: (String|formae.Resolvable)
+
+    /// Blob path pattern, not a regular expression: `{date}`, `{time}` and
+    /// `{partition}` are the substitutions.
+    ///
+    /// ARM also accepts an empty pattern, meaning every blob in the container, but
+    /// does not reliably echo one back, so this schema requires a non-empty value
+    /// rather than risk a phantom drift on every sync.
+    @azure.FieldHint { required = true }
+    pathPattern: String(length >= 1)
+
+    /// Substituted for `{date}` in pathPattern, e.g. "yyyy/MM/dd".
+    @azure.FieldHint { }
+    dateFormat: String?
+
+    /// Substituted for `{time}` in pathPattern, e.g. "HH".
+    @azure.FieldHint { }
+    timeFormat: String?
+
+    /// Number of source partitions in the blob layout, 1-1024. Only set this when
+    /// the container is laid out with a `{partition}` path segment.
+    @azure.FieldHint { }
+    sourcePartitionCount: Int(this >= 1 && this <= 1024)?
+
+    @azure.FieldHint { required = true }
+    serialization: InputSerialization
+
+    /// Column in the input data to partition the stream by.
+    @azure.FieldHint { }
+    partitionKey: String?
+
+    hidden parent = this
+
+    hidden res: InputBlobResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

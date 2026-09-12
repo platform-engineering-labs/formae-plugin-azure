@@ -1,0 +1,88 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.insights.datacollectionruleassociation
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::Insights::DataCollectionRuleAssociation"
+const apiVersion = "2024-03-11"
+
+open class DataCollectionRuleAssociationResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: DataCollectionRuleAssociationResolvable = (this) {
+        property = "id"
+    }
+    hidden name: DataCollectionRuleAssociationResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// Attaches a data collection rule — or a data collection endpoint — to the machine
+/// it should apply to. A rule on its own collects nothing; this resource is what
+/// puts it to work, and Azure Monitor Agent picks the association up from the target.
+///
+/// This is an ARM **extension** resource, like `AZURE::Insights::DiagnosticSetting`:
+/// it has no resource group of its own and its id is
+/// `<targetResourceId>/providers/Microsoft.Insights/dataCollectionRuleAssociations/<name>`.
+///
+/// `targetResourceId` must name a resource Azure Monitor can attach a rule to — a
+/// virtual machine, a virtual machine scale set or an Arc-enabled machine.
+///
+/// Exactly one of `dataCollectionRuleId` and `dataCollectionEndpointId` may be set.
+/// The endpoint form is the one Azure names `configurationAccessEndpoint` by
+/// convention: it tells the agent which endpoint to fetch its configuration from.
+///
+/// Free — the association carries no charge, and the data bills against whatever the
+/// rule writes to.
+///
+/// Discovery has no subscription-wide listing to fall back on: ARM lists these only
+/// per rule, per endpoint or per target resource. The declared parent hands down the
+/// rule's resource group and name, which drives the per-rule listing. The other two
+/// have nothing to supply their scope, so an association that points at an ENDPOINT
+/// rather than a rule is not discoverable, though its CRUD lifecycle works normally.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::Insights::DataCollectionRule"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "dataCollectionRuleName" }
+    )
+}
+open class DataCollectionRuleAssociation extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 44)
+
+    /// ARM id of the machine the rule is attached to, e.g.
+    /// `targetResourceId = vm.res.id`.
+    @azure.FieldHint { required = true; createOnly = true }
+    targetResourceId: String(length >= 1)|formae.Resolvable
+
+    /// ARM id of the data collection rule to attach. Mutually exclusive with
+    /// `dataCollectionEndpointId`.
+    @azure.FieldHint { }
+    dataCollectionRuleId: (String|formae.Resolvable)?
+
+    /// ARM id of the data collection endpoint to attach. Mutually exclusive with
+    /// `dataCollectionRuleId`.
+    @azure.FieldHint { }
+    dataCollectionEndpointId: (String|formae.Resolvable)?
+
+    @azure.FieldHint { }
+    description: String?
+
+    hidden parent = this
+
+    hidden res: DataCollectionRuleAssociationResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

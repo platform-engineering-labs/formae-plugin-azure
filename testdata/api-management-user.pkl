@@ -1,0 +1,64 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementuser.pkl" as apimuser
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-user-test-rg"
+  name = "formae-plugin-sdk-test-apimuser-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+//
+// NOTE: this fixture cannot pass on Consumption. The published service limits
+// give the maximum number of users on Consumption as `N/A`
+// (learn.microsoft.com/azure/api-management/service-limits), and the tier
+// comparison marks the developer portal and its "related functionality such as
+// users, groups, issues, applications" unavailable there. Handler, schema and
+// test are complete; the SKU is deliberately not changed.
+local svc = new apim.Service {
+  label = "apim-user-test-service"
+  name = "fpsdt-apimuser-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+
+  // `confirmation` is deliberately unset so ARM emails nobody, and `password`
+  // is unset so ARM generates one. The address is on a domain that exists but
+  // routes this mailbox nowhere, so a stray notification lands on no person.
+  new apimuser.User {
+    label = "plugin-sdk-test-apim-user"
+    name = "conformance-user"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    email = "conformance-user@platform.engineering"
+    firstName = "Conformance"
+    lastName = "User"
+    note = "Created by the formae Azure plugin conformance suite."
+    state = "active"
+  }
+}

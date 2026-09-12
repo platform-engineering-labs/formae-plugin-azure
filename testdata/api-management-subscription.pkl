@@ -1,0 +1,83 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/apimanagement/apimanagementservice.pkl" as apim
+import "@azure/apimanagement/apimanagementproduct.pkl" as apimproduct
+import "@azure/apimanagement/apimanagementsubscription.pkl" as apimsub
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "apim-sub-test-rg"
+  name = "formae-plugin-sdk-test-apimsub-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+// Consumption is the only tier a conformance run can use: every dedicated tier
+// takes 30 to 45 minutes to provision, which outlives the CI credential's
+// lifetime. An idle Consumption instance also costs nothing.
+//
+// NOTE: this fixture cannot pass on Consumption. The published service limits
+// give the maximum number of subscriptions on Consumption as `N/A`
+// (learn.microsoft.com/azure/api-management/service-limits) — the tier has no
+// subscription store, which is also why every other APIM fixture here declares
+// its products with subscriptionRequired = false. Handler, schema and test are
+// complete; the SKU is deliberately not changed.
+local svc = new apim.Service {
+  label = "apim-sub-test-service"
+  name = "fpsdt-apimsub-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  publisherEmail = "conformance@platform.engineering"
+  publisherName = "Platform Engineering Labs"
+  skuName = "Consumption"
+  skuCapacity = 0
+}
+
+// The subscription's scope. subscriptionRequired is true here — unlike every
+// other product fixture in this suite — because a subscription against an open
+// product would issue keys nothing checks.
+local product = new apimproduct.Product {
+  label = "apim-sub-test-product"
+  name = "conformance-product"
+  resourceGroupName = rg.res.name
+  serviceName = svc.res.name
+  displayName = "Conformance Product"
+  subscriptionRequired = true
+  approvalRequired = false
+  state = "published"
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  svc
+  product
+
+  // `scope` takes the product's full ARM id. ARM also accepts the relative
+  // form ("/products/conformance-product"), and the provider reports whichever
+  // one is declared: ARM always answers with the absolute id, so echoing that
+  // back would show drift on every sync against a relative declaration.
+  //
+  // Neither key is declared, so ARM generates a random pair. Both are
+  // write-only: ARM never returns them from a Get.
+  new apimsub.Subscription {
+    label = "plugin-sdk-test-apim-subscription"
+    name = "conformance-subscription"
+    resourceGroupName = rg.res.name
+    serviceName = svc.res.name
+    displayName = "Conformance Subscription"
+    scope = product.res.id
+    state = "active"
+    allowTracing = false
+  }
+}

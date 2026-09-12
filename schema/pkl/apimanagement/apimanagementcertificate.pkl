@@ -1,0 +1,113 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.apimanagement.apimanagementcertificate
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::ApiManagement::Certificate"
+const apiVersion = "2021-08-01"
+
+open class CertificateResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: CertificateResolvable = (this) {
+        property = "id"
+    }
+    hidden name: CertificateResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// A client certificate held by the service, for mutual TLS to a backend.
+///
+/// This is NOT the gateway's own TLS certificate — that is a hostname
+/// configuration on `AZURE::ApiManagement::Service`. A certificate here is one
+/// the gateway PRESENTS: a backend names it through
+/// `credentials.certificateIds`, or an `authentication-certificate` policy
+/// names it by thumbprint.
+///
+/// Two shapes:
+///
+///  - inline: `data` is a base64 PKCS#12 (.pfx) blob and `password` unlocks it.
+///    Both are write-only; ARM validates the blob on the way in and never
+///    returns it.
+///  - Key Vault-backed: `keyVaultSecretIdentifier` instead, which needs the
+///    service to have an identity (`identityType` on
+///    `AZURE::ApiManagement::Service`) holding a Key Vault data-plane role.
+///
+/// `subject`, `thumbprint` and `expirationDate` are read out of the certificate
+/// by ARM. They are outputs, not intent: changing the subject means uploading a
+/// different certificate.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::ApiManagement::Service"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" },
+        new formae.ListProperty { parentProperty = "name" listParameter = "serviceName" }
+    )
+}
+open class Certificate extends formae.Resource {
+
+    /// Certificate identifier, unique within the service.
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 256 && matches(Regex("^[^*#&+:<>?]+$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    serviceName: String(length >= 1 && length <= 50)|formae.Resolvable
+
+    /// Base64 PKCS#12 (.pfx) blob. Write-only: ARM validates it, stores it and
+    /// never returns it. Mutually exclusive with `keyVaultSecretIdentifier`.
+    @azure.FieldHint { writeOnly = true }
+    data: (formae.Value|String)?
+
+    /// Password that unlocks the .pfx. Write-only, and required whenever the
+    /// blob is password-protected.
+    @azure.FieldHint { writeOnly = true }
+    password: (formae.Value|String)?
+
+    /// Key Vault secret id holding the certificate, e.g.
+    /// `https://<vault>.vault.azure.net/secrets/<name>`. Mutually exclusive
+    /// with `data`.
+    ///
+    /// Flattened out of ARM's nested `keyVault` block rather than modelled as a
+    /// nested class: the block's third field, `lastStatus`, is the service's own
+    /// refresh bookkeeping and has no place in desired state.
+    @azure.FieldHint { }
+    keyVaultSecretIdentifier: (String|formae.Resolvable)?
+
+    /// Client id of the user-assigned identity used to reach the vault. Leave
+    /// unset to use the service's system-assigned identity.
+    @azure.FieldHint { }
+    keyVaultIdentityClientId: (String|formae.Resolvable)?
+
+    // Read-only outputs, read out of the certificate itself by ARM.
+
+    /// Subject DN, e.g. `CN=api.contoso.com`.
+    @azure.FieldHint { hasProviderDefault = true }
+    subject: String?
+
+    /// SHA-1 thumbprint, which is how a policy names this certificate.
+    @azure.FieldHint { hasProviderDefault = true }
+    thumbprint: String?
+
+    /// Expiry, ISO 8601.
+    @azure.FieldHint { hasProviderDefault = true }
+    expirationDate: String?
+
+    hidden parent = this
+
+    hidden res: CertificateResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}

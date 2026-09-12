@@ -1,0 +1,68 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/azure.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/keyvault/vault.pkl"
+import "@azure/keyvault/key.pkl"
+import "vars.pkl"
+
+local azureTenantId = "35412a0c-6726-4fc9-98ef-6e91adcb8d0e"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "kv-key-test-rg"
+  name = "formae-plugin-sdk-test-kv-key-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local vaultSku = new vault.VaultSKU {
+  family = "A"
+  name = "standard"
+}
+
+// Parent vault for the key. Creating a key is a DATA-plane operation, so the
+// conformance principal needs a data-plane role - "Key Vault Crypto Officer" -
+// and not just subscription Owner, which is control plane only. RBAC mode is on
+// so vault access policies are bypassed entirely and only the role assignment
+// counts. Without the role, [Create] fails within seconds with a 403 whose
+// innererror.code is ForbiddenByRbac.
+//
+// The vault name must keep the `fpsdt-kv-` prefix: clean-environment.sh purges
+// soft-deleted vaults by that prefix, and a soft-deleted vault holds its name.
+local kv = new vault.Vault {
+  label = "kv-key-test-kv"
+  name = "fpsdt-kv-key-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  tenantId = azureTenantId
+  sku = vaultSku
+  enableSoftDelete = true
+  softDeleteRetentionInDays = 7
+  enableRbacAuthorization = true
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  kv
+
+  new key.Key {
+    label = "kv-key-test-key"
+    name = "fpsdt-key-\(vars.testRunID)"
+    vaultUri = kv.res.vaultUri
+    keyType = "RSA"
+    keySize = 2048
+    keyOps = new Listing { "sign"; "verify" }
+    enabled = true
+  }
+}

@@ -1,0 +1,60 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+
+import "@azure/resources/resourcegroup.pkl"
+import "@azure/network/networkmanager.pkl" as netmanager
+import "@azure/network/networkmanagersubscriptionconnection.pkl" as nmconnection
+import "vars.pkl"
+
+local rg = new resourcegroup.ResourceGroup {
+  label = "nmsc-test-rg"
+  name = "formae-plugin-sdk-test-nmsc-rg-\(vars.testRunID)"
+  location = "eastus"
+}
+
+local managerScopes = new netmanager.NetworkManagerScopes {
+  subscriptions {
+    "/subscriptions/\(vars.subscriptionId)"
+  }
+}
+
+local manager = new netmanager.NetworkManager {
+  label = "nmsc-test-manager"
+  name = "fpsdt-nmsc-\(vars.testRunID)"
+  location = "eastus"
+  resourceGroupName = rg.res.name
+  networkManagerScopeAccesses {
+    "Connectivity"
+  }
+  networkManagerScopes = managerScopes
+}
+
+forma {
+  vars.stack
+
+  vars.target
+
+  rg
+  manager
+
+  // The connection lives at SUBSCRIPTION scope: no resource group, no location.
+  //
+  // In production the manager on the other end belongs to a different tenant;
+  // here it is the manager above, because a second tenant is not available to a
+  // conformance run. ARM accepts the PUT either way and reports the outcome as a
+  // read-only connectionState (Connected / Pending / Conflict / ...), which this
+  // provider deliberately does not surface — so a self-referential pairing still
+  // exercises the full CRUD path without reading as drift.
+  new nmconnection.NetworkManagerSubscriptionConnection {
+    label = "plugin-sdk-test-network-manager-subscription-connection"
+    name = "conformance-connection"
+    networkManagerId = manager.res.id
+    description = "Conformance subscription connection"
+  }
+}

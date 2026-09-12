@@ -1,0 +1,80 @@
+/*
+ * © 2025 Platform Engineering Labs Inc.
+ *
+ * SPDX-License-Identifier: FSL-1.1-ALv2
+ */
+
+module azure.datafactory.datafactorylinkedservicekeyvault
+
+import "@formae/formae.pkl"
+import "../azure.pkl"
+
+const type = "AZURE::DataFactory::LinkedServiceKeyVault"
+const apiVersion = "2018-06-01"
+
+open class LinkedServiceKeyVaultResolvable extends formae.Resolvable {
+    hidden type = module.type
+
+    hidden id: LinkedServiceKeyVaultResolvable = (this) {
+        property = "id"
+    }
+    hidden name: LinkedServiceKeyVaultResolvable = (this) {
+        property = "name"
+    }
+}
+
+/// An `AzureKeyVault` linked service — the indirection every other linked service
+/// uses to fetch a secret instead of embedding it.
+///
+/// It carries no credential of its own: the factory's managed identity
+/// authenticates to the vault, so the factory needs a data-plane role
+/// ("Key Vault Secrets User") on the vault before the reference resolves. Being
+/// Owner on the vault is not enough — Key Vault's data plane has its own roles.
+///
+/// Creating a linked service is a metadata write and costs nothing.
+@azure.ResourceHint {
+    type = module.type
+    identifier = "id"
+    apiVersion = module.apiVersion
+    parent = "AZURE::DataFactory::Factory"
+    listParam = List(
+        new formae.ListProperty { parentProperty = "name" listParameter = "factoryName" },
+        new formae.ListProperty { parentProperty = "resourceGroupName" listParameter = "resourceGroupName" }
+    )
+}
+open class LinkedServiceKeyVault extends formae.Resource {
+
+    @azure.FieldHint { required = true; createOnly = true }
+    name: String(length >= 1 && length <= 260 && matches(Regex("^[A-Za-z0-9_][A-Za-z0-9 _-]*$")))
+
+    @azure.FieldHint { required = true; createOnly = true }
+    resourceGroupName: String(length >= 1 && length <= 90)|formae.Resolvable
+
+    @azure.FieldHint { required = true; createOnly = true }
+    factoryName: String(length >= 3 && length <= 63)|formae.Resolvable
+
+    /// Data-plane URI of the vault, e.g. `baseUrl = kv.res.vaultUri`.
+    @azure.FieldHint { required = true }
+    baseUrl: String(length >= 1)|formae.Resolvable
+
+    @azure.FieldHint { }
+    description: String(length <= 1024)?
+
+    /// Name of an integration runtime in the same factory to route through. Omit to
+    /// use the factory's default AutoResolve runtime.
+    @azure.FieldHint { }
+    connectViaIntegrationRuntimeName: (String|formae.Resolvable)?
+
+    /// Free-form labels the authoring UI shows against the linked service.
+    /// Unrelated to ARM resource tags — a linked service is not an ARM tracked
+    /// resource and cannot carry any.
+    @azure.FieldHint { }
+    annotations: Listing<String>?
+
+    hidden parent = this
+
+    hidden res: LinkedServiceKeyVaultResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
+}
