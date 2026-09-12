@@ -569,7 +569,8 @@ stream-analytics-output-event-hub
 stream-analytics-output-service-bus-queue
 stream-analytics-output-table
 
-# Collection-clear regressions: promote after their focused live PR run passes.
+# Collection-clear regressions: promote after focused live PR success and
+# conformance SDK reconcile support reaches formae main (used by nightly).
 # blob-container-metadata-clear
 # file-share-metadata-clear
 # storage-queue-metadata-clear

@@ -229,7 +229,7 @@ jobs:
           FORMAE_TEST_DISCOVERY_TIMEOUT: "25"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           FORMAE_TEST_PROVIDER_DEFAULT_OBSERVATIONS: /tmp/provider-default-observations.json
-        run: make conformance-test TIMEOUT=75
+        run: bash scripts/ci/run-conformance-phase.sh "${{ matrix.resource }}" all
 
       # The omit-and-observe records for hasProviderDefault fields. Uploaded even
       # when the case fails: a field the provider populates that the schema does

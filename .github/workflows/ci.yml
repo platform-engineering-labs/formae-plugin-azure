@@ -69,6 +69,9 @@ jobs:
       - name: Conformance scope self-check
         run: ./scripts/ci/conformance-scope_test.sh
 
+      - name: Conformance update mode self-check
+        run: ./scripts/ci/run-conformance-phase_test.sh
+
   # Integration tests are mock-based (fake SDK clients) and need no cloud creds.
   # Run on PRs too so they gate merges alongside conformance.
   test-integration:
