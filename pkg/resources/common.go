@@ -199,6 +199,45 @@ func metadataFromProperties(props map[string]any) map[string]*string {
 	return out
 }
 
+// metadataForUpdate retains desired values and distinguishes explicit removal
+// from implicit empty metadata emitted by older schemas. ARM PATCH preserves an
+// omitted metadata property; an intentional clear must send an empty object.
+func metadataForUpdate(props map[string]any, request *resource.UpdateRequest) map[string]*string {
+	if metadata := metadataFromProperties(props); metadata != nil {
+		return metadata
+	}
+	if updateChangesProperty(request, "metadata") {
+		return map[string]*string{}
+	}
+	return nil
+}
+
+// updateChangesProperty checks mutation intent, not the value of the property.
+// Values still come from DesiredProperties, which may retain co-owned entries.
+// property is a top-level JSON property name, not a JSON pointer.
+func updateChangesProperty(request *resource.UpdateRequest, property string) bool {
+	if request.PatchDocument == nil {
+		return false
+	}
+	var ops []struct {
+		Op   string `json:"op"`
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(*request.PatchDocument), &ops) != nil {
+		return false
+	}
+	path := "/" + strings.ReplaceAll(strings.ReplaceAll(property, "~", "~0"), "/", "~1")
+	for _, op := range ops {
+		if op.Op != "remove" && op.Op != "replace" && op.Op != "add" {
+			continue
+		}
+		if op.Path == "" || op.Path == path || strings.HasPrefix(op.Path, path+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // stringPointers converts a slice of strings into the pointer slice the Azure SDK
 // models use. Returns nil for an empty input, so an unset list is omitted from the
 // request body rather than sent as an empty array.

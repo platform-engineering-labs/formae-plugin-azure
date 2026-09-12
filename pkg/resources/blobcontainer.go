@@ -216,6 +216,7 @@ func (b *BlobContainer) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	params := blobContainerParamsFromProperties(props)
+	params.ContainerProperties.Metadata = metadataForUpdate(props, request)
 
 	result, err := b.api.Update(ctx, rgName, accountName, containerName, params, nil)
 	if err != nil {

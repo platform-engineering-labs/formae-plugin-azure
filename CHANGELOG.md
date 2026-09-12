@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
+## [Unreleased]
+
+### Fixed
+
+- Removing the last metadata entry from a blob container, file share, or storage
+  queue now requests an empty metadata map. Unrelated updates preserve metadata.
+- Removing the last API Management named-value filter tag now requests an empty
+  tag list instead of leaving the existing tags unchanged.
+
+## [0.1.13]
+
+### Fixed
+
+- Removing the last Azure resource tag now clears the tag set. Unrelated updates
+  preserve tags, including when an undeclared collection renders as empty.
+
 ## [0.1.12]
 
 ### Fixed
