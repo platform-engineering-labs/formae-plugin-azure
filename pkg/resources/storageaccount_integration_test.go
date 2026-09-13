@@ -187,3 +187,34 @@ func (f *fakeStorageAccountsAPI) NewListByResourceGroupPager(resourceGroupName s
 func (f *fakeStorageAccountsAPI) NewListPager(options *armstorage.AccountsClientListOptions) *runtime.Pager[armstorage.AccountsClientListResponse] {
 	return f.newListPagerFn(options)
 }
+
+// Exercise the SDK serializer as well as the adapter: a nil map omits tags from
+// Azure's PATCH body, whereas an empty map explicitly clears existing tags.
+func TestStorageAccount_UpdateTagRemovalWireBody(t *testing.T) {
+	for _, tc := range []struct{ name, prior, desired, patch, want string }{
+		{"remove last tag", `{"Tags":[{"Key":"oob","Value":"drift"}]}`, `{}`, `[{"op":"remove","path":"/Tags"}]`, `{}`},
+		{"explicit empty list", `{"Tags":[{"Key":"oob","Value":"drift"}]}`, `{"Tags":[]}`, `[{"op":"replace","path":"/Tags","value":[]}]`, `{}`},
+		{"explicit empty map", `{"Tags":{"oob":"drift"}}`, `{"Tags":{}}`, `[{"op":"replace","path":"/Tags","value":{}}]`, `{}`},
+		{"remove one of two", `{"Tags":[{"Key":"oob","Value":"drift"},{"Key":"keep","Value":"yes"}]}`, `{"Tags":[{"Key":"keep","Value":"yes"}]}`, `[{"op":"remove","path":"/Tags/0"}]`, `{"keep":"yes"}`},
+		{"unrelated update", `{"minimumTlsVersion":"TLS1_1"}`, `{"minimumTlsVersion":"TLS1_2"}`, `[{"op":"replace","path":"/minimumTlsVersion","value":"TLS1_2"}]`, ``},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeStorageAccountsAPI{updateFn: func(_ context.Context, _, _ string, params armstorage.AccountUpdateParameters, _ *armstorage.AccountsClientUpdateOptions) (armstorage.AccountsClientUpdateResponse, error) {
+				body, err := json.Marshal(params)
+				require.NoError(t, err)
+				var wire map[string]json.RawMessage
+				require.NoError(t, json.Unmarshal(body, &wire))
+				if tc.want == "" {
+					require.NotContains(t, wire, "tags")
+				} else {
+					require.Contains(t, wire, "tags")
+					require.JSONEq(t, tc.want, string(wire["tags"]))
+				}
+				return armstorage.AccountsClientUpdateResponse{Account: armstorage.Account{ID: to.Ptr(testSANativeID), Tags: params.Tags}}, nil
+			}}
+			got, err := newTestStorageAccount(fake).Update(context.Background(), &resource.UpdateRequest{NativeID: testSANativeID, PriorProperties: json.RawMessage(tc.prior), DesiredProperties: json.RawMessage(tc.desired), PatchDocument: to.Ptr(tc.patch)})
+			require.NoError(t, err)
+			require.Equal(t, resource.OperationStatusSuccess, got.ProgressResult.OperationStatus)
+		})
+	}
+}

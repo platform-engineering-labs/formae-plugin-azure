@@ -328,7 +328,7 @@ func (p *SqlElasticPool) Update(ctx context.Context, request *resource.UpdateReq
 	if sku := buildElasticPoolSKU(props); sku != nil {
 		params.SKU = sku
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

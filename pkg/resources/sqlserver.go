@@ -368,7 +368,7 @@ func (s *SqlServer) Update(ctx context.Context, request *resource.UpdateRequest)
 	if identity := buildServerIdentity(props); identity != nil {
 		params.Identity = identity
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

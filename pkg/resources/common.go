@@ -104,6 +104,43 @@ func formaeTagsToAzureTags(properties []byte) map[string]*string {
 	return azureTags
 }
 
+// formaeUpdateTagsToAzureTags reads values from DesiredProperties and uses the
+// patch to distinguish tag removal from omission. Empty collections alone are
+// not removal intent: undeclared tags can render as empty lists.
+func formaeUpdateTagsToAzureTags(request *resource.UpdateRequest) map[string]*string {
+	if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+		return tags
+	}
+	if request.PatchDocument == nil {
+		return nil
+	}
+	var ops []struct {
+		Op   string `json:"op"`
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(*request.PatchDocument), &ops) != nil {
+		return nil
+	}
+	for _, op := range ops {
+		if op.Op != "remove" && op.Op != "replace" && op.Op != "add" {
+			continue
+		}
+		if op.Path == "" || op.Path == "/Tags" || strings.HasPrefix(op.Path, "/Tags/") || op.Path == "/Properties/Tags" || strings.HasPrefix(op.Path, "/Properties/Tags/") {
+			return map[string]*string{}
+		}
+		// Properties is an ancestor only for the legacy nested tag representation.
+		if op.Path == "/Properties" {
+			var prior struct{ Properties map[string]json.RawMessage }
+			if json.Unmarshal(request.PriorProperties, &prior) == nil {
+				if _, ok := prior.Properties["Tags"]; ok {
+					return map[string]*string{}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // operationErrorCode maps provider errors to Formae operation error codes.
 func operationErrorCode(err error) resource.OperationErrorCode {
 	return prov.OperationErrorCode(err)
@@ -160,6 +197,45 @@ func metadataFromProperties(props map[string]any) map[string]*string {
 		return nil
 	}
 	return out
+}
+
+// metadataForUpdate retains desired values and distinguishes explicit removal
+// from implicit empty metadata emitted by older schemas. ARM PATCH preserves an
+// omitted metadata property; an intentional clear must send an empty object.
+func metadataForUpdate(props map[string]any, request *resource.UpdateRequest) map[string]*string {
+	if metadata := metadataFromProperties(props); metadata != nil {
+		return metadata
+	}
+	if updateChangesProperty(request, "metadata") {
+		return map[string]*string{}
+	}
+	return nil
+}
+
+// updateChangesProperty checks mutation intent, not the value of the property.
+// Values still come from DesiredProperties, which may retain co-owned entries.
+// property is a top-level JSON property name, not a JSON pointer.
+func updateChangesProperty(request *resource.UpdateRequest, property string) bool {
+	if request.PatchDocument == nil {
+		return false
+	}
+	var ops []struct {
+		Op   string `json:"op"`
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(*request.PatchDocument), &ops) != nil {
+		return false
+	}
+	path := "/" + strings.ReplaceAll(strings.ReplaceAll(property, "~", "~0"), "/", "~1")
+	for _, op := range ops {
+		if op.Op != "remove" && op.Op != "replace" && op.Op != "add" {
+			continue
+		}
+		if op.Path == "" || op.Path == path || strings.HasPrefix(op.Path, path+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // stringPointers converts a slice of strings into the pointer slice the Azure SDK

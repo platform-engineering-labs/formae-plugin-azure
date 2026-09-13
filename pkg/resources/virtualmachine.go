@@ -545,7 +545,7 @@ func (vm *VirtualMachine) Update(ctx context.Context, request *resource.UpdateRe
 	}
 
 	// Add tags if present
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		updateParams.Tags = azureTags
 	}
 

@@ -177,7 +177,7 @@ func (q *StorageQueue) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	params := armstorage.Queue{
-		QueueProperties: &armstorage.QueueProperties{Metadata: metadataFromProperties(props)},
+		QueueProperties: &armstorage.QueueProperties{Metadata: metadataForUpdate(props, request)},
 	}
 
 	result, err := q.api.Update(ctx, rgName, accountName, queueName, params, nil)

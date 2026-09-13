@@ -422,6 +422,8 @@ func (f *DataFactoryFactory) Update(ctx context.Context, request *resource.Updat
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	result, err := f.api.CreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

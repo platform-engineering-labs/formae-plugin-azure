@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 # Run one conformance phase for one resource, with the timeouts it needs.
 #
-# Usage: run-conformance-phase.sh <resource> <crud|discovery>
+# Usage: run-conformance-phase.sh <resource> <crud|discovery|all>
 #
 # The two phases are separate steps in the workflows because the Azure login
 # has to be refreshed between them, so each calls this once. ci.yml carried the
@@ -14,8 +14,22 @@
 # for slow ARM provisioning); TIMEOUT is the overall go-test timeout.
 set -euo pipefail
 
-RESOURCE="${1:?usage: run-conformance-phase.sh <resource> <crud|discovery>}"
-PHASE="${2:?usage: run-conformance-phase.sh <resource> <crud|discovery>}"
+RESOURCE="${1:?usage: run-conformance-phase.sh <resource> <crud|discovery|all>}"
+PHASE="${2:?usage: run-conformance-phase.sh <resource> <crud|discovery|all>}"
+
+# EntitySet removals require reconcile; ordinary fixture updates retain patch.
+if [ "$PHASE" = "crud" ] || [ "$PHASE" = "all" ]; then
+  case "$RESOURCE" in
+    blob-container-metadata-clear|file-share-metadata-clear|storage-queue-metadata-clear|api-management-named-value-tags-clear)
+      export FORMAE_TEST_UPDATE_MODE=reconcile
+      ;;
+  esac
+fi
+
+# Nightly runs the complete lifecycle with its existing wider timeout budget.
+if [ "$PHASE" = "all" ]; then
+  exec make conformance-test TIMEOUT=75
+fi
 
 TIMEOUT_ARG=""
 

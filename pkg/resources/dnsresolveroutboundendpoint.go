@@ -217,7 +217,7 @@ func (d *DNSResolverOutboundEndpoint) Update(ctx context.Context, request *resou
 		return nil, err
 	}
 
-	params := armdnsresolver.OutboundEndpointPatch{Tags: formaeTagsToAzureTags(request.DesiredProperties)}
+	params := armdnsresolver.OutboundEndpointPatch{Tags: formaeUpdateTagsToAzureTags(request)}
 
 	poller, err := d.api.BeginUpdate(ctx, rgName, resolverName, name, params, nil)
 	if err != nil {

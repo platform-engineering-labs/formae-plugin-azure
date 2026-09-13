@@ -157,7 +157,7 @@ func networkLocalNetworkGatewayParams(props networkLocalNetworkGatewayProps, pay
 
 // upsert backs both Create and Update: UpdateTags cannot touch the peer address or
 // the address space, so an update is another CreateOrUpdate.
-func (r *NetworkLocalNetworkGateway) upsert(ctx context.Context, payload json.RawMessage, label string) (*runtime.Poller[armnetwork.LocalNetworkGatewaysClientCreateOrUpdateResponse], networkLocalNetworkGatewayProps, string, error) {
+func (r *NetworkLocalNetworkGateway) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (*runtime.Poller[armnetwork.LocalNetworkGatewaysClientCreateOrUpdateResponse], networkLocalNetworkGatewayProps, string, error) {
 	var props networkLocalNetworkGatewayProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return nil, props, "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -186,8 +186,12 @@ func (r *NetworkLocalNetworkGateway) upsert(ctx context.Context, payload json.Ra
 		return nil, props, "", fmt.Errorf("name is required")
 	}
 
+	params := networkLocalNetworkGatewayParams(props, payload)
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
+	}
 	poller, err := r.api.BeginCreateOrUpdate(ctx, props.ResourceGroupName, name,
-		networkLocalNetworkGatewayParams(props, payload), nil)
+		params, nil)
 	return poller, props, name, err
 }
 
@@ -280,7 +284,7 @@ func (r *NetworkLocalNetworkGateway) Update(ctx context.Context, request *resour
 		return nil, err
 	}
 
-	poller, _, name, err := r.upsert(ctx, request.DesiredProperties, "")
+	poller, _, name, err := r.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if name == "" {
 			return nil, err

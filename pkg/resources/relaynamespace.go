@@ -261,7 +261,7 @@ func (r *RelayNamespace) Update(ctx context.Context, request *resource.UpdateReq
 		SKU:        relaySKU(props.SKUName),
 		Properties: updateProps,
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

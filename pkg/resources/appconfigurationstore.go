@@ -271,7 +271,7 @@ func (a *AppConfigurationStore) Update(ctx context.Context, request *resource.Up
 			params.SKU = &armappconfiguration.SKU{Name: to.Ptr(name)}
 		}
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

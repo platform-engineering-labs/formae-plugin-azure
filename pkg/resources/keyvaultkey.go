@@ -334,7 +334,7 @@ func (k *KeyVaultKey) Update(ctx context.Context, request *resource.UpdateReques
 		KeyAttributes: attrs,
 		KeyOps:        keyOpsToAzure(props.KeyOps),
 	}
-	if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+	if tags := formaeUpdateTagsToAzureTags(request); tags != nil {
 		params.Tags = tags
 	}
 

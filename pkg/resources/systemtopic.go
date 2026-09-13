@@ -222,7 +222,7 @@ func (st *SystemTopic) Update(ctx context.Context, request *resource.UpdateReque
 	}
 
 	params := armeventgrid.SystemTopicUpdateParameters{}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

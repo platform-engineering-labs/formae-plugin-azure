@@ -202,7 +202,9 @@ func (r *ResourceGuard) Update(ctx context.Context, request *resource.UpdateRequ
 		return nil, fmt.Errorf("location is required")
 	}
 
-	result, err := r.api.Put(ctx, rgName, name, resourceGuardPutParams(props, request.DesiredProperties), nil)
+	params := resourceGuardPutParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+	result, err := r.api.Put(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

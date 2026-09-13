@@ -194,7 +194,7 @@ func monitorActivityLogAlertParams(props monitorActivityLogAlertProps) armmonito
 // can only toggle `enabled` and tags — it cannot change scopes, conditions or
 // action groups — so every write goes through CreateOrUpdate, which replaces the
 // rule wholesale.
-func (m *MonitorActivityLogAlert) upsert(ctx context.Context, payload json.RawMessage, label string) (armmonitor.ActivityLogAlertResource, string, string, error) {
+func (m *MonitorActivityLogAlert) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armmonitor.ActivityLogAlertResource, string, string, error) {
 	var props monitorActivityLogAlertProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armmonitor.ActivityLogAlertResource{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -219,6 +219,10 @@ func (m *MonitorActivityLogAlert) upsert(ctx context.Context, payload json.RawMe
 	params := monitorActivityLogAlertParams(props)
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := m.api.CreateOrUpdate(ctx, props.ResourceGroupName, name, params, nil)
@@ -284,7 +288,7 @@ func (m *MonitorActivityLogAlert) Read(ctx context.Context, request *resource.Re
 }
 
 func (m *MonitorActivityLogAlert) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	ag, rgName, name, err := m.upsert(ctx, request.DesiredProperties, "")
+	ag, rgName, name, err := m.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" || name == "" {
 			return nil, err

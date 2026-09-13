@@ -204,7 +204,7 @@ func (d *ComputeDiskAccess) Update(ctx context.Context, request *resource.Update
 		return nil, err
 	}
 
-	params := armcompute.DiskAccessUpdate{Tags: formaeTagsToAzureTags(request.DesiredProperties)}
+	params := armcompute.DiskAccessUpdate{Tags: formaeUpdateTagsToAzureTags(request)}
 
 	poller, err := d.api.BeginUpdate(ctx, rgName, name, params, nil)
 	if err != nil {

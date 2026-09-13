@@ -219,7 +219,9 @@ func (a *LogicIntegrationAccount) Update(ctx context.Context, request *resource.
 		return nil, err
 	}
 
-	result, err := a.api.CreateOrUpdate(ctx, rgName, name, a.params(props, request.DesiredProperties), nil)
+	params := a.params(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+	result, err := a.api.CreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

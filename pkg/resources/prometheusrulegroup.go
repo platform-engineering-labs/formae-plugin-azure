@@ -364,8 +364,10 @@ func (p *PrometheusRuleGroup) Update(ctx context.Context, request *resource.Upda
 		return nil, err
 	}
 
+	params := prometheusRuleGroupParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	result, err := p.api.CreateOrUpdate(ctx, rgName, name,
-		prometheusRuleGroupParams(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

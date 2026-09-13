@@ -252,7 +252,7 @@ func (g *GrafanaManagedPrivateEndpoint) Update(ctx context.Context, request *res
 	}
 
 	params := armdashboard.ManagedPrivateEndpointUpdateParameters{}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

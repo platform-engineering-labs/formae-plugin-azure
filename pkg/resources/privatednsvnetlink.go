@@ -226,7 +226,7 @@ func (l *PrivateDnsZoneVNetLink) Update(ctx context.Context, request *resource.U
 	if reg, ok := props["registrationEnabled"].(bool); ok {
 		params.Properties.RegistrationEnabled = &reg
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

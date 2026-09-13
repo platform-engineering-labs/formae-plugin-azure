@@ -266,7 +266,7 @@ func monitorScheduledQueryRuleParams(props monitorScheduledQueryRuleProps) armmo
 // upsert backs both Create and Update. The ARM PATCH
 // (ScheduledQueryRuleResourcePatch) exists but takes the same full property bag, so
 // every write goes through CreateOrUpdate, which replaces the rule wholesale.
-func (m *MonitorScheduledQueryRule) upsert(ctx context.Context, payload json.RawMessage, label string) (armmonitor.ScheduledQueryRuleResource, string, string, error) {
+func (m *MonitorScheduledQueryRule) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armmonitor.ScheduledQueryRuleResource, string, string, error) {
 	var props monitorScheduledQueryRuleProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armmonitor.ScheduledQueryRuleResource{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -300,6 +300,10 @@ func (m *MonitorScheduledQueryRule) upsert(ctx context.Context, payload json.Raw
 	params := monitorScheduledQueryRuleParams(props)
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := m.api.CreateOrUpdate(ctx, props.ResourceGroupName, name, params, nil)
@@ -365,7 +369,7 @@ func (m *MonitorScheduledQueryRule) Read(ctx context.Context, request *resource.
 }
 
 func (m *MonitorScheduledQueryRule) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	updated, rgName, _, err := m.upsert(ctx, request.DesiredProperties, "")
+	updated, rgName, _, err := m.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" {
 			return nil, err

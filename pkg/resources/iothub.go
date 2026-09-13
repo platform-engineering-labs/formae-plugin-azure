@@ -291,6 +291,8 @@ func (h *IotHub) Update(ctx context.Context, request *resource.UpdateRequest) (*
 
 	params := iotHubDescriptionFromProps(props, request.DesiredProperties)
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := h.api.BeginCreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

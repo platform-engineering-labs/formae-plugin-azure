@@ -297,6 +297,7 @@ api-management-certificate
 api-management-global-schema
 api-management-logger
 api-management-named-value
+api-management-named-value-tags-clear
 api-management-openid-connect-provider
 api-management-product-api
 api-management-product-policy

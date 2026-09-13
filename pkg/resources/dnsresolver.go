@@ -220,7 +220,7 @@ func (d *DNSResolver) Update(ctx context.Context, request *resource.UpdateReques
 		return nil, err
 	}
 
-	params := armdnsresolver.Patch{Tags: formaeTagsToAzureTags(request.DesiredProperties)}
+	params := armdnsresolver.Patch{Tags: formaeUpdateTagsToAzureTags(request)}
 
 	poller, err := d.api.BeginUpdate(ctx, rgName, name, params, nil)
 	if err != nil {

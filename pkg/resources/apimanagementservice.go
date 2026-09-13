@@ -350,7 +350,7 @@ func (s *ApiManagementService) Update(ctx context.Context, request *resource.Upd
 		Identity:   apiManagementServiceIdentity(props.IdentityType),
 		Properties: updateProps,
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

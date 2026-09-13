@@ -316,7 +316,7 @@ func (i *GalleryImage) Update(ctx context.Context, request *resource.UpdateReque
 		return nil, err
 	}
 	update := armcompute.GalleryImageUpdate{Properties: armProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

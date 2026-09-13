@@ -251,7 +251,7 @@ func (n *ServiceBusNamespace) Update(ctx context.Context, request *resource.Upda
 		params.SKU = sku
 	}
 
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

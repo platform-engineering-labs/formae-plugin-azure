@@ -207,6 +207,7 @@ func (s *FileShare) Update(ctx context.Context, request *resource.UpdateRequest)
 	}
 
 	params := fileShareParamsFromProperties(props)
+	params.FileShareProperties.Metadata = metadataForUpdate(props, request)
 	// enabledProtocols can only be set at create time; ARM rejects it in a PATCH.
 	params.FileShareProperties.EnabledProtocols = nil
 

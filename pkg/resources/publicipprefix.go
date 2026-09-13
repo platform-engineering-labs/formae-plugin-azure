@@ -332,6 +332,8 @@ func (p *PublicIPPrefix) Update(ctx context.Context, request *resource.UpdateReq
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := p.api.BeginCreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

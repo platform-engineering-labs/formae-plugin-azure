@@ -279,7 +279,7 @@ func (f *NetworkFirewallPolicy) Update(ctx context.Context, request *resource.Up
 	}
 
 	params := networkFirewallPolicyParams(props)
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

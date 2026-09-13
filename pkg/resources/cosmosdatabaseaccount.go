@@ -420,7 +420,7 @@ func (c *CosmosDatabaseAccount) Update(ctx context.Context, request *resource.Up
 	}
 
 	params := armcosmos.DatabaseAccountUpdateParameters{Properties: updateProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

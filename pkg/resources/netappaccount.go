@@ -221,7 +221,7 @@ func (a *NetAppAccount) Update(ctx context.Context, request *resource.UpdateRequ
 	}
 
 	params := armnetapp.AccountPatch{
-		Tags:       formaeTagsToAzureTags(request.DesiredProperties),
+		Tags:       formaeUpdateTagsToAzureTags(request),
 		Properties: &armnetapp.AccountProperties{NfsV4IDDomain: props.NfsV4IDDomain},
 	}
 

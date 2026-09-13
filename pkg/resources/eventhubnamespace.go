@@ -266,7 +266,7 @@ func (n *EventHubNamespace) Update(ctx context.Context, request *resource.Update
 	if sku := buildEventHubNamespaceSKU(props); sku != nil {
 		params.SKU = sku
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

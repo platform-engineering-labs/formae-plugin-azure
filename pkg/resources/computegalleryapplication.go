@@ -243,7 +243,7 @@ func (a *ComputeGalleryApplication) Update(ctx context.Context, request *resourc
 	}
 
 	params := armcompute.GalleryApplicationUpdate{Properties: computeGalleryApplicationProperties(props)}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

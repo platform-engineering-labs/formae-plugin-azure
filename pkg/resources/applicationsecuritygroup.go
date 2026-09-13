@@ -212,6 +212,8 @@ func (a *ApplicationSecurityGroup) Update(ctx context.Context, request *resource
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := a.api.BeginCreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

@@ -319,6 +319,8 @@ func (n *NatGateway) Update(ctx context.Context, request *resource.UpdateRequest
 		return nil, err
 	}
 
+	params.Tags = formaeUpdateTagsToAzureTags(request)
+
 	poller, err := n.api.BeginCreateOrUpdate(ctx, rgName, name, params, nil)
 	if err != nil {
 		return &resource.UpdateResult{

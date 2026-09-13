@@ -183,7 +183,7 @@ func (s *SSHPublicKey) Update(ctx context.Context, request *resource.UpdateReque
 	if key, ok := props["publicKey"].(string); ok && key != "" {
 		update.Properties.PublicKey = stringPtr(key)
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

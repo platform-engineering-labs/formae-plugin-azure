@@ -254,7 +254,7 @@ func (d *DNSForwardingRuleset) Update(ctx context.Context, request *resource.Upd
 	}
 
 	params := armdnsresolver.DNSForwardingRulesetPatch{
-		Tags: formaeTagsToAzureTags(request.DesiredProperties),
+		Tags: formaeUpdateTagsToAzureTags(request),
 	}
 
 	poller, err := d.api.BeginUpdate(ctx, rgName, name, params, nil)

@@ -278,6 +278,11 @@ func (n *ApiManagementNamedValue) Update(ctx context.Context, request *resource.
 		Tags:     stringPointers(props.Tags),
 		KeyVault: props.keyVaultCreateProperties(),
 	}
+	// An omitted slice preserves the existing filter tags. Send an explicit
+	// empty array only when the patch requests a change to this property.
+	if updateProps.Tags == nil && updateChangesProperty(request, "tags") {
+		updateProps.Tags = []*string{}
+	}
 	if props.DisplayName != "" {
 		updateProps.DisplayName = to.Ptr(props.DisplayName)
 	}

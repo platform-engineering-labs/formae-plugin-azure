@@ -372,8 +372,10 @@ func (v *RecoveryServicesVault) Update(ctx context.Context, request *resource.Up
 		return nil, fmt.Errorf("skuName is required")
 	}
 
+	params := recoveryServicesVaultParams(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	poller, err := v.api.BeginCreateOrUpdate(ctx, rgName, name,
-		recoveryServicesVaultParams(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

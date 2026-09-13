@@ -165,7 +165,7 @@ func monitorActionGroupParams(props monitorActionGroupProps) armmonitor.ActionGr
 // upsert backs both Create and Update. The narrow ARM PATCH (ActionGroupPatchBody)
 // can only toggle `enabled` and tags — it cannot change receivers — so every write
 // goes through CreateOrUpdate, which replaces the group wholesale.
-func (m *MonitorActionGroup) upsert(ctx context.Context, payload json.RawMessage, label string) (armmonitor.ActionGroupResource, string, string, error) {
+func (m *MonitorActionGroup) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armmonitor.ActionGroupResource, string, string, error) {
 	var props monitorActionGroupProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armmonitor.ActionGroupResource{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -187,6 +187,10 @@ func (m *MonitorActionGroup) upsert(ctx context.Context, payload json.RawMessage
 	params := monitorActionGroupParams(props)
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := m.api.CreateOrUpdate(ctx, props.ResourceGroupName, name, params, nil)
@@ -252,7 +256,7 @@ func (m *MonitorActionGroup) Read(ctx context.Context, request *resource.ReadReq
 }
 
 func (m *MonitorActionGroup) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	ag, rgName, name, err := m.upsert(ctx, request.DesiredProperties, "")
+	ag, rgName, name, err := m.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" || name == "" {
 			return nil, err

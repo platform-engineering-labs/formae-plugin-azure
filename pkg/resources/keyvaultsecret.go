@@ -206,7 +206,7 @@ func (s *KeyVaultSecret) Update(ctx context.Context, request *resource.UpdateReq
 		if props.ContentType != "" {
 			params.ContentType = stringPtr(props.ContentType)
 		}
-		if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+		if tags := formaeUpdateTagsToAzureTags(request); tags != nil {
 			params.Tags = tags
 		}
 		res, err := api.SetSecret(ctx, name, params, nil)
@@ -219,7 +219,7 @@ func (s *KeyVaultSecret) Update(ctx context.Context, request *resource.UpdateReq
 		if props.ContentType != "" {
 			params.ContentType = stringPtr(props.ContentType)
 		}
-		if tags := formaeTagsToAzureTags(request.DesiredProperties); tags != nil {
+		if tags := formaeUpdateTagsToAzureTags(request); tags != nil {
 			params.Tags = tags
 		}
 		res, err := api.UpdateSecretProperties(ctx, name, "", params, nil)

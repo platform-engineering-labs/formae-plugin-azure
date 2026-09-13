@@ -209,7 +209,7 @@ func (m *AutomationModule) Update(ctx context.Context, request *resource.UpdateR
 	if contentLinkURI, ok := opaqueString(props.ContentLinkURI); ok {
 		params.Properties.ContentLink = automationContentLink(contentLinkURI, props.ContentLinkVersion)
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		params.Tags = azureTags
 	}
 

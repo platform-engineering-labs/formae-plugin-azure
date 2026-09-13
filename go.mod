@@ -55,7 +55,7 @@ require (
 	// pkg/plugin/v0.4.1. Re-pin to the next official tag when one is cut, as
 	// the aws and gcp plugins do from the same commit.
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.7
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.8
 	// Provides oidcx/azure, the workload identity federation credential
 	// exchange. Re-pin when oox cuts a tag.
 	github.com/platform-engineering-labs/oox v0.1.1-0.20260831005205-99489fc5e7ca

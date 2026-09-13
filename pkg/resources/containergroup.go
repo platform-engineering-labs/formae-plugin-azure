@@ -424,7 +424,7 @@ func (c *ContainerGroup) Update(ctx context.Context, request *resource.UpdateReq
 	}
 
 	patch := armcontainerinstance.Resource{}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		patch.Tags = azureTags
 	}
 

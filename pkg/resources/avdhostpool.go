@@ -345,7 +345,7 @@ func (a *AvdHostPool) Update(ctx context.Context, request *resource.UpdateReques
 	}
 
 	patch := &armdesktopvirtualization.HostPoolPatch{Properties: patchProps}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		patch.Tags = azureTags
 	}
 

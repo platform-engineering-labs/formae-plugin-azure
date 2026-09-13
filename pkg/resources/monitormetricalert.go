@@ -264,7 +264,7 @@ func monitorMetricAlertParams(props monitorMetricAlertProps) armmonitor.MetricAl
 // upsert backs both Create and Update. The ARM PATCH (MetricAlertResourcePatch)
 // exists but takes the same full property bag, so every write goes through
 // CreateOrUpdate, which replaces the rule wholesale.
-func (m *MonitorMetricAlert) upsert(ctx context.Context, payload json.RawMessage, label string) (armmonitor.MetricAlertResource, string, string, error) {
+func (m *MonitorMetricAlert) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armmonitor.MetricAlertResource, string, string, error) {
 	var props monitorMetricAlertProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armmonitor.MetricAlertResource{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -292,6 +292,10 @@ func (m *MonitorMetricAlert) upsert(ctx context.Context, payload json.RawMessage
 	params := monitorMetricAlertParams(props)
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := m.api.CreateOrUpdate(ctx, props.ResourceGroupName, name, params, nil)
@@ -357,7 +361,7 @@ func (m *MonitorMetricAlert) Read(ctx context.Context, request *resource.ReadReq
 }
 
 func (m *MonitorMetricAlert) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	updated, rgName, _, err := m.upsert(ctx, request.DesiredProperties, "")
+	updated, rgName, _, err := m.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" {
 			return nil, err

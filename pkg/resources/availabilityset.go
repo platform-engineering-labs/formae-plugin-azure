@@ -229,7 +229,7 @@ func (a *AvailabilitySet) Update(ctx context.Context, request *resource.UpdateRe
 	if v, ok := props["proximityPlacementGroupId"].(string); ok && v != "" {
 		update.Properties.ProximityPlacementGroup = &armcompute.SubResource{ID: to.Ptr(v)}
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

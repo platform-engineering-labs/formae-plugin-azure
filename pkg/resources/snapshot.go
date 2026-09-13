@@ -276,7 +276,7 @@ func (s *Snapshot) Update(ctx context.Context, request *resource.UpdateRequest) 
 			update.SKU = &armcompute.SnapshotSKU{Name: to.Ptr(armcompute.SnapshotStorageAccountTypes(skuName))}
 		}
 	}
-	if azureTags := formaeTagsToAzureTags(request.DesiredProperties); azureTags != nil {
+	if azureTags := formaeUpdateTagsToAzureTags(request); azureTags != nil {
 		update.Tags = azureTags
 	}
 

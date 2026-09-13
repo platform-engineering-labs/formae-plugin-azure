@@ -339,8 +339,10 @@ func (c *LogAnalyticsCluster) Update(ctx context.Context, request *resource.Upda
 		return nil, err
 	}
 
+	params := logAnalyticsClusterPatch(props, request.DesiredProperties)
+	params.Tags = formaeUpdateTagsToAzureTags(request)
 	poller, err := c.api.BeginUpdate(ctx, rgName, name,
-		logAnalyticsClusterPatch(props, request.DesiredProperties), nil)
+		params, nil)
 	if err != nil {
 		return &resource.UpdateResult{
 			ProgressResult: &resource.ProgressResult{

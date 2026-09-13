@@ -172,7 +172,7 @@ func (c *WebCertificate) buildPropertiesFromResult(cert *armappservice.AppCertif
 
 // upsert backs both Create and Update: ARM's CreateOrUpdate replaces the
 // certificate body, and there is no separate create verb.
-func (c *WebCertificate) upsert(ctx context.Context, payload json.RawMessage, label string) (armappservice.AppCertificate, string, string, error) {
+func (c *WebCertificate) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armappservice.AppCertificate, string, string, error) {
 	var props map[string]any
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armappservice.AppCertificate{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -200,6 +200,10 @@ func (c *WebCertificate) upsert(ctx context.Context, payload json.RawMessage, la
 	}
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := c.api.CreateOrUpdate(ctx, rgName, certName, params, nil)
@@ -266,7 +270,7 @@ func (c *WebCertificate) Read(ctx context.Context, request *resource.ReadRequest
 }
 
 func (c *WebCertificate) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	cert, rgName, certName, err := c.upsert(ctx, request.DesiredProperties, "")
+	cert, rgName, certName, err := c.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" || certName == "" {
 			return nil, err

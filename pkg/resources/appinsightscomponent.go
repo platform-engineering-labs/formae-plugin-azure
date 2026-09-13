@@ -179,7 +179,7 @@ func appInsightsComponentParams(props appInsightsComponentProps) armapplicationi
 
 // upsert backs both Create and Update: ARM's CreateOrUpdate replaces the component
 // body, and UpdateTags only covers tags.
-func (a *AppInsightsComponent) upsert(ctx context.Context, payload json.RawMessage, label string) (armapplicationinsights.Component, string, string, error) {
+func (a *AppInsightsComponent) upsert(ctx context.Context, payload json.RawMessage, label string, updateTags ...map[string]*string) (armapplicationinsights.Component, string, string, error) {
 	var props appInsightsComponentProps
 	if err := json.Unmarshal(payload, &props); err != nil {
 		return armapplicationinsights.Component{}, "", "", fmt.Errorf("failed to parse resource properties: %w", err)
@@ -204,6 +204,10 @@ func (a *AppInsightsComponent) upsert(ctx context.Context, payload json.RawMessa
 	params := appInsightsComponentParams(props)
 	if azureTags := formaeTagsToAzureTags(payload); azureTags != nil {
 		params.Tags = azureTags
+	}
+
+	if len(updateTags) > 0 && updateTags[0] != nil {
+		params.Tags = updateTags[0]
 	}
 
 	result, err := a.api.CreateOrUpdate(ctx, props.ResourceGroupName, name, params, nil)
@@ -269,7 +273,7 @@ func (a *AppInsightsComponent) Read(ctx context.Context, request *resource.ReadR
 }
 
 func (a *AppInsightsComponent) Update(ctx context.Context, request *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	comp, rgName, name, err := a.upsert(ctx, request.DesiredProperties, "")
+	comp, rgName, name, err := a.upsert(ctx, request.DesiredProperties, "", formaeUpdateTagsToAzureTags(request))
 	if err != nil {
 		if rgName == "" || name == "" {
 			return nil, err

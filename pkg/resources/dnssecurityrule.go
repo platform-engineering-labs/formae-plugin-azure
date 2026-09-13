@@ -299,7 +299,7 @@ func (d *DNSSecurityRule) Update(ctx context.Context, request *resource.UpdateRe
 	}
 
 	params := armdnsresolver.DNSSecurityRulePatch{
-		Tags:       formaeTagsToAzureTags(request.DesiredProperties),
+		Tags:       formaeUpdateTagsToAzureTags(request),
 		Properties: patchProps,
 	}
 
