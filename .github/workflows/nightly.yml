@@ -39,6 +39,25 @@ jobs:
         with:
           go-version: "1.26"
 
+      # Pkl and the build are for the unit tests below, not the integration ones:
+      # pkg/registry/nested_fieldhint_test.go spawns a pkl evaluator and skips
+      # unless schema/pkl/VERSION exists, which `make build` generates.
+      - name: Set up Pkl
+        uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Build
+        run: make build
+
+      # Nightly has no `checks` job, so this is the only place the unit suite runs
+      # here. It used to ride along in every conformance matrix job via
+      # `go test ./...`, where it raced the harness over schema/pkl and reddened
+      # jobs whose conformance case had passed; see conformance-test-crud-run in
+      # the Makefile.
+      - name: Unit tests
+        run: make test-unit
+
       - name: Run integration tests
         run: make test-integration
 
