@@ -216,7 +216,7 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests against main (${{ matrix.resource }})
+      - name: Run CRUD conformance against main (${{ matrix.resource }})
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ matrix.resource }}
@@ -229,7 +229,31 @@ jobs:
           FORMAE_TEST_DISCOVERY_TIMEOUT: "25"
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           FORMAE_TEST_PROVIDER_DEFAULT_OBSERVATIONS: /tmp/provider-default-observations.json
-        run: bash scripts/ci/run-conformance-phase.sh "${{ matrix.resource }}" all
+          TIMEOUT: "75"
+        run: bash scripts/ci/run-conformance-phase.sh "${{ matrix.resource }}" crud
+
+      - name: Re-authenticate for discovery
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run discovery conformance against main (${{ matrix.resource }})
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          FORMAE_TEST_RUN_ID: nightly-main-${{ github.run_id }}-${{ matrix.resource }}
+          FORMAE_TEST_FILTER: ${{ matrix.resource }}
+          # Wide per-command poll so slow resources (App Gateway, Front Door cdn-*)
+          # don't time out; fast resources return well before these ceilings.
+          FORMAE_TEST_TIMEOUT: "25"
+          FORMAE_TEST_OOB_TIMEOUT: "25"
+          FORMAE_TEST_OOB_DELETE_TIMEOUT: "25"
+          FORMAE_TEST_DISCOVERY_TIMEOUT: "25"
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          FORMAE_TEST_PROVIDER_DEFAULT_OBSERVATIONS: /tmp/provider-default-observations.json
+          TIMEOUT: "75"
+        run: bash scripts/ci/run-conformance-phase.sh "${{ matrix.resource }}" discovery
 
       # The omit-and-observe records for hasProviderDefault fields. Uploaded even
       # when the case fails: a field the provider populates that the schema does
