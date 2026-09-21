@@ -14,6 +14,9 @@ Requires formae >= 0.89.0.
 
 ### Fixed
 
+- Discovery returns an empty listing for API Management users, groups, and
+  gateways when Azure reports that the service's pricing tier does not support
+  the collection, before any page has been listed successfully.
 - Discovery continues when a resource group disappears after its child-resource
   lists were queued. Azure's specific missing-resource-group response is treated
   as an empty listing; unrelated failures retain their existing behavior.

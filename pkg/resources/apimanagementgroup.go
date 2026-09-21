@@ -288,12 +288,17 @@ func (g *ApiManagementGroup) List(ctx context.Context, request *resource.ListReq
 	}
 
 	var nativeIDs []string
+	successfulPages := 0
 	pager := g.api.NewListByServicePager(rgName, serviceName, nil)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if successfulPages == 0 && skipUnsupportedApiManagementTier(ctx, err, ResourceTypeApiManagementGroup, rgName, serviceName) {
+				return &resource.ListResult{}, nil
+			}
 			return nil, fmt.Errorf("failed to list api management groups: %w", err)
 		}
+		successfulPages++
 		for _, group := range page.Value {
 			if group.ID != nil {
 				nativeIDs = append(nativeIDs, *group.ID)

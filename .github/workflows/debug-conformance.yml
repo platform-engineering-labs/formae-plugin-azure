@@ -69,6 +69,7 @@ jobs:
     needs: [parse-input]
     if: inputs.pre_cleanup
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       id-token: write
       contents: read
@@ -92,6 +93,7 @@ jobs:
     # if-clause this job would skip too, because a needed job did not succeed.
     if: ${{ !cancelled() && needs.parse-input.result == 'success' && (needs.pre-cleanup.result == 'success' || needs.pre-cleanup.result == 'skipped') }}
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -158,6 +160,7 @@ jobs:
   conformance-cleanup:
     needs: [conformance-tests]
     runs-on: ubuntu-latest
+    environment: production
     if: always() && needs.conformance-tests.result != 'skipped'
     permissions:
       id-token: write

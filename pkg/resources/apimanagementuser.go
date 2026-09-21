@@ -328,12 +328,17 @@ func (u *ApiManagementUser) List(ctx context.Context, request *resource.ListRequ
 	}
 
 	var nativeIDs []string
+	successfulPages := 0
 	pager := u.api.NewListByServicePager(rgName, serviceName, nil)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if successfulPages == 0 && skipUnsupportedApiManagementTier(ctx, err, ResourceTypeApiManagementUser, rgName, serviceName) {
+				return &resource.ListResult{}, nil
+			}
 			return nil, fmt.Errorf("failed to list api management users: %w", err)
 		}
+		successfulPages++
 		for _, user := range page.Value {
 			if user.ID != nil {
 				nativeIDs = append(nativeIDs, *user.ID)
