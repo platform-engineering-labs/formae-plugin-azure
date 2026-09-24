@@ -176,24 +176,34 @@ func (p *Plugin) Read(ctx context.Context, request *resource.ReadRequest) (*reso
 
 	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
 	result, err := provisioner.Read(ctx, request)
+	logReadOutcome(plugin.LoggerFromContext(ctx), request, result, err)
+	return result, err
+}
+
+func logReadOutcome(log plugin.Logger, request *resource.ReadRequest, result *resource.ReadResult, err error) {
+	errorCode := resource.OperationErrorCode("")
+	if result != nil {
+		errorCode = result.ErrorCode
+	}
+
+	fields := []any{
+		"resourceType", request.ResourceType,
+		"nativeID", request.NativeID,
+		"errorCode", errorCode,
+		"error", err,
+	}
+	if err == nil && errorCode == resource.OperationErrorCodeNotFound {
+		log.Debug("Read found resource absent", fields...)
+		return
+	}
 	// Unlike List, a read we are not authorized for stays a failure: the resource
 	// exists and formae is tracking it, so silently reporting nothing would look
 	// like drift. Reads carry that failure in ErrorCode and ReadResult has no
 	// message field, so log the reason here or it is lost — the agent would record
 	// only "finished_with_error".
-	if err != nil || (result != nil && result.ErrorCode != "") {
-		errorCode := resource.OperationErrorCode("")
-		if result != nil {
-			errorCode = result.ErrorCode
-		}
-		plugin.LoggerFromContext(ctx).Error("Read failed",
-			"resourceType", request.ResourceType,
-			"nativeID", request.NativeID,
-			"errorCode", errorCode,
-			"error", err,
-		)
+	if err != nil || errorCode != "" {
+		log.Error("Read failed", fields...)
 	}
-	return result, err
 }
 
 // Update modifies an existing Azure resource.
@@ -280,7 +290,7 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 	provisioner := registry.Get(request.ResourceType, azureClient, targetConfig)
 	result, err := provisioner.List(ctx, request)
 	if err != nil {
-		return listOutcome(log, request.ResourceType, result, err)
+		return listOutcome(log, request.ResourceType, request.AdditionalProperties["resourceGroupName"], result, err)
 	}
 
 	log.Debug("List completed",
@@ -292,6 +302,11 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 
 // listOutcome decides what discovery sees when a List fails.
 //
+// A resource group can disappear after discovery queues its child lists. Azure
+// identifies that race with ResourceGroupNotFound, so a scoped request returns
+// an empty listing and continues normal child discovery. Listing does not delete
+// inventory; synchronization retires the stale resources through their reads.
+//
 // A target's credential rarely covers every resource type the plugin knows —
 // tenant-scoped types in particular are unreadable to a subscription-scoped
 // service principal. There is nothing to discover where we cannot look, so an
@@ -300,7 +315,14 @@ func (p *Plugin) List(ctx context.Context, request *resource.ListRequest) (*reso
 //
 // This is the opposite of Read, where the resource is known to exist and a
 // permission failure has to stay a failure.
-func listOutcome(log plugin.Logger, resourceType string, result *resource.ListResult, err error) (*resource.ListResult, error) {
+func listOutcome(log plugin.Logger, resourceType, resourceGroupName string, result *resource.ListResult, err error) (*resource.ListResult, error) {
+	if resourceGroupName != "" && prov.IsResourceGroupNotFound(err) {
+		log.Debug("List skipped: resource group no longer exists",
+			"resourceType", resourceType,
+			"resourceGroupName", resourceGroupName,
+		)
+		return &resource.ListResult{}, nil
+	}
 	if code, ok := prov.AzureErrorCode(err); ok && code == resource.OperationErrorCodeAccessDenied {
 		log.Warn("List skipped: the credential is not authorized for this resource type",
 			"resourceType", resourceType,

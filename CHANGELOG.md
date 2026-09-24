@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Install with `sudo formae plugin install azure` on the host that runs the
 formae agent.
 
+## [0.1.15]
+
+Requires formae >= 0.89.0.
+
+### Fixed
+
+- Discovery returns an empty listing for API Management users, groups, and
+  gateways when Azure reports that the service's pricing tier does not support
+  the collection, before any page has been listed successfully.
+- Discovery continues when a resource group disappears after its child-resource
+  lists were queued. Azure's specific missing-resource-group response is treated
+  as an empty listing; unrelated failures retain their existing behavior.
+- Reads of resources that have been deleted no longer emit redundant error logs
+  during background synchronization. The agent still receives the NotFound result
+  and handles deletion or a failed user operation as before.
+- Plugin operations no longer time out while starting their provider workers.
+
 ## [0.1.14]
 
 ### Fixed

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/platform-engineering-labs/formae/pkg/plugin"
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,15 +41,18 @@ func TestSetOidcTokenSource_PopulatesDeps(t *testing.T) {
 	assert.NotNil(t, p.oidc.Source)
 }
 
-// recordingLogger captures what the plugin logged, so a test can assert that an
-// authorization failure is reported rather than silently swallowed.
+// recordingLogger captures log levels so tests can verify the visibility of
+// expected discovery races without depending on log formatting.
 type recordingLogger struct {
+	debugs []string
 	warns  []string
 	errors []string
 }
 
-func (l *recordingLogger) Debug(string, ...any) {}
-func (l *recordingLogger) Info(string, ...any)  {}
+func (l *recordingLogger) Debug(msg string, _ ...any) {
+	l.debugs = append(l.debugs, msg)
+}
+func (l *recordingLogger) Info(string, ...any) {}
 func (l *recordingLogger) Warn(msg string, _ ...any) {
 	l.warns = append(l.warns, msg)
 }
@@ -60,7 +64,7 @@ func (l *recordingLogger) With(...any) plugin.Logger { return l }
 func TestListReportsNothingWhenTheCredentialIsNotAuthorized(t *testing.T) {
 	log := &recordingLogger{}
 
-	got, err := listOutcome(log, "AZURE::Management::ManagementGroup", nil,
+	got, err := listOutcome(log, "AZURE::Management::ManagementGroup", "", nil,
 		fmt.Errorf("failed to list management groups: %w",
 			&azcore.ResponseError{StatusCode: 403, ErrorCode: "AuthorizationFailed"}))
 
@@ -71,13 +75,145 @@ func TestListReportsNothingWhenTheCredentialIsNotAuthorized(t *testing.T) {
 	assert.Empty(t, log.errors)
 }
 
-func TestListStillFailsOnEveryOtherError(t *testing.T) {
+func TestListReportsMissingScopedResourceGroupAsEmpty(t *testing.T) {
 	log := &recordingLogger{}
-	boom := &azcore.ResponseError{StatusCode: 500}
+	missingGroup := &azcore.ResponseError{StatusCode: 404, ErrorCode: "ResourceGroupNotFound"}
 
-	_, err := listOutcome(log, "AZURE::Management::ManagementGroup", nil, boom)
+	got, err := listOutcome(log, "AZURE::Storage::StorageAccount", "deleted-rg", nil,
+		fmt.Errorf("failed to list storage accounts: %w", missingGroup))
 
-	require.ErrorIs(t, err, boom)
-	assert.Len(t, log.errors, 1)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Empty(t, got.NativeIDs)
+	assert.Len(t, log.debugs, 1)
+	assert.Empty(t, log.errors)
 	assert.Empty(t, log.warns)
+}
+
+func TestListStillFailsUnlessScopedResourceGroupIsPreciselyMissing(t *testing.T) {
+	tests := []struct {
+		name              string
+		resourceGroupName string
+		providerError     error
+	}{
+		{
+			name:              "unrelated 404",
+			resourceGroupName: "existing-rg",
+			providerError:     &azcore.ResponseError{StatusCode: 404, ErrorCode: "ResourceNotFound"},
+		},
+		{
+			name:              "missing scope",
+			resourceGroupName: "",
+			providerError:     &azcore.ResponseError{StatusCode: 404, ErrorCode: "ResourceGroupNotFound"},
+		},
+		{
+			name:              "wrong status with matching provider code",
+			resourceGroupName: "existing-rg",
+			providerError:     &azcore.ResponseError{StatusCode: 500, ErrorCode: "ResourceGroupNotFound"},
+		},
+		{
+			name:              "invalid credentials",
+			resourceGroupName: "existing-rg",
+			providerError:     &azcore.ResponseError{StatusCode: 401, ErrorCode: "InvalidAuthenticationToken"},
+		},
+		{
+			name:              "throttled",
+			resourceGroupName: "existing-rg",
+			providerError:     &azcore.ResponseError{StatusCode: 429, ErrorCode: "TooManyRequests"},
+		},
+		{
+			name:              "service error",
+			resourceGroupName: "existing-rg",
+			providerError:     &azcore.ResponseError{StatusCode: 500, ErrorCode: "InternalServerError"},
+		},
+		{
+			name:              "transport error",
+			resourceGroupName: "existing-rg",
+			providerError:     fmt.Errorf("connection reset"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			log := &recordingLogger{}
+			wrapped := fmt.Errorf("failed to list resources: %w", tt.providerError)
+
+			got, err := listOutcome(log, "AZURE::Test::Resource", tt.resourceGroupName, nil, wrapped)
+
+			assert.Nil(t, got)
+			require.ErrorIs(t, err, tt.providerError)
+			assert.Empty(t, log.debugs)
+			assert.Empty(t, log.warns)
+			assert.Len(t, log.errors, 1)
+		})
+	}
+}
+
+func TestLogReadOutcomeReportsNotFoundAsDebugWithoutChangingResult(t *testing.T) {
+	log := &recordingLogger{}
+	result := &resource.ReadResult{ErrorCode: resource.OperationErrorCodeNotFound}
+
+	logReadOutcome(log, &resource.ReadRequest{
+		ResourceType: "AZURE::Resources::ResourceGroup",
+		NativeID:     "/subscriptions/example/resourceGroups/deleted-rg",
+	}, result, nil)
+
+	assert.Equal(t, resource.OperationErrorCodeNotFound, result.ErrorCode)
+	assert.Len(t, log.debugs, 1)
+	assert.Empty(t, log.warns)
+	assert.Empty(t, log.errors)
+}
+
+func TestLogReadOutcomeKeepsFailuresAtError(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *resource.ReadResult
+		err    error
+	}{
+		{
+			name:   "access denied result",
+			result: &resource.ReadResult{ErrorCode: resource.OperationErrorCodeAccessDenied},
+		},
+		{
+			name:   "invalid credentials result",
+			result: &resource.ReadResult{ErrorCode: resource.OperationErrorCodeInvalidCredentials},
+		},
+		{
+			name: "transport error",
+			err:  fmt.Errorf("connection reset"),
+		},
+		{
+			name:   "not found result with error",
+			result: &resource.ReadResult{ErrorCode: resource.OperationErrorCodeNotFound},
+			err:    fmt.Errorf("read interrupted"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			log := &recordingLogger{}
+
+			logReadOutcome(log, &resource.ReadRequest{
+				ResourceType: "AZURE::Test::Resource",
+				NativeID:     "/subscriptions/example/resources/example",
+			}, tt.result, tt.err)
+
+			assert.Empty(t, log.debugs)
+			assert.Empty(t, log.warns)
+			assert.Len(t, log.errors, 1)
+		})
+	}
+}
+
+func TestLogReadOutcomeLeavesSuccessfulReadQuiet(t *testing.T) {
+	log := &recordingLogger{}
+
+	logReadOutcome(log, &resource.ReadRequest{
+		ResourceType: "AZURE::Test::Resource",
+		NativeID:     "/subscriptions/example/resources/example",
+	}, &resource.ReadResult{}, nil)
+
+	assert.Empty(t, log.debugs)
+	assert.Empty(t, log.warns)
+	assert.Empty(t, log.errors)
 }

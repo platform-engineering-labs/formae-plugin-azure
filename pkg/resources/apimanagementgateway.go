@@ -309,12 +309,17 @@ func (g *ApiManagementGateway) List(ctx context.Context, request *resource.ListR
 	}
 
 	var nativeIDs []string
+	successfulPages := 0
 	pager := g.api.NewListByServicePager(rgName, serviceName, nil)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if successfulPages == 0 && skipUnsupportedApiManagementTier(ctx, err, ResourceTypeApiManagementGateway, rgName, serviceName) {
+				return &resource.ListResult{}, nil
+			}
 			return nil, fmt.Errorf("failed to list api management gateways: %w", err)
 		}
+		successfulPages++
 		for _, gateway := range page.Value {
 			if gateway.ID != nil {
 				nativeIDs = append(nativeIDs, *gateway.ID)
