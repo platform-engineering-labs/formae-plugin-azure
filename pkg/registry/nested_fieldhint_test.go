@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+//go:build unit
+
 // Schema extraction builds a resource's hint map from formae.fq.hints(clazz), which
 // walks the resource class's own properties plus, recursively, the properties of any
 // nested class that extends formae.SubResource. A nested class that does not extend
@@ -12,9 +14,17 @@
 // These tests confirm nested hints reach Schema.Hints for classes that extend
 // formae.SubResource, and that every class carrying a @azure.FieldHint does.
 //
+// The `unit` tag is load-bearing, not decoration. This is the only test in the
+// repo that spawns its own Pkl evaluator, and untagged it also compiled into the
+// conformance run, where it evaluated schema/pkl concurrently with the harness
+// rewriting PklProject and re-resolving PklProject.deps.json in that same
+// directory. Losing that race failed the test - and so the whole nightly job -
+// with a missing deps.json or a corrupt msgpack frame, in jobs whose conformance
+// case had passed.
+//
 // Run:
 //
-//	go test ./pkg/registry/ -run TestNestedFieldHint -v
+//	go test -tags=unit ./pkg/registry/ -run TestNestedFieldHint -v
 //
 // No cloud credentials and no Azure resources are required.
 package registry

@@ -234,10 +234,25 @@ conformance-test-discovery: install setup-credentials
 ## conformance-test-crud-run: Run only CRUD lifecycle tests (no cleanup, no install)
 ## Used by CI matrix jobs and the wrapper targets above where cleanup is managed
 ## separately. Honors TEST then falls back to FORMAE_TEST_FILTER from the environment.
+##
+## Scope is `.`, not `./...`. TestPluginConformance lives in the root package, and
+## the harness rewrites schema/pkl/PklProject and testdata/PklProject to the formae
+## binary's version, deleting PklProject.deps.json and re-resolving it each time.
+## `go test` runs packages in parallel, so with `./...` the untagged
+## pkg/registry/nested_fieldhint_test.go ran its own pkl evaluator against that same
+## project directory concurrently and lost the race:
+##
+##   ExtractSchema: failed to stage "azure" ...: lstat .../PklProject.deps.json: no such file
+##   ExtractSchema: failed to create evaluator: msgpack: invalid code=32 decoding string/bytes length
+##
+## Both reddened nightly jobs whose conformance case had passed. `./...` also reran
+## the whole unit suite in all ~190 matrix jobs, twice each. Unit tests belong to
+## test-unit (ci.yml checks, nightly test-integration), which build first so
+## schema/pkl/VERSION exists and the registry tests do not skip.
 conformance-test-crud-run:
 	@echo "Running CRUD conformance tests..."
 	@FORMAE_TEST_FILTER="$(if $(TEST),$(TEST),$(FORMAE_TEST_FILTER))" FORMAE_TEST_TYPE=crud FORMAE_TEST_PARALLEL="$(PARALLEL)" \
-		$(GO) test -tags=conformance -v -timeout $(or $(TIMEOUT),60)m ./...
+		$(GO) test -tags=conformance -v -timeout $(or $(TIMEOUT),60)m .
 
 ## conformance-test-discovery-run: Run only discovery tests (no cleanup, no install)
 ## Used by CI matrix jobs and the wrapper targets above where cleanup is managed
@@ -246,4 +261,4 @@ conformance-test-crud-run:
 conformance-test-discovery-run:
 	@echo "Running discovery conformance tests..."
 	@FORMAE_TEST_FILTER="$(if $(TEST),$(TEST),$(if $(FORMAE_TEST_FILTER),$(FORMAE_TEST_FILTER),$(DISCOVERY_DEFAULT_FILTER)))" FORMAE_TEST_TYPE=discovery FORMAE_TEST_PARALLEL="$(PARALLEL)" \
-		$(GO) test -tags=conformance -v -timeout $(or $(TIMEOUT),60)m ./...
+		$(GO) test -tags=conformance -v -timeout $(or $(TIMEOUT),60)m .
