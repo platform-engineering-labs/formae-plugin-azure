@@ -14,16 +14,19 @@ import "@azure/automation/automationaccount.pkl"
 import "@azure/automation/automationmodule.pkl"
 import "vars.pkl"
 
+// southcentralus, not westeurope: the conformance subscription is refused there
+// ("The selected region is currently not accepting new customers"). Each
+// automation fixture keeps a region of its own.
 local rg = new resourcegroup.ResourceGroup {
   label = "aamod-test-rg"
   name = "formae-plugin-sdk-test-aamod-rg-\(vars.testRunID)"
-  location = "westeurope"
+  location = "southcentralus"
 }
 
 local acct = new automationaccount.AutomationAccount {
   label = "aamod-test-account"
   name = "fpsdt-aamod-\(vars.testRunID)"
-  location = "westeurope"
+  location = "southcentralus"
   resourceGroupName = rg.res.name
   skuName = "Basic"
 }

@@ -15,15 +15,17 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "logicasm-test-rg"
   name = "formae-plugin-sdk-test-logicasm-rg-\(vars.testRunID)"
-  location = "westeurope"
+  location = "southcentralus"
 }
 
-// westeurope: one Free integration account per region per subscription, and the
-// other fixtures in this group each own a different one.
+// southcentralus: one Free integration account per region per subscription, and the
+// other fixtures in this group each own a different one. Not westeurope: the
+// conformance subscription is refused there ("The selected region is currently
+// not accepting new customers").
 local iaccount = new logicaccount.IntegrationAccount {
   label = "logicasm-test-account"
   name = "fpsdt-logicasm-\(vars.testRunID)"
-  location = "westeurope"
+  location = "southcentralus"
   resourceGroupName = rg.res.name
   skuName = "Basic"
 }
