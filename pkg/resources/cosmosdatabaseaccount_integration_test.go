@@ -35,11 +35,11 @@ func cosmosDesired(level string, withStaleness bool) []byte {
 	}
 	out, _ := json.Marshal(map[string]any{
 		"name":              "cosmos-1",
-		"location":          "eastus",
+		"location":          "eastus2",
 		"resourceGroupName": "rg-1",
 		"kind":              "GlobalDocumentDB",
 		"geoLocations": []map[string]any{
-			{"locationName": "eastus", "failoverPriority": 0, "isZoneRedundant": false},
+			{"locationName": "eastus2", "failoverPriority": 0, "isZoneRedundant": false},
 		},
 		"consistencyPolicy":   consistency,
 		"publicNetworkAccess": "Enabled",
@@ -51,7 +51,7 @@ func TestCosmosDatabaseAccount_CRUD(t *testing.T) {
 	acctResult := armcosmos.DatabaseAccountGetResults{
 		ID:       to.Ptr(testCosmosAccountNativeID),
 		Name:     to.Ptr("cosmos-1"),
-		Location: to.Ptr("East US"),
+		Location: to.Ptr("East US 2"),
 		Kind:     to.Ptr(armcosmos.DatabaseAccountKindGlobalDocumentDB),
 		Properties: &armcosmos.DatabaseAccountGetProperties{
 			DocumentEndpoint:    to.Ptr("https://cosmos-1.documents.azure.com:443/"),
@@ -60,7 +60,7 @@ func TestCosmosDatabaseAccount_CRUD(t *testing.T) {
 				DefaultConsistencyLevel: to.Ptr(armcosmos.DefaultConsistencyLevelSession),
 			},
 			Locations: []*armcosmos.Location{
-				{LocationName: to.Ptr("East US"), FailoverPriority: to.Ptr(int32(0)), IsZoneRedundant: to.Ptr(false)},
+				{LocationName: to.Ptr("East US 2"), FailoverPriority: to.Ptr(int32(0)), IsZoneRedundant: to.Ptr(false)},
 			},
 		},
 	}
@@ -133,8 +133,8 @@ func TestCosmosDatabaseAccount_CRUD(t *testing.T) {
 	// that is cheaper to catch here.
 	t.Run("Create_rejects_zero_write_regions", func(t *testing.T) {
 		props, _ := json.Marshal(map[string]any{
-			"name": "cosmos-1", "location": "eastus", "resourceGroupName": "rg-1",
-			"geoLocations": []map[string]any{{"locationName": "eastus", "failoverPriority": 1}},
+			"name": "cosmos-1", "location": "eastus2", "resourceGroupName": "rg-1",
+			"geoLocations": []map[string]any{{"locationName": "eastus2", "failoverPriority": 1}},
 		})
 		_, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.ErrorContains(t, err, "exactly one geoLocation must have failoverPriority 0")
@@ -142,9 +142,9 @@ func TestCosmosDatabaseAccount_CRUD(t *testing.T) {
 
 	t.Run("Create_rejects_two_write_regions", func(t *testing.T) {
 		props, _ := json.Marshal(map[string]any{
-			"name": "cosmos-1", "location": "eastus", "resourceGroupName": "rg-1",
+			"name": "cosmos-1", "location": "eastus2", "resourceGroupName": "rg-1",
 			"geoLocations": []map[string]any{
-				{"locationName": "eastus", "failoverPriority": 0},
+				{"locationName": "eastus2", "failoverPriority": 0},
 				{"locationName": "westus", "failoverPriority": 0},
 			},
 		})
@@ -154,7 +154,7 @@ func TestCosmosDatabaseAccount_CRUD(t *testing.T) {
 
 	t.Run("Create_requires_a_geoLocation", func(t *testing.T) {
 		props, _ := json.Marshal(map[string]any{
-			"name": "cosmos-1", "location": "eastus", "resourceGroupName": "rg-1",
+			"name": "cosmos-1", "location": "eastus2", "resourceGroupName": "rg-1",
 		})
 		_, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.ErrorContains(t, err, "at least one geoLocation")
@@ -184,12 +184,12 @@ func TestCosmosDatabaseAccount_CRUD(t *testing.T) {
 		var props map[string]any
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "cosmos-1", props["name"])
-		require.Equal(t, "eastus", props["location"])
+		require.Equal(t, "eastus2", props["location"])
 		require.Equal(t, "GlobalDocumentDB", props["kind"])
-		// ARM returns "East US"; the read must normalise to match desired state.
+		// ARM returns "East US 2"; the read must normalise to match desired state.
 		geos := props["geoLocations"].([]any)
 		require.Len(t, geos, 1)
-		require.Equal(t, "eastus", geos[0].(map[string]any)["locationName"])
+		require.Equal(t, "eastus2", geos[0].(map[string]any)["locationName"])
 	})
 
 	// Omitting locations on update asks ARM to drop every replica region.

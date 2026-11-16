@@ -17,7 +17,7 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "cosmos-casks-test-rg"
   name = "formae-plugin-sdk-test-ccasks-rg-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
 }
 
 // Cassandra API: selected by the EnableCassandra capability, not by `kind`.
@@ -25,7 +25,7 @@ local rg = new resourcegroup.ResourceGroup {
 local account = new cosmos.DatabaseAccount {
   label = "cosmos-casks-test-account"
   name = "fpsdt-ccasks-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   kind = "GlobalDocumentDB"
   capabilities = new Listing {
@@ -33,7 +33,7 @@ local account = new cosmos.DatabaseAccount {
   }
   geoLocations = new Listing {
     new cosmos.GeoLocation {
-      locationName = "eastus"
+      locationName = "eastus2"
       failoverPriority = 0
       isZoneRedundant = false
     }
