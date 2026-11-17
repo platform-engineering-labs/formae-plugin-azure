@@ -24,7 +24,7 @@ func TestSqlDatabase_CRUD(t *testing.T) {
 	dbResult := armsql.Database{
 		ID:       to.Ptr(testSQLDatabaseNativeID),
 		Name:     to.Ptr("db-1"),
-		Location: to.Ptr("West US 2"),
+		Location: to.Ptr("East US 2"),
 		SKU: &armsql.SKU{
 			Name:     to.Ptr("S0"),
 			Tier:     to.Ptr("Standard"),
@@ -84,7 +84,7 @@ func TestSqlDatabase_CRUD(t *testing.T) {
 			"resourceGroupName": "rg-1",
 			"serverName":        "sql-1",
 			"name":              "db-1",
-			"location":          "westus2",
+			"location":          "eastus2",
 			"collation":         "SQL_Latin1_General_CP1_CI_AS",
 			"maxSizeBytes":      268435456000,
 			"sku": map[string]any{
@@ -108,7 +108,7 @@ func TestSqlDatabase_CRUD(t *testing.T) {
 		require.Equal(t, "db-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
 		require.Equal(t, "sql-1", props["serverName"])
-		require.Equal(t, "westus2", props["location"])
+		require.Equal(t, "eastus2", props["location"])
 		sku, ok := props["sku"].(map[string]any)
 		require.True(t, ok)
 		require.Equal(t, "S0", sku["name"])
@@ -139,7 +139,7 @@ func TestSqlDatabase_CRUD(t *testing.T) {
 			"resourceGroupName": "rg-1",
 			"serverName":        "sql-1",
 			"name":              "db-1",
-			"location":          "westus2",
+			"location":          "eastus2",
 		})
 		got, err := prov.Create(context.Background(), &resource.CreateRequest{Label: "db-1", Properties: props})
 		require.NoError(t, err)

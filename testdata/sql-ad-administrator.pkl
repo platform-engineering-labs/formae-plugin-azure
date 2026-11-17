@@ -17,13 +17,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "sql-ad-admin-test-rg"
   name = "formae-plugin-sdk-test-sql-ad-admin-rg-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
 }
 
 local sqlServer = new server.Server {
   label = "plugin-sdk-test-sql-ad-admin-server"
   name = "fpsdt-sqladmin-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   administratorLogin = "sqladmin"
   administratorLoginPassword = "T3stP@ssw0rd!"

@@ -17,13 +17,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "sql-elastic-pool-test-rg"
   name = "formae-plugin-sdk-test-sql-pool-rg-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
 }
 
 local srv = new server.Server {
   label = "plugin-sdk-test-sql-pool-server"
   name = "fpsdt-sqlpool-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   administratorLogin = "sqladmin"
   administratorLoginPassword = "T3stP@ssw0rd!"
@@ -43,7 +43,7 @@ forma {
   new elasticpool.ElasticPool {
     label = "plugin-sdk-test-sql-elastic-pool"
     name = "fpsdt-pool-\(vars.testRunID)"
-    location = "westus2"
+    location = "eastus2"
     resourceGroupName = rg.res.name
     serverName = srv.res.name
     // StandardPool with 50 pool eDTUs; maxCapacity per database may not exceed
