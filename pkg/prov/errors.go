@@ -79,3 +79,12 @@ func IsDeleteSuccessError(err error) bool {
 	code, ok := AzureErrorCode(err)
 	return ok && code == resource.OperationErrorCodeNotFound
 }
+
+// IsResourceGroupNotFound reports whether Azure says the containing resource
+// group disappeared while an operation was in flight.
+func IsResourceGroupNotFound(err error) bool {
+	var respErr *azcore.ResponseError
+	return errors.As(err, &respErr) &&
+		respErr.StatusCode == 404 &&
+		respErr.ErrorCode == "ResourceGroupNotFound"
+}

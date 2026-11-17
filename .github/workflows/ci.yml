@@ -3,6 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
+    # A push to main runs the whole conformance matrix (~195 jobs, ~8.7h) and
+    # holds the azure-conformance-tests group the whole time, so a README-only
+    # commit queued behind it and got CI and Reap runs cancelling each other.
+    # Docs-only pushes cannot change plugin behaviour; skip them. A push that
+    # mixes docs with anything else still runs in full. pull_request is left
+    # alone: a docs-only PR already resolves to zero conformance resources, and
+    # its cheap checks (REUSE, build, lint) still apply.
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'LICENSES/**'
   pull_request:
     branches: [main]
   workflow_dispatch:

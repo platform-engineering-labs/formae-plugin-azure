@@ -19,13 +19,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "sql-virtual-network-rule-test-rg"
   name = "formae-plugin-sdk-test-sqlvnr-rg-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
 }
 
 local srv = new server.Server {
   label = "sql-virtual-network-rule-test-server"
   name = "fpsdt-sqlvnr-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   administratorLogin = "sqladmin"
   administratorLoginPassword = "T3stP@ssw0rd!"
@@ -36,7 +36,7 @@ local srv = new server.Server {
 local vnet = new virtualnetwork.VirtualNetwork {
   label = "sql-vnet-rule-test-vnet"
   name = "formae-plugin-sdk-test-sqlvnet-\(vars.testRunID)"
-  location = "westus2"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   addressSpace = new virtualnetwork.AddressSpace {
     addressPrefixes = new Listing { "10.30.0.0/16" }

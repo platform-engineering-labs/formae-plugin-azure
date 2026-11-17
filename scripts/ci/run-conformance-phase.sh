@@ -54,9 +54,18 @@ case "$RESOURCE" in
     # OOB-delete) measures ~36 min clean, so cdn-* needs a wide margin.
     set_timeouts 25 75
     ;;
-  flux-configuration|extension|maintenance-configuration|trusted-access-role-binding|grafana|grafana-managed-private-endpoint)
-    # An AKS cluster or a managed Grafana workspace takes ~5-10 min before the
-    # resource under test can even be created.
+  grafana|grafana-managed-private-endpoint)
+    # A managed Grafana workspace takes ~5-10 min to provision and as long to
+    # delete, and the CRUD lifecycle does several of each. At 20/50 grafana hit
+    #
+    #   panic: test timed out after 50m0s
+    #
+    # so these get the same budget as cdn-*.
+    set_timeouts 25 75
+    ;;
+  flux-configuration|extension|maintenance-configuration|trusted-access-role-binding)
+    # An AKS cluster takes ~5-10 min before the resource under test can even
+    # be created.
     #
     # `extension` was missing from this list even though it stands up the same
     # AKS cluster as its three siblings, so it inherited the harness default of
@@ -72,6 +81,13 @@ case "$RESOURCE" in
     set_timeouts 30 90
     ;;
   virtual-machine-extension)
+    set_timeouts 15 40
+    ;;
+  search-service)
+    # A search service create and delete each take several minutes, so the
+    # 5 min harness default failed with
+    #
+    #   [OOB Del] ... timeout waiting for command
     set_timeouts 15 40
     ;;
   sql-*)

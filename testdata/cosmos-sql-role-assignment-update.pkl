@@ -18,18 +18,18 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "cosmos-sqlra-test-rg"
   name = "formae-plugin-sdk-test-csqlra-rg-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
 }
 
 local account = new cosmos.DatabaseAccount {
   label = "cosmos-sqlra-test-account"
   name = "fpsdt-csqlra-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
   resourceGroupName = rg.res.name
   kind = "GlobalDocumentDB"
   geoLocations = new Listing {
     new cosmos.GeoLocation {
-      locationName = "eastus"
+      locationName = "eastus2"
       failoverPriority = 0
       isZoneRedundant = false
     }
@@ -44,7 +44,7 @@ local account = new cosmos.DatabaseAccount {
 local uai = new userassignedidentity.UserAssignedIdentity {
   label = "cosmos-sqlra-test-uai"
   name = "formae-plugin-sdk-test-csqlra-uai-\(vars.testRunID)"
-  location = "eastus"
+  location = "eastus2"
   resourceGroupName = rg.res.name
 }
 
