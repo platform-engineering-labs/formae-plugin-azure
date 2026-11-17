@@ -17,6 +17,16 @@ updates:
       # Remove this entry only once a release restores those clients; check the
       # CHANGELOG rather than the version number.
       - dependency-name: "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/alertsmanagement/armalertsmanagement"
+      # armpolicy/v2 is pinned to v2.0.0-beta.2 ON PURPOSE. v2.0.0 GA removed
+      # ExemptionsClient (see that module's CHANGELOG), and
+      # pkg/resources/policyexemption.go is built on it - taking the GA bump stops
+      # the plugin compiling, and with it AZURE::Authorization::PolicyExemption.
+      # Pre-releases of 2.0.0 sort below 2.0.0, so further betas are still offered.
+      #
+      # Remove this entry only once a release restores ExemptionsClient; check the
+      # CHANGELOG rather than the version number.
+      - dependency-name: "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armpolicy/v2"
+        versions: [">= 2.0.0"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -29,8 +29,9 @@ const ResourceTypePolicyExemption = "AZURE::Authorization::PolicyExemption"
 // full PUT is what the update path needs.
 //
 // THIS IS THE ONLY FILE THAT IMPORTS armpolicy/v2. The three older policy resources
-// import armpolicy v1.0.0, which REMOVED ExemptionsClient; v2.0.0-beta.1 is the
-// only published module that still has it. The alias keeps the two apart, and the
+// import armpolicy v1.0.0, which REMOVED ExemptionsClient; armpolicy/v2 v2.0.0 GA
+// removed it again, so the v2.0.0 betas (pinned to beta.2) are the only published
+// modules that still have it. The alias keeps the two apart, and the
 // other three must not be moved onto it as a side effect of this file existing.
 //
 // As with policy assignments, the scope-taking verbs are used so that one
