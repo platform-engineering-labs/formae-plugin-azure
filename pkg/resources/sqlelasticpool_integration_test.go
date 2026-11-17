@@ -31,7 +31,7 @@ func TestSqlElasticPool_CRUD(t *testing.T) {
 	poolResult := armsql.ElasticPool{
 		ID:       to.Ptr(testSQLElasticPoolNativeID),
 		Name:     to.Ptr("pool-1"),
-		Location: to.Ptr("West US 2"),
+		Location: to.Ptr("East US 2"),
 		SKU: &armsql.SKU{
 			Name:     to.Ptr("StandardPool"),
 			Tier:     to.Ptr("Standard"),
@@ -100,7 +100,7 @@ func TestSqlElasticPool_CRUD(t *testing.T) {
 			"resourceGroupName": "rg-1",
 			"serverName":        "sql-1",
 			"name":              "pool-1",
-			"location":          "westus2",
+			"location":          "eastus2",
 			"maxSizeBytes":      53687091200,
 			"sku": map[string]any{
 				"name":     "StandardPool",
@@ -123,7 +123,7 @@ func TestSqlElasticPool_CRUD(t *testing.T) {
 
 		var props map[string]any
 		require.NoError(t, json.Unmarshal(got.ProgressResult.ResourceProperties, &props))
-		require.Equal(t, "westus2", props["location"])
+		require.Equal(t, "eastus2", props["location"])
 		pds := props["perDatabaseSettings"].(map[string]any)
 		require.EqualValues(t, 20, pds["maxCapacity"])
 	})
@@ -135,7 +135,7 @@ func TestSqlElasticPool_CRUD(t *testing.T) {
 	})
 
 	t.Run("Create_requires_serverName", func(t *testing.T) {
-		props, _ := json.Marshal(map[string]any{"resourceGroupName": "rg-1", "name": "pool-1", "location": "westus2"})
+		props, _ := json.Marshal(map[string]any{"resourceGroupName": "rg-1", "name": "pool-1", "location": "eastus2"})
 		_, err := prov.Create(context.Background(), &resource.CreateRequest{Properties: props})
 		require.Error(t, err)
 	})
@@ -150,7 +150,7 @@ func TestSqlElasticPool_CRUD(t *testing.T) {
 		require.Equal(t, "pool-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
 		require.Equal(t, "sql-1", props["serverName"])
-		require.Equal(t, "westus2", props["location"])
+		require.Equal(t, "eastus2", props["location"])
 		require.Equal(t, "Ready", props["state"])
 		sku := props["sku"].(map[string]any)
 		require.Equal(t, "StandardPool", sku["name"])
