@@ -16,7 +16,7 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "sql-server-test-rg"
   name = "formae-plugin-sdk-test-sql-server-rg-\(vars.testRunID)"
-  location = "eastus2"
+  location = "centralus"
 }
 
 forma {
@@ -29,7 +29,7 @@ forma {
   new server.Server {
     label = "plugin-sdk-test-sql-server"
     name = "fpsdt-sql-\(vars.testRunID)"
-    location = "eastus2"
+    location = "centralus"
     resourceGroupName = rg.res.name
     administratorLogin = "sqladmin"
     administratorLoginPassword = "T3stP@ssw0rd!"

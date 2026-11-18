@@ -17,13 +17,13 @@ import "vars.pkl"
 local rg = new resourcegroup.ResourceGroup {
   label = "sql-outbound-firewall-rule-test-rg"
   name = "formae-plugin-sdk-test-sqlout-rg-\(vars.testRunID)"
-  location = "eastus2"
+  location = "centralus"
 }
 
 local srv = new server.Server {
   label = "sql-outbound-firewall-rule-test-server"
   name = "fpsdt-sqlout-\(vars.testRunID)"
-  location = "eastus2"
+  location = "centralus"
   resourceGroupName = rg.res.name
   administratorLogin = "sqladmin"
   administratorLoginPassword = "T3stP@ssw0rd!"
