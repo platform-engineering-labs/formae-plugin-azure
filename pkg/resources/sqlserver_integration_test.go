@@ -26,7 +26,7 @@ func TestSqlServer_CRUD(t *testing.T) {
 	serverResult := armsql.Server{
 		ID:       to.Ptr(testSQLServerNativeID),
 		Name:     to.Ptr("sql-1"),
-		Location: to.Ptr("East US 2"),
+		Location: to.Ptr("Central US"),
 		Properties: &armsql.ServerProperties{
 			Version:                  to.Ptr("12.0"),
 			AdministratorLogin:       to.Ptr("sqladmin"),
@@ -79,7 +79,7 @@ func TestSqlServer_CRUD(t *testing.T) {
 		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName":          "rg-1",
 			"name":                       "sql-1",
-			"location":                   "eastus2",
+			"location":                   "centralus",
 			"administratorLogin":         "sqladmin",
 			"administratorLoginPassword": "secret123!",
 			"version":                    "12.0",
@@ -98,7 +98,7 @@ func TestSqlServer_CRUD(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(got.Properties), &props))
 		require.Equal(t, "sql-1", props["name"])
 		require.Equal(t, "rg-1", props["resourceGroupName"])
-		require.Equal(t, "eastus2", props["location"])
+		require.Equal(t, "centralus", props["location"])
 		require.Equal(t, fqdn, props["fullyQualifiedDomainName"])
 	})
 
@@ -126,7 +126,7 @@ func TestSqlServer_CRUD(t *testing.T) {
 		props, _ := json.Marshal(map[string]any{
 			"resourceGroupName":          "rg-1",
 			"name":                       "sql-1",
-			"location":                   "eastus2",
+			"location":                   "centralus",
 			"administratorLogin":         "sqladmin",
 			"administratorLoginPassword": "secret123!",
 			"version":                    "12.0",
