@@ -1,7 +1,7 @@
 # Azure plugin for formae
 
 [![CI](https://github.com/platform-engineering-labs/formae-plugin-azure/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-azure/actions/workflows/ci.yml)
-[![Monthly](https://github.com/platform-engineering-labs/formae-plugin-azure/actions/workflows/monthly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-azure/actions/workflows/monthly.yml)
+[![Weekly](https://github.com/platform-engineering-labs/formae-plugin-azure/actions/workflows/weekly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-azure/actions/workflows/monthly.yml)
 
 Manages 290+ Azure resource types through Azure Resource Manager (ARM), from API Management to Container Apps and policy, as Infrastructure As Code with [formae](https://github.com/platform-engineering-labs/formae).
 
