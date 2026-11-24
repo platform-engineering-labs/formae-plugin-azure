@@ -252,8 +252,8 @@ github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1 h1:ZMTgKwSomy2c
 github.com/platform-engineering-labs/formae/pkg/api/model v0.1.1/go.mod h1:0ncHFCsGA6b0w1kBm6m+QwJ823qAY2vL47GvoR0BTyU=
 github.com/platform-engineering-labs/formae/pkg/credential v0.1.0 h1:ZforXiBjMM4R2I3KdGJ4lF5nco/VdvoGEqTuZxS1R7Q=
 github.com/platform-engineering-labs/formae/pkg/credential v0.1.0/go.mod h1:VS9hO24cYUcGYao9nfPb41HBfE2hF4WMrIS2fZwRwzM=
-github.com/platform-engineering-labs/formae/pkg/model v0.1.28 h1:7ndye94SGTvnyDQss81FlGY2F1l3Vf8V4c2uh4gfq/o=
-github.com/platform-engineering-labs/formae/pkg/model v0.1.28/go.mod h1:1dmsFwoaJZkHevBsAIZr068CWzG7de1VNz7PFWvM3Z8=
+github.com/platform-engineering-labs/formae/pkg/model v0.1.29 h1:jrbayXUeOoOy/BTFmW4/9ZIwqIEoa90vI0vB26yZSEQ=
+github.com/platform-engineering-labs/formae/pkg/model v0.1.29/go.mod h1:1dmsFwoaJZkHevBsAIZr068CWzG7de1VNz7PFWvM3Z8=
 github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2 h1:4a/hU6qT0alniJUlFXD+mZagKv+C8Hflh/m+/r4omjI=
 github.com/platform-engineering-labs/formae/pkg/plugin v0.4.2/go.mod h1:bytQxCfAxsHVeKZLoJ7i94s6SeGrn2CnqFTgYjW9gcw=
 github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.8 h1:RYlF1P1hM8C8vocUZh0cw/q5IlZkoRfKdPkpTDGq3/s=
