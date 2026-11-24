@@ -130,8 +130,8 @@ github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/webpubsub/armwebpubsub v1.
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/webpubsub/armwebpubsub v1.3.0/go.mod h1:3cqAZX7JxhdbywHK3b1iaO/VcP9Kv+yvZ/s44EO2+LI=
 github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azcertificates v1.5.0 h1:15MiSirdxWpIKFEHwfwfMWYieETCUnPTERPIlnytQeo=
 github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azcertificates v1.5.0/go.mod h1:0AAf/fHAqhIsvD6XGKlCsDO8u+cCiYBBuro+lWS6os4=
-github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.5.0 h1:MaKvxE6D0KkjOg6Wd9M00iqP5PR0kUxCfiezes4JweM=
-github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.5.0/go.mod h1:i2h9fsTFKZorh8RdV2IcSUf/Qj98GlTkrTvUbX/s8as=
+github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.6.0 h1:t8gT+eZrAqqx/GIce8505NhR9sjQQzcdxqSpel26/GY=
+github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys v1.6.0/go.mod h1:BF/nOMGr0btyy/TYu2zsRXWXTEPCvDft7YPiloEKUn8=
 github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.1 h1:f4X/okTwHAfzJamPo8hyStXinb4sCTK36gMZj+KLQdw=
 github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.1/go.mod h1:sEd11NnHY3lizFx/zf5u7x5qNjhF0t5VZM0irRHKXVU=
 github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 h1:nCYfgcSyHZXJI8J0IWE5MsCGlb2xp9fJiXyxWgmOFg4=
